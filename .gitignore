@@ -1,0 +1,16 @@
+# Jupyter Notebook
+*.ipynb
+.ipynb_checkpoints/
+
+# Anaconda
+anaconda_projects/
+
+# Data
+*.csv
+
+# Python
+*.py
+__pycache__/
+
+# DB
+*.db
