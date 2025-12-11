@@ -72,7 +72,7 @@
 # conda env remove -n strawberry_v2
 
 # 创建一个新的 conda 环境 (例如，名为 strawberry_env)
-conda create -n strawberry_env python=3.9 -y
+conda create -n strawberry_env python=3.10 -y
 
 # 激活该环境
 conda activate strawberry_env
