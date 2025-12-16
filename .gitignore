@@ -1,6 +1,4 @@
 # Jupyter Notebook
-*.ipynb
-.ipynb_checkpoints/
 
 # Anaconda
 anaconda_projects/
