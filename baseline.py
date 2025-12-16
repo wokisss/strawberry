@@ -140,8 +140,12 @@ val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
 val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
 
 # --- 模型训练与早停机制 ---
+# 新增: 设备选择
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"--> 使用设备: {device}")
+
 input_dim = X_train_tensor.shape[2]
-hybrid_model = HybridModel(input_dim=input_dim, hidden_dim=32, output_dim=1)
+hybrid_model = HybridModel(input_dim=input_dim, hidden_dim=32, output_dim=1).to(device) # .to(device)
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(hybrid_model.parameters(), lr=0.001)
 
@@ -156,6 +160,7 @@ for epoch in range(num_epochs):
     # 训练
     hybrid_model.train()
     for batch_X, batch_y in train_loader:
+        batch_X, batch_y = batch_X.to(device), batch_y.to(device) # .to(device)
         optimizer.zero_grad()
         outputs = hybrid_model(batch_X)
         loss = criterion(outputs, batch_y)
@@ -167,6 +172,7 @@ for epoch in range(num_epochs):
     val_loss = 0
     with torch.no_grad():
         for batch_X, batch_y in val_loader:
+            batch_X, batch_y = batch_X.to(device), batch_y.to(device) # .to(device)
             outputs = hybrid_model(batch_X)
             loss = criterion(outputs, batch_y)
             val_loss += loss.item()
@@ -191,12 +197,13 @@ for epoch in range(num_epochs):
 # --- 预测 ---
 print(f"--> 使用在验证集上表现最佳的模型进行预测...")
 hybrid_model.load_state_dict(torch.load(best_model_path)) # 加载最佳模型
+hybrid_model.to(device) # 确保模型在正确的设备上
 hybrid_model.eval()
 with torch.no_grad():
-    y_pred_dl_tensor = hybrid_model(X_test_tensor)
+    y_pred_dl_tensor = hybrid_model(X_test_tensor.to(device)) # .to(device)
 
 # 反归一化
-y_pred_dl_scaled = y_pred_dl_tensor.numpy()
+y_pred_dl_scaled = y_pred_dl_tensor.cpu().numpy()
 dummy_array = np.zeros((len(y_pred_dl_scaled), len(available_input_features)))
 dummy_array[:, target_index] = y_pred_dl_scaled.ravel()
 y_pred_hybrid = scaler.inverse_transform(dummy_array)[:, target_index]
