@@ -77,20 +77,37 @@ except Exception as e:
 
 # --- 步骤 4: 物理基准模型构建 ---
 print(f"\n--- 正在构建物理基准模型 ---")
+
+# !!! 关键修改：将预测步长定义提前，确保物理模型和混合模型一致 !!!
+# 1小时 = 60分钟 = 60 个 1分钟点
+forecast_horizon = 60 
+print(f"--> 物理模型预测步长设定为: {forecast_horizon} 分钟")
+
 physics_features = [' "Temperature, °C"', ' "Humidity, %"', ' "CO?, ppm"', ' "Heater"', ' "Ventilation"', ' "Lighting"']
 target_col = ' "Temperature, °C"'
 available_physics_features = [col for col in physics_features if col in df_resampled.columns]
+
+# 准备数据
 data = df_resampled[available_physics_features].dropna()
-if len(data) < 2: sys.exit("错误: 物理模型数据不足。")
-X_physics = data.iloc[:-1].copy()
-y_physics = data[target_col].iloc[1:].values
+if len(data) < forecast_horizon + 1: sys.exit("错误: 物理模型数据不足。")
+
+# !!! 修正数据切片逻辑 !!!
+# 输入 X: 从 0 到 总长度 - horizon
+# 输出 y: 从 horizon 到 结尾
+# 这样建立了 X_t -> y_{t+60} 的关系
+X_physics = data.iloc[:-forecast_horizon].copy()
+y_physics = data[target_col].iloc[forecast_horizon:].values
+
 control_features = [col for col in [' "Heater"', ' "Ventilation"', ' "Lighting"'] if col in available_physics_features and col != target_col]
 feature_columns = [target_col] + control_features
 X_physics_features = X_physics[feature_columns].values
+
 train_size = int(len(X_physics) * 0.8)
 if train_size == 0: sys.exit("错误: 训练数据不足。")
+
 X_train_phy, X_test_phy = X_physics_features[:train_size], X_physics_features[train_size:]
 y_train_phy, y_test_phy = y_physics[:train_size], y_physics[train_size:]
+
 physics_model = LinearRegression()
 physics_model.fit(X_train_phy, y_train_phy)
 y_pred_phy = physics_model.predict(X_test_phy)
@@ -116,9 +133,7 @@ scaled_features = scaler.fit_transform(df_hybrid[available_input_features])
 # 2小时 = 120分钟 = 120 个 1分钟点
 sequence_length = 120
 
-# 2. 设置预测目标：预测 1小时后的温度
-# 1小时 = 60分钟 = 60 个 1分钟点
-forecast_horizon = 60
+
 
 print(f"--- 正在构建数据集: 输入过去 {sequence_length} 分钟，预测未来 {forecast_horizon} 分钟 ---")
 
