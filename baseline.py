@@ -14,11 +14,14 @@ import os
 # === 辅助函数与类定义 (PyTorch) ===
 
 # 创建时间序列数据
-def create_sequences(data, seq_length):
+def create_sequences(data, seq_length, forecast_horizon):
     xs, ys = [], []
-    for i in range(len(data) - seq_length):
+    # 确保不越界：数据总长度 - (输入序列长度 + 预测距离)
+    for i in range(len(data) - seq_length - forecast_horizon + 1):
+        # 输入：从 i 开始，取 seq_length 个点
         x = data[i:(i + seq_length)]
-        y = data[i + seq_length]
+        # 输出：取加上 horizon 后的点 (减1是因为索引从0开始)
+        y = data[i + seq_length + forecast_horizon - 1]
         xs.append(x)
         ys.append(y)
     return np.array(xs), np.array(ys)
@@ -107,7 +110,18 @@ scaler = MinMaxScaler()
 scaled_features = scaler.fit_transform(df_hybrid[available_input_features])
 
 # --- 数据集划分 (训练、验证、测试) ---
-sequence_length = 1440
+# --- 参数设置区域 ---
+# 假设数据间隔是 5分钟 (df_resampled 是 5min 一行)
+# 1. 设置输入窗口：比如看过去 2小时的数据来预测
+# 2小时 = 120分钟 = 120 个 1分钟点
+sequence_length = 120
+
+# 2. 设置预测目标：预测 1小时后的温度
+# 1小时 = 60分钟 = 60 个 1分钟点
+forecast_horizon = 60
+
+print(f"--- 正在构建数据集: 输入过去 {sequence_length} 分钟，预测未来 {forecast_horizon} 分钟 ---")
+
 # 原始训练数据
 train_data_full = scaled_features[:train_size]
 # 原始测试数据
@@ -119,9 +133,9 @@ train_data = train_data_full[:val_split_index]
 val_data = train_data_full[val_split_index:]
 
 # 创建序列
-X_train, y_train = create_sequences(train_data, sequence_length)
-X_val, y_val = create_sequences(val_data, sequence_length)
-X_test, y_test_scaled = create_sequences(test_data, sequence_length)
+X_train, y_train = create_sequences(train_data, sequence_length, forecast_horizon)
+X_val, y_val = create_sequences(val_data, sequence_length, forecast_horizon)
+X_test, y_test_scaled = create_sequences(test_data, sequence_length, forecast_horizon)
 
 if len(X_train) == 0 or len(X_val) == 0 or len(X_test) == 0:
     sys.exit("错误: 创建序列后数据不足以划分训练/验证/测试集。")
@@ -147,7 +161,7 @@ print(f"--> 使用设备: {device}")
 input_dim = X_train_tensor.shape[2]
 hybrid_model = HybridModel(input_dim=input_dim, hidden_dim=32, output_dim=1).to(device) # .to(device)
 criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(hybrid_model.parameters(), lr=0.001)
+optimizer = torch.optim.Adam(hybrid_model.parameters(), lr=0.0001)
 
 print("--> 正在训练混合模型 (最大Epochs=200, 早停耐心=10)...")
 num_epochs = 200
@@ -230,7 +244,7 @@ plt.plot(y_pred_phy_aligned[:plot_len], label=f'物理模型预测 (R2={m1[2]:.2
 plt.plot(y_pred_hybrid[:plot_len], label=f'混合模型预测 (R2={m2[2]:.2f})', color='red', linewidth=1.5)
 
 plt.title(f"温室温度预测对比: 物理模型 vs 混合模型 (已优化)", fontsize=16)
-plt.xlabel("时间步 (30分钟/步)", fontsize=12)
+plt.xlabel("时间步 (1分钟/步)", fontsize=12)
 plt.ylabel("温度 (°C)", fontsize=12)
 plt.legend(fontsize=10)
 plt.grid(True, alpha=0.5)
