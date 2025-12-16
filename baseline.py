@@ -65,7 +65,7 @@ try:
     for col in df.columns:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     df.dropna(axis=1, how='all', inplace=True)
-    df_resampled = df.resample('5min').mean().ffill().bfill()
+    df_resampled = df.resample('1min').mean().ffill().bfill()
     print(f"--> 数据预处理完成。维度: {df_resampled.shape}")
 
 except Exception as e:
@@ -107,7 +107,7 @@ scaler = MinMaxScaler()
 scaled_features = scaler.fit_transform(df_hybrid[available_input_features])
 
 # --- 数据集划分 (训练、验证、测试) ---
-sequence_length = 144
+sequence_length = 1440
 # 原始训练数据
 train_data_full = scaled_features[:train_size]
 # 原始测试数据
@@ -135,9 +135,9 @@ X_test_tensor = torch.FloatTensor(X_test)
 
 # 创建DataLoader
 train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
-val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 
 # --- 模型训练与早停机制 ---
 # 新增: 设备选择
@@ -149,8 +149,8 @@ hybrid_model = HybridModel(input_dim=input_dim, hidden_dim=32, output_dim=1).to(
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(hybrid_model.parameters(), lr=0.001)
 
-print("--> 正在训练混合模型 (最大Epochs=100, 早停耐心=10)...")
-num_epochs = 100
+print("--> 正在训练混合模型 (最大Epochs=200, 早停耐心=10)...")
+num_epochs = 200
 patience = 10
 best_val_loss = float('inf')
 epochs_no_improve = 0
