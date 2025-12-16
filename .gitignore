@@ -9,7 +9,6 @@ anaconda_projects/
 *.csv
 
 # Python
-*.py
 __pycache__/
 
 # DB
