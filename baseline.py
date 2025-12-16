@@ -5,175 +5,44 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, TensorDataset
+import os
 
-# 【新增】设置中文字体 (Windows 专用)
-plt.rcParams['font.sans-serif'] = ['SimHei'] # 用黑体显示中文
-plt.rcParams['axes.unicode_minus'] = False   # 让负号正常显示
+# === 辅助函数与类定义 (PyTorch) ===
 
-# --- 步骤 0: 初始设置 ---
-# 定义要处理的数据文件名
-filename = 'Strawberry Greenhouse Environmental Control Dataset(version2).csv'
+# 创建时间序列数据
+def create_sequences(data, seq_length):
+    xs, ys = [], []
+    for i in range(len(data) - seq_length):
+        x = data[i:(i + seq_length)]
+        y = data[i + seq_length]
+        xs.append(x)
+        ys.append(y)
+    return np.array(xs), np.array(ys)
 
-# 打印程序开始的提示信息
-print(f"--- 开始处理文件: '{filename}' ---")
+# 定义混合模型 (CNN + BiGRU + Attention)
+class HybridModel(nn.Module):
+    def __init__(self, input_dim, hidden_dim=32, output_dim=1):
+        super(HybridModel, self).__init__()
+        self.conv1 = nn.Conv1d(in_channels=input_dim, out_channels=64, kernel_size=3, padding=1)
+        self.bigru = nn.GRU(input_size=64, hidden_size=hidden_dim, num_layers=2, batch_first=True, bidirectional=True)
+        self.attention = nn.Linear(hidden_dim * 2, 1)
+        self.fc = nn.Linear(hidden_dim * 2, output_dim)
 
-try:
-    # --- 步骤 1: 数据加载与初步清洗 ---
-    # 使用 try-except 块来捕获可能发生的错误，例如文件不存在或格式问题
-    print("--> 正在加载数据...")
-    # 使用 pandas 的 read_csv 函数读取数据，并根据文件的特性进行参数配置
-    df = pd.read_csv(
-        filename,
-        encoding='latin1', # 指定 'latin1' 编码来避免 'utf-8' 解码错误
-        sep=';',  # 指定分号为列分隔符
-        decimal=',',  # 指定逗号为小数点的分隔符
-        parse_dates=['Timestamp'],  # 指定 'Timestamp' 列为日期时间类型进行解析
-        dayfirst=True,  # 解析日期时，将天放在前面 (例如 DD.MM.YYYY)
-        index_col='Timestamp'  # 将 'Timestamp' 列设置成 DataFrame 的索引，便于时间序列分析
-    )
-    print(f"--> 数据加载成功。初始维度: {df.shape}")
+    def forward(self, x):
+        x = x.permute(0, 2, 1)
+        x = torch.relu(self.conv1(x))
+        x = x.permute(0, 2, 1)
+        gru_out, _ = self.bigru(x)
+        attention_weights = torch.softmax(self.attention(gru_out), dim=1)
+        attended_features = torch.sum(attention_weights * gru_out, dim=1)
+        output = self.fc(attended_features)
+        return output
 
-    # --- 步骤 2: 数据类型转换与清洗 ---
-    print("--> 正在转换数据类型并将非数值列转换为 NaN...")
-    # 遍历所有列，尝试将它们转换为数值类型
-    # errors='coerce' 参数会把无法转换的文本（如 'On'/'Off'）强制替换为 NaN (Not a Number)
-    for col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-
-    # 删除在转换后所有值都变成 NaN 的列 (这些通常是纯文本列，无法用于数学计算)
-    df.dropna(axis=1, how='all', inplace=True)
-    print(f"--> 清洗后维度 (仅保留数值相关列): {df.shape}")
-
-
-except FileNotFoundError:
-    # 如果文件不存在，打印错误信息并退出程序
-    print(f"错误: 文件 '{filename}' 未找到。请检查文件路径是否正确。")
-    sys.exit(1) # 状态码 1 表示异常退出
-except Exception as e:
-    # 捕获其他所有在加载和处理过程中可能发生的异常
-    print(f"加载或处理数据时发生未知错误: {e}")
-    sys.exit(1) # 异常退出
-
-
-# 确认经过清洗后，DataFrame 中是否还有可用的数据
-if df.empty:
-    print("\n错误: 清洗后没有可用的数值数据进行重采样。")
-    sys.exit(1)
-
-# --- 步骤 3: 时间序列重采样 ---
-print(f"\n--- 正在将数据按 30 分钟间隔重采样 ---")
-# 使用 '30min' 作为时间频率（替代了旧的 '30T' 写法）
-# .mean() 表示使用均值来聚合这 30 分钟内的所有数据点
-df_resampled = df.resample('30min').mean()
-
-# --- 步骤 4: 填补缺失值 ---
-# 重采样后可能会产生因为某个时间段内没有数据而导致的 NaN 值
-# 使用 .ffill() (forward-fill) 方法，用前一个有效值来填充 NaN
-# 接着链式调用 .bfill() (backward-fill) 方法，用后一个有效值来填充剩余的 NaN (这替代了旧的 .fillna(method=...) 写法)
-df_resampled = df_resampled.ffill().bfill()
-
-print(f"--> 数据重采样完成。")
-print(f"--> 清洗后的原始维度: {df.shape}, 重采样后的维度: {df_resampled.shape}")
-
-# ==========================================
-# 1. 数据加载与预处理 (复用你现有的逻辑)
-# ==========================================
-print(f"\n--- 正在加载并处理数据: {filename} ---")
-
-# 显示实际的列名
-print(f"实际列名: {df_resampled.columns.tolist()}")
-
-# 转换 Yes/No/On/Off 为 0/1
-# 根据实际列名调整
-cols_to_binary = [' "Heater"', ' "Ventilation"', ' "Lighting"', ' "Pump 1"', ' "Valve 1"']
-for col in cols_to_binary:
-    if col in df_resampled.columns:
-        df_resampled[col] = df_resampled[col].apply(lambda x: 1 if str(x).lower() in ['on', 'yes', '1'] else 0)
-
-# 选择物理方程中涉及的关键变量 (根据文献1公式 6-8)
-# T_next = T_curr + f(Heater, Ventilation, Lighting, ...)
-# 根据实际列名调整
-physics_features = [' "Temperature, °C"', ' "Humidity, %"', ' "CO?, ppm"', ' "Heater"', ' "Ventilation"', ' "Lighting"']
-target_col = ' "Temperature, °C"' # 这里以温度为例进行对比
-
-# 检查所需列是否存在
-missing_cols = [col for col in physics_features if col not in df_resampled.columns]
-if missing_cols:
-    print(f"警告: 以下列在数据中未找到: {missing_cols}")
-
-# 只保留在数据中存在的列
-available_physics_features = [col for col in physics_features if col in df_resampled.columns]
-data = df_resampled[available_physics_features].dropna()
-
-print(f"物理模型使用的特征列: {available_physics_features}")
-print(f"数据形状: {data.shape}")
-
-# ==========================================
-# 2. 构建物理基准模型 (Physics-based Baseline)
-# ==========================================
-# 原理：根据文献公式(9) Euler Discretization
-# T(t+1) = T(t) + delta_t * (coeff_heater * Heater + coeff_ventilation * Ventilation + ...)
-# 因此，我们需要预测的是 delta_T，或者直接回归 T(t+1)
-
-if len(data) == 0:
-    print("错误: 没有足够的数据用于物理模型训练。")
-    sys.exit(1)
-
-# 构造 T(t) 和 T(t+1)
-X_physics = data.iloc[:-1].copy() # t 时刻的状态
-y_physics = data[target_col].iloc[1:].values # t+1 时刻的真实温度
-
-# 物理模型的特征不仅包含状态，还应包含这一时刻的"控制动作"
-# 比如：温度的变化是由当前的加热器、通风设备状态决定的
-control_features = [col for col in [' "Heater"', ' "Ventilation"', ' "Lighting"'] if col in available_physics_features and col != target_col]
-feature_columns = [target_col] + control_features
-
-# 确保至少有一些特征列
-if not feature_columns:
-    feature_columns = [target_col]
-
-X_physics_features = X_physics[feature_columns].values
-
-print(f"物理模型特征列: {feature_columns}")
-print(f"X_physics_features 形状: {X_physics_features.shape}")
-print(f"y_physics 形状: {y_physics.shape}")
-
-# 检查是否有足够的数据
-if len(X_physics_features) == 0 or len(y_physics) == 0:
-    print("错误: 没有足够的数据用于物理模型训练。")
-    sys.exit(1)
-
-# 划分训练集和测试集 (保持和你深度学习模型一致的比例，这里假设是 80/20)
-train_size = int(len(X_physics) * 0.8)
-if train_size == 0:
-    print("错误: 训练数据不足。")
-    sys.exit(1)
-
-X_train_phy, X_test_phy = X_physics_features[:train_size], X_physics_features[train_size:]
-y_train_phy, y_test_phy = y_physics[:train_size], y_physics[train_size:]
-
-print("---> 正在训练物理基准模型 (基于文献1公式的线性近似)...")
-# 使用线性回归来拟合物理方程的系数
-physics_model = LinearRegression()
-physics_model.fit(X_train_phy, y_train_phy)
-
-# 预测
-y_pred_phy = physics_model.predict(X_test_phy)
-
-# ==========================================
-# 3. 模拟你的混合模型结果 (Hybrid Model Placeholder)
-# ==========================================
-# 注意：在实际代码中，这里应该直接使用你现有深度学习模型 model(input_seq) 的输出
-# 这里为了演示对比效果，我们模拟一个比物理模型精度高 30% 的结果 (根据文献2的结论)
-noise = np.random.normal(0, 0.5, size=y_test_phy.shape) # 模拟预测噪声
-y_pred_hybrid = y_test_phy + noise * 0.5 # 混合模型误差更小
-y_pred_phy_noisy = y_pred_phy # 物理模型通常因为忽略非线性，误差较大
-
-# ==========================================
-# 4. 评估与可视化 (Evaluation & Visualization)
-# ==========================================
+# 评估指标计算
 def calculate_metrics(y_true, y_pred, name):
     mae = mean_absolute_error(y_true, y_pred)
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
@@ -181,44 +50,197 @@ def calculate_metrics(y_true, y_pred, name):
     print(f"[{name}] MAE: {mae:.4f}, RMSE: {rmse:.4f}, R2: {r2:.4f}")
     return mae, rmse, r2
 
+# 设置中文字体
+plt.rcParams['font.sans-serif'] = ['SimHei']
+plt.rcParams['axes.unicode_minus'] = False
+
+# --- 步骤 0: 初始设置 ---
+filename = 'Strawberry Greenhouse Environmental Control Dataset(version2).csv'
+print(f"--- 开始处理文件: '{filename}' ---")
+
+try:
+    # --- 步骤 1-3: 数据加载, 清洗, 重采样, 填充 ---
+    print("--> 正在加载和预处理数据...")
+    df = pd.read_csv(filename, encoding='latin1', sep=';', decimal=',', parse_dates=['Timestamp'], dayfirst=True, index_col='Timestamp')
+    for col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    df.dropna(axis=1, how='all', inplace=True)
+    df_resampled = df.resample('5min').mean().ffill().bfill()
+    print(f"--> 数据预处理完成。维度: {df_resampled.shape}")
+
+except Exception as e:
+    print(f"处理数据时发生错误: {e}")
+    sys.exit(1)
+
+# --- 步骤 4: 物理基准模型构建 ---
+print(f"\n--- 正在构建物理基准模型 ---")
+physics_features = [' "Temperature, °C"', ' "Humidity, %"', ' "CO?, ppm"', ' "Heater"', ' "Ventilation"', ' "Lighting"']
+target_col = ' "Temperature, °C"'
+available_physics_features = [col for col in physics_features if col in df_resampled.columns]
+data = df_resampled[available_physics_features].dropna()
+if len(data) < 2: sys.exit("错误: 物理模型数据不足。")
+X_physics = data.iloc[:-1].copy()
+y_physics = data[target_col].iloc[1:].values
+control_features = [col for col in [' "Heater"', ' "Ventilation"', ' "Lighting"'] if col in available_physics_features and col != target_col]
+feature_columns = [target_col] + control_features
+X_physics_features = X_physics[feature_columns].values
+train_size = int(len(X_physics) * 0.8)
+if train_size == 0: sys.exit("错误: 训练数据不足。")
+X_train_phy, X_test_phy = X_physics_features[:train_size], X_physics_features[train_size:]
+y_train_phy, y_test_phy = y_physics[:train_size], y_physics[train_size:]
+physics_model = LinearRegression()
+physics_model.fit(X_train_phy, y_train_phy)
+y_pred_phy = physics_model.predict(X_test_phy)
+print("---> 物理基准模型训练完成。")
+
+# --- 步骤 5: 混合深度学习模型构建 (PyTorch) ---
+print("\n--- 正在构建与训练混合深度学习模型 (PyTorch) ---")
+df_hybrid = df_resampled.copy()
+df_hybrid['Hour'] = df_hybrid.index.hour
+df_hybrid['DayOfWeek'] = df_hybrid.index.dayofweek
+
+input_features = [' "Temperature, °C"', ' "Humidity, %"', ' "CO?, ppm"', ' "Heater"', ' "Ventilation"', ' "Lighting"', 'Hour', 'DayOfWeek']
+available_input_features = [f for f in input_features if f in df_hybrid.columns]
+target_index = available_input_features.index(target_col)
+
+scaler = MinMaxScaler()
+scaled_features = scaler.fit_transform(df_hybrid[available_input_features])
+
+# --- 数据集划分 (训练、验证、测试) ---
+sequence_length = 144
+# 原始训练数据
+train_data_full = scaled_features[:train_size]
+# 原始测试数据
+test_data = scaled_features[train_size:]
+
+# 将原始训练数据进一步划分为训练集和验证集 (80/20)
+val_split_index = int(len(train_data_full) * 0.8)
+train_data = train_data_full[:val_split_index]
+val_data = train_data_full[val_split_index:]
+
+# 创建序列
+X_train, y_train = create_sequences(train_data, sequence_length)
+X_val, y_val = create_sequences(val_data, sequence_length)
+X_test, y_test_scaled = create_sequences(test_data, sequence_length)
+
+if len(X_train) == 0 or len(X_val) == 0 or len(X_test) == 0:
+    sys.exit("错误: 创建序列后数据不足以划分训练/验证/测试集。")
+
+# 转换为PyTorch张量
+X_train_tensor = torch.FloatTensor(X_train)
+y_train_tensor = torch.FloatTensor(y_train[:, target_index]).unsqueeze(1)
+X_val_tensor = torch.FloatTensor(X_val)
+y_val_tensor = torch.FloatTensor(y_val[:, target_index]).unsqueeze(1)
+X_test_tensor = torch.FloatTensor(X_test)
+
+# 创建DataLoader
+train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
+val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+
+# --- 模型训练与早停机制 ---
+input_dim = X_train_tensor.shape[2]
+hybrid_model = HybridModel(input_dim=input_dim, hidden_dim=32, output_dim=1)
+criterion = nn.MSELoss()
+optimizer = torch.optim.Adam(hybrid_model.parameters(), lr=0.001)
+
+print("--> 正在训练混合模型 (最大Epochs=100, 早停耐心=10)...")
+num_epochs = 100
+patience = 10
+best_val_loss = float('inf')
+epochs_no_improve = 0
+best_model_path = "best_hybrid_model.pth"
+
+for epoch in range(num_epochs):
+    # 训练
+    hybrid_model.train()
+    for batch_X, batch_y in train_loader:
+        optimizer.zero_grad()
+        outputs = hybrid_model(batch_X)
+        loss = criterion(outputs, batch_y)
+        loss.backward()
+        optimizer.step()
+    
+    # 验证
+    hybrid_model.eval()
+    val_loss = 0
+    with torch.no_grad():
+        for batch_X, batch_y in val_loader:
+            outputs = hybrid_model(batch_X)
+            loss = criterion(outputs, batch_y)
+            val_loss += loss.item()
+    
+    avg_val_loss = val_loss / len(val_loader)
+    
+    if (epoch + 1) % 10 == 0:
+        print(f"Epoch [{epoch+1}/{num_epochs}], 验证损失: {avg_val_loss:.6f}")
+
+    # 早停逻辑
+    if avg_val_loss < best_val_loss:
+        best_val_loss = avg_val_loss
+        torch.save(hybrid_model.state_dict(), best_model_path)
+        epochs_no_improve = 0
+    else:
+        epochs_no_improve += 1
+    
+    if epochs_no_improve >= patience:
+        print(f"验证损失连续 {patience} 个周期未改善，触发早停。")
+        break
+
+# --- 预测 ---
+print(f"--> 使用在验证集上表现最佳的模型进行预测...")
+hybrid_model.load_state_dict(torch.load(best_model_path)) # 加载最佳模型
+hybrid_model.eval()
+with torch.no_grad():
+    y_pred_dl_tensor = hybrid_model(X_test_tensor)
+
+# 反归一化
+y_pred_dl_scaled = y_pred_dl_tensor.numpy()
+dummy_array = np.zeros((len(y_pred_dl_scaled), len(available_input_features)))
+dummy_array[:, target_index] = y_pred_dl_scaled.ravel()
+y_pred_hybrid = scaler.inverse_transform(dummy_array)[:, target_index]
+
+dummy_array_true = np.zeros((len(y_test_scaled), len(available_input_features)))
+dummy_array_true[:, target_index] = y_test_scaled[:, target_index].ravel()
+y_test_hybrid = scaler.inverse_transform(dummy_array_true)[:, target_index]
+
+# --- 步骤 6: 评估与可视化 ---
 print("\n--- 性能对比 ---")
-m1 = calculate_metrics(y_test_phy, y_pred_phy, "基准: 物理微分方程模型")
-m2 = calculate_metrics(y_test_phy, y_pred_hybrid, "本文: 混合深度学习模型")
+start_offset = sequence_length
+end_offset = start_offset + len(y_test_hybrid)
+y_test_phy_aligned = y_test_phy[start_offset:end_offset]
+y_pred_phy_aligned = y_pred_phy[start_offset:end_offset]
+min_len = min(len(y_test_hybrid), len(y_test_phy_aligned))
 
-# 绘图
-plt.figure(figsize=(12, 6))
-start_idx = min(100, len(y_test_phy)-1)
-end_idx = min(300, len(y_test_phy))
+m1 = calculate_metrics(y_test_phy_aligned[:min_len], y_pred_phy_aligned[:min_len], "基准: 物理微分方程模型")
+m2 = calculate_metrics(y_test_hybrid[:min_len], y_pred_hybrid[:min_len], "本文: 混合深度学习模型")
 
-# 确保索引不会越界
-start_idx = max(0, start_idx)
-end_idx = min(len(y_test_phy), end_idx)
+plt.figure(figsize=(14, 7))
+plot_len = min(300, min_len)
+plt.plot(y_test_phy_aligned[:plot_len], label='真实值 (Ground Truth)', color='black', linewidth=2)
+plt.plot(y_pred_phy_aligned[:plot_len], label=f'物理模型预测 (R2={m1[2]:.2f})', color='blue', linestyle='--')
+plt.plot(y_pred_hybrid[:plot_len], label=f'混合模型预测 (R2={m2[2]:.2f})', color='red', linewidth=1.5)
 
-plt.plot(y_test_phy[start_idx:end_idx], label='真实值 (Ground Truth)', color='black', linewidth=1.5)
-plt.plot(y_pred_phy[start_idx:end_idx], label='物理模型预测 (文献1基准)', color='blue', linestyle='--')
-plt.plot(y_pred_hybrid[start_idx:end_idx], label='混合模型预测 (本文方法)', color='red', linewidth=1.5)
-
-plt.title(f"温室温度预测对比: 物理模型 vs 混合模型\n(体现混合模型对非线性动态的捕捉优势)", fontsize=14)
-plt.xlabel("时间步 (Time Step)", fontsize=12)
+plt.title(f"温室温度预测对比: 物理模型 vs 混合模型 (已优化)", fontsize=16)
+plt.xlabel("时间步 (30分钟/步)", fontsize=12)
 plt.ylabel("温度 (°C)", fontsize=12)
-plt.legend()
-plt.grid(True, alpha=0.3)
-
-# 添加说明文本
-if len(y_test_phy[start_idx:end_idx]) > 0:
-    plt.text(0, np.min(y_test_phy[start_idx:end_idx]), 
-             f"物理模型 MAE: {m1[0]:.2f}\n混合模型 MAE: {m2[0]:.2f}\n提升: {(m1[0]-m2[0])/m1[0]*100:.1f}%", 
-             bbox=dict(facecolor='white', alpha=0.8))
-
+plt.legend(fontsize=10)
+plt.grid(True, alpha=0.5)
 plt.tight_layout()
 plt.show()
 
-# ==========================================
-# 5. 输出结论文本
-# ==========================================
+# --- 步骤 7: 输出结论文本 ---
 print("\n--- 结论分析 ---")
-print(f"1. 物理模型基于文献1的公式，假设温度变化与加热、通风等控制动作呈线性关系。")
-print(f"   得到的 R2 为 {m1[2]:.4f}，说明它能捕捉大概趋势，但忽略了复杂的非线性特征。")
-print(f"2. 混合模型 (代码中的深度学习部分) 能够记忆历史序列特征并关注关键时刻。")
-print(f"   其预测精度显著优于物理基准，MAE 降低了约 {((m1[0]-m2[0])/m1[0])*100:.1f}%")
-print(f"3. 这证明了用文献2的数据驱动方法替代文献1的物理计算模块，能为 MDP 决策提供更精准的状态输入。")
+print(f"1. 物理模型基于简化的线性假设，其 R2 分数为 {m1[2]:.4f}。")
+if m2[2] > m1[2]:
+    improvement = ((m1[0] - m2[0]) / m1[0]) * 100 if m1[0] != 0 else float('inf')
+    print(f"2. 经过优化的PyTorch混合模型表现更优，R2 分数达到 {m2[2]:.4f}。")
+    print(f"   相较于物理模型，混合模型的 MAE 从 {m1[0]:.4f} 降低到 {m2[0]:.4f}，精度提升了 {improvement:.1f}%。")
+else:
+    print(f"2. 即使经过优化，混合模型在此次运行中的表现（R2: {m2[2]:.4f}）仍未优于物理模型。这可能需要进一步调整模型结构或特征工程。")
+print(f"3. 结果验证了数据驱动的混合模型在捕捉复杂动态系统行为方面的潜力。")
+
+# 清理保存的模型文件
+if os.path.exists(best_model_path):
+    os.remove(best_model_path)
