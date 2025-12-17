@@ -80,7 +80,7 @@ print(f"\n--- 正在构建物理基准模型 ---")
 
 # !!! 关键修改：将预测步长定义提前，确保物理模型和混合模型一致 !!!
 # 1小时 = 60分钟 = 60 个 1分钟点
-forecast_horizon = 60 
+forecast_horizon = 120 
 print(f"--> 物理模型预测步长设定为: {forecast_horizon} 分钟")
 
 physics_features = [' "Temperature, °C"', ' "Humidity, %"', ' "CO?, ppm"', ' "Heater"', ' "Ventilation"', ' "Lighting"']
