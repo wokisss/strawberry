@@ -14,57 +14,78 @@ import os
 # === 辅助函数与类定义 (PyTorch) ===
 
 # 创建时间序列数据
+# 该函数用于将时间序列数据转换为监督学习所需的输入输出对
+# data: 原始数据
+# seq_length: 历史数据的长度 (输入序列长度)
+# forecast_horizon: 预测的未来时间步长
+# future_indices: 未来控制变量的列索引
+# target_idx: 预测目标的列索引
 def create_sequences(data, seq_length, forecast_horizon, future_indices, target_idx):
     xs_past, xs_future, ys, y_bases = [], [], [], []
     # 确保不越界：数据总长度 - (输入序列长度 + 预测距离)
     for i in range(len(data) - seq_length - forecast_horizon + 1):
-        # 输入：从 i 开始，取 seq_length 个点
+        # 输入 (历史状态): 从 i 开始，取 seq_length 个点
         x_p = data[i:(i + seq_length)]
-        # 未来控制序列：从 seq_length 结束开始，取 forecast_horizon 个点
+        # 输入 (未来控制序列): 从 seq_length 结束开始，取 forecast_horizon 个点
+        # 这里假设我们知道未来的控制策略 (如加热器开关计划)
         x_f = data[i + seq_length : i + seq_length + forecast_horizon, future_indices]
         # 任务二：输出整个预测序列 [t+1, ..., t+horizon]
+        # 我们不仅预测最终点，还预测整个未来轨迹，以捕捉趋势
         y = data[i + seq_length : i + seq_length + forecast_horizon, target_idx]
-        # 基准值：输入序列的最后一个目标值，用于计算差分
+        # 基准值：输入序列的最后一个目标值，用于计算差分 (如果使用差分预测模式)
         y_base = data[i + seq_length - 1, target_idx]
         xs_past.append(x_p)
         xs_future.append(x_f)
         ys.append(y)
         y_bases.append(y_base)
     return np.array(xs_past), np.array(xs_future), np.array(ys), np.array(y_bases)
+
 # 2. 对比混合模型 (Complex Past + Simple GRU Future)
+# 该模型结合了复杂的历史特征提取 (CNN+BiGRU+Attention) 和简单的未来特征提取 (GRU)
 class SimpleFutureModel(nn.Module):
     def __init__(self, input_dim, future_dim, forecast_horizon, hidden_dim=32):
         super(SimpleFutureModel, self).__init__()
-        # 历史数据处理分支 (CNN + BiGRU + Attention)
+        # --- 历史数据处理分支 (CNN + BiGRU + Attention) ---
+        # 1. CNN层: 提取局部特征 (如短期的温度波动)
         self.past_conv1 = nn.Conv1d(in_channels=input_dim, out_channels=64, kernel_size=3, padding=1)
+        # 2. BiGRU层: 捕捉双向的长程时间依赖关系
         self.past_bigru = nn.GRU(input_size=64, hidden_size=hidden_dim, num_layers=2, batch_first=True, bidirectional=True)
+        # 3. Attention层: 动态计算不同时间步的权重，关注关键时刻
         self.past_attention = nn.Linear(hidden_dim * 2, 1)
         
-        # 未来控制序列处理分支 (仅使用单向 GRU)
+        # --- 未来控制序列处理分支 (仅使用单向 GRU) ---
+        # 处理未来已知的控制信号 (如加热器开启时长)
         self.future_gru = nn.GRU(input_size=future_dim, hidden_size=hidden_dim, num_layers=1, batch_first=True)
         
-        # 融合层：历史特征 (hidden_dim * 2) + 未来特征 (hidden_dim)
+        # --- 融合层 ---
+        # 将历史特征和未来特征拼接后，通过全连接层输出预测序列
+        # 输入维度: 历史特征 (hidden_dim * 2, 因为是双向) + 未来特征 (hidden_dim)
         self.fc = nn.Linear(hidden_dim * 2 + hidden_dim, forecast_horizon)
 
     def forward(self, x_past, x_future):
-        # 处理历史序列 (Complex)
+        # --- 处理历史序列 (Complex) ---
+        # 调整维度以适应 Conv1d: (Batch, Seq, Feat) -> (Batch, Feat, Seq)
         x_p = x_past.permute(0, 2, 1)
         x_p = torch.relu(self.past_conv1(x_p))
+        # 恢复维度以适应 GRU: (Batch, Feat, Seq) -> (Batch, Seq, Feat)
         x_p = x_p.permute(0, 2, 1)
         gru_out_p, _ = self.past_bigru(x_p)
+        
+        # Attention 机制
         weights_p = torch.softmax(self.past_attention(gru_out_p), dim=1)
         attended_p = torch.sum(weights_p * gru_out_p, dim=1)
         
-        # 处理未来控制序列 (Simple GRU)
+        # --- 处理未来控制序列 (Simple GRU) ---
+        # 取 GRU 最后一个时间步的隐藏状态作为未来序列的特征表示
         _, h_n = self.future_gru(x_future)
-        future_features = h_n[-1] # 取最后一个时间步
+        future_features = h_n[-1] 
         
-        # 特征融合
+        # --- 特征融合与输出 ---
         combined = torch.cat([attended_p, future_features], dim=1)
         output = self.fc(combined)
         return output
 
-# 评估指标计算
+# 评估指标计算函数
 def calculate_metrics(y_true, y_pred, name):
     mae = mean_absolute_error(y_true, y_pred)
     rmse = np.sqrt(mean_squared_error(y_true, y_pred))
@@ -72,7 +93,7 @@ def calculate_metrics(y_true, y_pred, name):
     print(f"[{name}] MAE: {mae:.4f}, RMSE: {rmse:.4f}, R2: {r2:.4f}")
     return mae, rmse, r2
 
-# 设置中文字体
+# 设置中文字体以便在绘图时正确显示中文
 plt.rcParams['font.sans-serif'] = ['SimHei']
 plt.rcParams['axes.unicode_minus'] = False
 
@@ -83,17 +104,23 @@ print(f"--- 开始处理文件: '{filename}' ---")
 try:
     # --- 步骤 1-3: 数据加载, 清洗, 重采样, 填充 ---
     print("--> 正在加载和预处理数据...")
+    # 读取 CSV 文件，处理编码和日期格式
     df = pd.read_csv(filename, encoding='latin1', sep=';', decimal=',', parse_dates=['Timestamp'], dayfirst=True, index_col='Timestamp')
 
-    # 修复：在转换为数值之前处理开关量列，防止被 to_numeric 转为 NaN 而丢弃
+    # 修复：在转换为数值之前处理开关量列 (如 "On"/"Off")，防止被 to_numeric 转为 NaN 而丢弃
     cols_to_binary = [' "Heater"', ' "Ventilation"', ' "Lighting"', ' "Pump 1"', ' "Valve 1"']
     for col in cols_to_binary:
         if col in df.columns:
             df[col] = df[col].apply(lambda x: 1 if str(x).lower() in ['on', 'yes', '1'] else 0)
 
+    # 将所有列转换为数值类型，无法转换的变为 NaN
     for col in df.columns:
         df[col] = pd.to_numeric(df[col], errors='coerce')
+    
+    # 删除全为空的列
     df.dropna(axis=1, how='all', inplace=True)
+    
+    # 重采样为 1 分钟间隔，并填充缺失值 (前向填充 + 后向填充)
     df_resampled = df.resample('1min').mean().ffill().bfill()
     print(f"--> 数据预处理完成。维度: {df_resampled.shape}")
 
@@ -118,9 +145,10 @@ data = df_resampled[available_physics_features].dropna()
 if len(data) < forecast_horizon + 1: sys.exit("错误: 物理模型数据不足。")
 
 # !!! 修正数据切片逻辑 !!!
+# 物理模型假设：当前状态 + 未来控制量的均值 -> 未来温度
 # 输入 X: 从 0 到 总长度 - horizon
 # 输出 y: 从 horizon 到 结尾
-# 这样建立了 X_t -> y_{t+60} 的关系
+# 这样建立了 X_t -> y_{t+120} 的关系
 X_physics = data.iloc[:-forecast_horizon].copy()
 y_physics = data[target_col].iloc[forecast_horizon:].values
 
@@ -128,7 +156,8 @@ control_features = [col for col in [' "Heater"', ' "Ventilation"', ' "Lighting"'
 feature_columns = [target_col] + control_features
 
 # --- 物理模型增强：加入未来控制量的均值 ---
-# 计算未来 forecast_horizon 时间段内的控制变量均值
+# 简单的线性回归无法处理序列输入，因此我们计算未来一段时间内控制变量的平均开启率作为特征
+# 例如：未来 2 小时内 Heater 开启了 80% 的时间
 X_physics_augmented = X_physics.copy()
 for col in control_features:
     # rolling(window).mean() 计算的是过去窗口的均值，shift(-window) 将其对齐到未来
@@ -144,6 +173,7 @@ if train_size == 0: sys.exit("错误: 训练数据不足。")
 X_train_phy, X_test_phy = X_physics_features[:train_size], X_physics_features[train_size:]
 y_train_phy, y_test_phy = y_physics[:train_size], y_physics[train_size:]
 
+# 训练线性回归模型
 physics_model = LinearRegression()
 physics_model.fit(X_train_phy, y_train_phy)
 y_pred_phy = physics_model.predict(X_test_phy)
@@ -152,21 +182,29 @@ print("---> 物理基准模型训练完成。")
 # --- 步骤 5: 混合深度学习模型构建 (PyTorch) ---
 print("\n--- 正在构建与训练混合深度学习模型 (PyTorch) ---")
 df_hybrid = df_resampled.copy()
-df_hybrid['Hour'] = df_hybrid.index.hour
-df_hybrid['DayOfWeek'] = df_hybrid.index.dayofweek
+# 引入时间位置特征 (Time-of-Day Encoding)
+# 使用正弦和余弦变换将时间转换为循环特征，帮助模型学习日夜周期
+hour_float = df_hybrid.index.hour + df_hybrid.index.minute / 60.0
+df_hybrid['Hour_Sin'] = np.sin(2 * np.pi * hour_float / 24.0)
+df_hybrid['Hour_Cos'] = np.cos(2 * np.pi * hour_float / 24.0)
 
-input_features = [' "Temperature, °C"', ' "Humidity, %"', ' "CO?, ppm"', ' "Heater"', ' "Ventilation"', ' "Lighting"', 'Hour', 'DayOfWeek']
+input_features = [' "Temperature, °C"', ' "Humidity, %"', ' "CO?, ppm"', ' "Heater"', ' "Ventilation"', ' "Lighting"', 'Hour_Sin', 'Hour_Cos']
 available_input_features = [f for f in input_features if f in df_hybrid.columns]
 target_index = available_input_features.index(target_col)
-# 获取控制变量的索引
-control_indices = [available_input_features.index(col) for col in control_features]
 
+# 获取控制变量的索引 (用于构建未来输入序列)
+control_indices = [available_input_features.index(col) for col in control_features]
+# 将时间特征也视为“已知未来”的控制变量 (因为我们总是知道未来的时间)
+time_indices = [available_input_features.index(col) for col in ['Hour_Sin', 'Hour_Cos'] if col in available_input_features]
+future_indices = control_indices + time_indices
+
+# 数据归一化 (MinMax Scaling)
 scaler = MinMaxScaler()
 scaled_features = scaler.fit_transform(df_hybrid[available_input_features])
 
 # --- 数据集划分 (训练、验证、测试) ---
 # --- 参数设置区域 ---
-# 假设数据间隔是 5分钟 (df_resampled 是 5min 一行)
+# 假设数据间隔是 1分钟
 # 1. 设置输入窗口：比如看过去 2小时的数据来预测
 # 2小时 = 120分钟 = 120 个 1分钟点
 sequence_length = 120
@@ -185,10 +223,10 @@ val_split_index = int(len(train_data_full) * 0.8)
 train_data = train_data_full[:val_split_index]
 val_data = train_data_full[val_split_index:]
 
-# 创建序列
-X_train_past, X_train_future, y_train, y_train_bases = create_sequences(train_data, sequence_length, forecast_horizon, control_indices, target_index)
-X_val_past, X_val_future, y_val, y_val_bases = create_sequences(val_data, sequence_length, forecast_horizon, control_indices, target_index)
-X_test_past, X_test_future, y_test_scaled, y_test_bases = create_sequences(test_data, sequence_length, forecast_horizon, control_indices, target_index)
+# 创建序列数据 (Past Sequence + Future Control Sequence -> Future Target Sequence)
+X_train_past, X_train_future, y_train, y_train_bases = create_sequences(train_data, sequence_length, forecast_horizon, future_indices, target_index)
+X_val_past, X_val_future, y_val, y_val_bases = create_sequences(val_data, sequence_length, forecast_horizon, future_indices, target_index)
+X_test_past, X_test_future, y_test_scaled, y_test_bases = create_sequences(test_data, sequence_length, forecast_horizon, future_indices, target_index)
 
 if len(X_train_past) == 0 or len(X_val_past) == 0 or len(X_test_past) == 0:
     sys.exit("错误: 创建序列后数据不足以划分训练/验证/测试集。")
@@ -206,18 +244,21 @@ X_test_past_tensor = torch.FloatTensor(X_test_past)
 X_test_future_tensor = torch.FloatTensor(X_test_future)
 y_test_bases_tensor = torch.FloatTensor(y_test_bases).unsqueeze(1)
 
-# 创建DataLoader
+# 创建DataLoader以便批量训练
 train_dataset = TensorDataset(X_train_past_tensor, X_train_future_tensor, y_train_tensor, y_train_bases_tensor)
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
 val_dataset = TensorDataset(X_val_past_tensor, X_val_future_tensor, y_val_tensor, y_val_bases_tensor)
 val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 
 # --- 模型训练与早停机制 ---
-# 新增: 设备选择
+# 新增: 设备选择 (优先使用 GPU)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"--> 使用设备: {device}")
 
 # --- 训练函数 ---
+# 封装训练逻辑，支持不同的预测模式 (绝对值预测 vs 差分预测)
+# predict_diff: 是否预测变化量 (Target - Base)
+# lambda_trend: 趋势惩罚项的权重，用于强迫模型学习变化趋势
 def train_and_predict(model, model_name, train_loader, val_loader, X_test_p, X_test_f, y_test_bases, scaler, target_idx, feat_cols, predict_diff=False, lambda_trend=0.5):
     print(f"--> 正在训练 {model_name}...")
     criterion = nn.MSELoss()
@@ -240,15 +281,16 @@ def train_and_predict(model, model_name, train_loader, val_loader, X_test_p, X_t
             loss_mse = criterion(pred, target)
             
             # 任务三：趋势惩罚 (Gradient Penalty)
-            # 计算预测序列和目标序列的变化率（一阶差分）
-            pred_diff = pred[:, 1:] - pred[:, :-1]
-            target_diff = target[:, 1:] - target[:, :-1]
-            loss_trend = criterion(pred_diff, target_diff)
+            # 计算预测序列和目标序列的变化率（一阶差分），强迫模型拟合曲线的斜率
+            pred_diff_seq = pred[:, 1:] - pred[:, :-1]
+            target_diff_seq = target[:, 1:] - target[:, :-1]
+            loss_trend = criterion(pred_diff_seq, target_diff_seq)
             
             loss = loss_mse + lambda_trend * loss_trend
             loss.backward()
             optimizer.step()
         
+        # 验证阶段
         model.eval()
         val_loss = 0
         with torch.no_grad():
@@ -258,6 +300,8 @@ def train_and_predict(model, model_name, train_loader, val_loader, X_test_p, X_t
                 val_loss += criterion(model(b_Xp, b_Xf), target).item() # 验证集仅观察 MSE
         
         avg_val_loss = val_loss / len(val_loader)
+        
+        # 早停逻辑
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             torch.save(model.state_dict(), model_path)
@@ -266,6 +310,7 @@ def train_and_predict(model, model_name, train_loader, val_loader, X_test_p, X_t
             epochs_no_improve += 1
         if epochs_no_improve >= patience: break
 
+    # 加载最佳模型进行预测
     model.load_state_dict(torch.load(model_path))
     model.eval()
     with torch.no_grad():
@@ -283,7 +328,7 @@ def train_and_predict(model, model_name, train_loader, val_loader, X_test_p, X_t
     os.remove(model_path)
     return scaler.inverse_transform(dummy)[:, target_idx]
 
-input_dim, future_dim = X_train_past_tensor.shape[2], len(control_indices)
+input_dim, future_dim = X_train_past_tensor.shape[2], len(future_indices)
 
 # 实例化两个模型
 model_abs = SimpleFutureModel(input_dim, future_dim, forecast_horizon).to(device)
@@ -297,23 +342,26 @@ y_pred_abs = train_and_predict(model_abs, "混合模型(绝对值)", train_loade
 y_pred_diff = train_and_predict(model_diff, "混合模型(一阶差分)", train_loader, val_loader, 
                                 X_test_past_tensor, X_test_future_tensor, y_test_bases, scaler, target_index, available_input_features, predict_diff=True)
 
-# 获取真实值
+# 获取真实值 (取序列的最后一个点)
 dummy_true = np.zeros((len(y_test_scaled), len(available_input_features)))
-dummy_true[:, target_index] = y_test_scaled[:, -1].ravel() # 取序列最后一个点
+dummy_true[:, target_index] = y_test_scaled[:, -1].ravel() 
 y_test_hybrid = scaler.inverse_transform(dummy_true)[:, target_index]
 
 # --- 步骤 6: 评估与可视化 ---
 print("\n--- 性能对比 ---")
+# 对齐物理模型和混合模型的数据长度
 start_offset = sequence_length
 end_offset = start_offset + len(y_test_hybrid)
 y_test_phy_aligned = y_test_phy[start_offset:end_offset]
 y_pred_phy_aligned = y_pred_phy[start_offset:end_offset]
 min_len = min(len(y_test_hybrid), len(y_test_phy_aligned))
 
+# 计算评估指标
 m1 = calculate_metrics(y_test_phy_aligned[:min_len], y_pred_phy_aligned[:min_len], "基准: 物理微分方程模型")
 m2 = calculate_metrics(y_test_hybrid[:min_len], y_pred_abs[:min_len], "本文: 混合模型(绝对值)")
 m3 = calculate_metrics(y_test_hybrid[:min_len], y_pred_diff[:min_len], "本文: 混合模型(一阶差分)")
 
+# 绘制对比图
 plt.figure(figsize=(14, 7))
 plot_len = min(300, min_len)
 plt.plot(y_test_phy_aligned[:plot_len], label='真实值 (Ground Truth)', color='black', linewidth=2)

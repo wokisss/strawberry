@@ -10,7 +10,7 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import seaborn as sns
-
+#数据集采样时间间隔为1分钟
 
 # 【新增】设置中文字体 (Windows 专用)
 plt.rcParams['font.sans-serif'] = ['SimHei'] # 用黑体显示中文
