@@ -4,8 +4,6 @@
 # Anaconda
 anaconda_projects/
 
-# Data
-*.csv
 
 # Python
 __pycache__/
