@@ -14,53 +14,53 @@ import os
 # === 辅助函数与类定义 (PyTorch) ===
 
 # 创建时间序列数据
-def create_sequences(data, seq_length, forecast_horizon, future_indices):
-    xs_past, xs_future, ys = [], [], []
+def create_sequences(data, seq_length, forecast_horizon, future_indices, target_idx):
+    xs_past, xs_future, ys, y_bases = [], [], [], []
     # 确保不越界：数据总长度 - (输入序列长度 + 预测距离)
     for i in range(len(data) - seq_length - forecast_horizon + 1):
         # 输入：从 i 开始，取 seq_length 个点
-        x = data[i:(i + seq_length)]
         x_p = data[i:(i + seq_length)]
         # 未来控制序列：从 seq_length 结束开始，取 forecast_horizon 个点
         x_f = data[i + seq_length : i + seq_length + forecast_horizon, future_indices]
-        # 输出：取加上 horizon 后的点 (减1是因为索引从0开始)
-        y = data[i + seq_length + forecast_horizon - 1]
+        # 任务二：输出整个预测序列 [t+1, ..., t+horizon]
+        y = data[i + seq_length : i + seq_length + forecast_horizon, target_idx]
+        # 基准值：输入序列的最后一个目标值，用于计算差分
+        y_base = data[i + seq_length - 1, target_idx]
         xs_past.append(x_p)
         xs_future.append(x_f)
         ys.append(y)
-    return np.array(xs_past), np.array(xs_future), np.array(ys)
-
-# 定义混合模型 (CNN + BiGRU + Attention)
-class HybridModel(nn.Module):
-    def __init__(self, input_dim, future_dim, future_steps, hidden_dim=32, output_dim=1):
-        super(HybridModel, self).__init__()
-        self.conv1 = nn.Conv1d(in_channels=input_dim, out_channels=64, kernel_size=3, padding=1)
-        self.bigru = nn.GRU(input_size=64, hidden_size=hidden_dim, num_layers=2, batch_first=True, bidirectional=True)
-        self.attention = nn.Linear(hidden_dim * 2, 1)
-        self.fc = nn.Linear(hidden_dim * 2, output_dim)
+        y_bases.append(y_base)
+    return np.array(xs_past), np.array(xs_future), np.array(ys), np.array(y_bases)
+# 2. 对比混合模型 (Complex Past + Simple GRU Future)
+class SimpleFutureModel(nn.Module):
+    def __init__(self, input_dim, future_dim, forecast_horizon, hidden_dim=32):
+        super(SimpleFutureModel, self).__init__()
+        # 历史数据处理分支 (CNN + BiGRU + Attention)
+        self.past_conv1 = nn.Conv1d(in_channels=input_dim, out_channels=64, kernel_size=3, padding=1)
+        self.past_bigru = nn.GRU(input_size=64, hidden_size=hidden_dim, num_layers=2, batch_first=True, bidirectional=True)
+        self.past_attention = nn.Linear(hidden_dim * 2, 1)
         
-        # 新增：未来控制序列的编码层 (简单的全连接层)
-        self.future_fc = nn.Linear(future_dim * future_steps, 32)
+        # 未来控制序列处理分支 (仅使用单向 GRU)
+        self.future_gru = nn.GRU(input_size=future_dim, hidden_size=hidden_dim, num_layers=1, batch_first=True)
         
-        # 修改：融合层输入维度增加
-        self.fc = nn.Linear(hidden_dim * 2 + 32, output_dim)
+        # 融合层：历史特征 (hidden_dim * 2) + 未来特征 (hidden_dim)
+        self.fc = nn.Linear(hidden_dim * 2 + hidden_dim, forecast_horizon)
 
     def forward(self, x_past, x_future):
-        # 处理历史序列
-        x = x_past.permute(0, 2, 1)
-        x = torch.relu(self.conv1(x))
-        x = x.permute(0, 2, 1)
-        gru_out, _ = self.bigru(x)
-        attention_weights = torch.softmax(self.attention(gru_out), dim=1)
-        attended_features = torch.sum(attention_weights * gru_out, dim=1)
-        output = self.fc(attended_features)
+        # 处理历史序列 (Complex)
+        x_p = x_past.permute(0, 2, 1)
+        x_p = torch.relu(self.past_conv1(x_p))
+        x_p = x_p.permute(0, 2, 1)
+        gru_out_p, _ = self.past_bigru(x_p)
+        weights_p = torch.softmax(self.past_attention(gru_out_p), dim=1)
+        attended_p = torch.sum(weights_p * gru_out_p, dim=1)
         
-        # 处理未来控制序列 (Flatten -> FC)
-        x_f = x_future.reshape(x_future.size(0), -1)
-        future_features = torch.relu(self.future_fc(x_f))
+        # 处理未来控制序列 (Simple GRU)
+        _, h_n = self.future_gru(x_future)
+        future_features = h_n[-1] # 取最后一个时间步
         
-        # 融合
-        combined = torch.cat([attended_features, future_features], dim=1)
+        # 特征融合
+        combined = torch.cat([attended_p, future_features], dim=1)
         output = self.fc(combined)
         return output
 
@@ -186,9 +186,9 @@ train_data = train_data_full[:val_split_index]
 val_data = train_data_full[val_split_index:]
 
 # 创建序列
-X_train_past, X_train_future, y_train = create_sequences(train_data, sequence_length, forecast_horizon, control_indices)
-X_val_past, X_val_future, y_val = create_sequences(val_data, sequence_length, forecast_horizon, control_indices)
-X_test_past, X_test_future, y_test_scaled = create_sequences(test_data, sequence_length, forecast_horizon, control_indices)
+X_train_past, X_train_future, y_train, y_train_bases = create_sequences(train_data, sequence_length, forecast_horizon, control_indices, target_index)
+X_val_past, X_val_future, y_val, y_val_bases = create_sequences(val_data, sequence_length, forecast_horizon, control_indices, target_index)
+X_test_past, X_test_future, y_test_scaled, y_test_bases = create_sequences(test_data, sequence_length, forecast_horizon, control_indices, target_index)
 
 if len(X_train_past) == 0 or len(X_val_past) == 0 or len(X_test_past) == 0:
     sys.exit("错误: 创建序列后数据不足以划分训练/验证/测试集。")
@@ -196,17 +196,20 @@ if len(X_train_past) == 0 or len(X_val_past) == 0 or len(X_test_past) == 0:
 # 转换为PyTorch张量
 X_train_past_tensor = torch.FloatTensor(X_train_past)
 X_train_future_tensor = torch.FloatTensor(X_train_future)
-y_train_tensor = torch.FloatTensor(y_train[:, target_index]).unsqueeze(1)
+y_train_tensor = torch.FloatTensor(y_train)
+y_train_bases_tensor = torch.FloatTensor(y_train_bases).unsqueeze(1)
 X_val_past_tensor = torch.FloatTensor(X_val_past)
 X_val_future_tensor = torch.FloatTensor(X_val_future)
-y_val_tensor = torch.FloatTensor(y_val[:, target_index]).unsqueeze(1)
+y_val_tensor = torch.FloatTensor(y_val)
+y_val_bases_tensor = torch.FloatTensor(y_val_bases).unsqueeze(1)
 X_test_past_tensor = torch.FloatTensor(X_test_past)
 X_test_future_tensor = torch.FloatTensor(X_test_future)
+y_test_bases_tensor = torch.FloatTensor(y_test_bases).unsqueeze(1)
 
 # 创建DataLoader
-train_dataset = TensorDataset(X_train_past_tensor, X_train_future_tensor, y_train_tensor)
+train_dataset = TensorDataset(X_train_past_tensor, X_train_future_tensor, y_train_tensor, y_train_bases_tensor)
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-val_dataset = TensorDataset(X_val_past_tensor, X_val_future_tensor, y_val_tensor)
+val_dataset = TensorDataset(X_val_past_tensor, X_val_future_tensor, y_val_tensor, y_val_bases_tensor)
 val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 
 # --- 模型训练与早停机制 ---
@@ -214,75 +217,90 @@ val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"--> 使用设备: {device}")
 
-input_dim = X_train_past_tensor.shape[2]
-future_dim = len(control_indices)
+# --- 训练函数 ---
+def train_and_predict(model, model_name, train_loader, val_loader, X_test_p, X_test_f, y_test_bases, scaler, target_idx, feat_cols, predict_diff=False, lambda_trend=0.5):
+    print(f"--> 正在训练 {model_name}...")
+    criterion = nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+    num_epochs, patience = 200, 10
+    best_val_loss, epochs_no_improve = float('inf'), 0
+    model_path = f"best_{model_name}.pth"
 
-hybrid_model = HybridModel(input_dim=input_dim, future_dim=future_dim, future_steps=forecast_horizon, hidden_dim=32, output_dim=1).to(device) # .to(device)
-criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(hybrid_model.parameters(), lr=0.0001)
+    for epoch in range(num_epochs):
+        model.train()
+        for b_Xp, b_Xf, b_y, b_base in train_loader:
+            b_Xp, b_Xf, b_y, b_base = b_Xp.to(device), b_Xf.to(device), b_y.to(device), b_base.to(device)
+            optimizer.zero_grad()
+            
+            pred = model(b_Xp, b_Xf)
+            # 如果是差分模式，目标是 (未来值 - 当前基准值)
+            target = (b_y - b_base) if predict_diff else b_y
+            
+            # 基础 MSE 损失
+            loss_mse = criterion(pred, target)
+            
+            # 任务三：趋势惩罚 (Gradient Penalty)
+            # 计算预测序列和目标序列的变化率（一阶差分）
+            pred_diff = pred[:, 1:] - pred[:, :-1]
+            target_diff = target[:, 1:] - target[:, :-1]
+            loss_trend = criterion(pred_diff, target_diff)
+            
+            loss = loss_mse + lambda_trend * loss_trend
+            loss.backward()
+            optimizer.step()
+        
+        model.eval()
+        val_loss = 0
+        with torch.no_grad():
+            for b_Xp, b_Xf, b_y, b_base in val_loader:
+                b_Xp, b_Xf, b_y, b_base = b_Xp.to(device), b_Xf.to(device), b_y.to(device), b_base.to(device)
+                target = (b_y - b_base) if predict_diff else b_y
+                val_loss += criterion(model(b_Xp, b_Xf), target).item() # 验证集仅观察 MSE
+        
+        avg_val_loss = val_loss / len(val_loader)
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            torch.save(model.state_dict(), model_path)
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+        if epochs_no_improve >= patience: break
 
-print("--> 正在训练混合模型 (最大Epochs=200, 早停耐心=10)...")
-num_epochs = 200
-patience = 10
-best_val_loss = float('inf')
-epochs_no_improve = 0
-best_model_path = "best_hybrid_model.pth"
-
-for epoch in range(num_epochs):
-    # 训练
-    hybrid_model.train()
-    for batch_X_p, batch_X_f, batch_y in train_loader:
-        batch_X_p, batch_X_f, batch_y = batch_X_p.to(device), batch_X_f.to(device), batch_y.to(device)
-        optimizer.zero_grad()
-        outputs = hybrid_model(batch_X_p, batch_X_f)
-        loss = criterion(outputs, batch_y)
-        loss.backward()
-        optimizer.step()
-    
-    # 验证
-    hybrid_model.eval()
-    val_loss = 0
+    model.load_state_dict(torch.load(model_path))
+    model.eval()
     with torch.no_grad():
-        for batch_X_p, batch_X_f, batch_y in val_loader:
-            batch_X_p, batch_X_f, batch_y = batch_X_p.to(device), batch_X_f.to(device), batch_y.to(device)
-            outputs = hybrid_model(batch_X_p, batch_X_f)
-            loss = criterion(outputs, batch_y)
-            val_loss += loss.item()
+        pred_tensor = model(X_test_p.to(device), X_test_f.to(device))
+        # 仅取序列的最后一个点进行最终评估（对应 t+horizon）
+        pred_final = pred_tensor[:, -1].unsqueeze(1)
+        
+        # 如果是差分模式，还原绝对值：预测的变化量 + 测试集基准值
+        if predict_diff:
+            pred_final = pred_final + torch.FloatTensor(y_test_bases).to(device).unsqueeze(1)
     
-    avg_val_loss = val_loss / len(val_loader)
-    
-    if (epoch + 1) % 10 == 0:
-        print(f"Epoch [{epoch+1}/{num_epochs}], 验证损失: {avg_val_loss:.6f}")
+    pred_np = pred_final.cpu().numpy()
+    dummy = np.zeros((len(pred_np), len(feat_cols)))
+    dummy[:, target_idx] = pred_np.ravel()
+    os.remove(model_path)
+    return scaler.inverse_transform(dummy)[:, target_idx]
 
-    # 早停逻辑
-    if avg_val_loss < best_val_loss:
-        best_val_loss = avg_val_loss
-        torch.save(hybrid_model.state_dict(), best_model_path)
-        epochs_no_improve = 0
-    else:
-        epochs_no_improve += 1
-    
-    if epochs_no_improve >= patience:
-        print(f"验证损失连续 {patience} 个周期未改善，触发早停。")
-        break
+input_dim, future_dim = X_train_past_tensor.shape[2], len(control_indices)
 
-# --- 预测 ---
-print(f"--> 使用在验证集上表现最佳的模型进行预测...")
-hybrid_model.load_state_dict(torch.load(best_model_path)) # 加载最佳模型
-hybrid_model.to(device) # 确保模型在正确的设备上
-hybrid_model.eval()
-with torch.no_grad():
-    y_pred_dl_tensor = hybrid_model(X_test_past_tensor.to(device), X_test_future_tensor.to(device))
+# 实例化两个模型
+model_abs = SimpleFutureModel(input_dim, future_dim, forecast_horizon).to(device)
+model_diff = SimpleFutureModel(input_dim, future_dim, forecast_horizon).to(device)
 
-# 反归一化
-y_pred_dl_scaled = y_pred_dl_tensor.cpu().numpy()
-dummy_array = np.zeros((len(y_pred_dl_scaled), len(available_input_features)))
-dummy_array[:, target_index] = y_pred_dl_scaled.ravel()
-y_pred_hybrid = scaler.inverse_transform(dummy_array)[:, target_index]
+# 1. 训练原方法（预测绝对值）
+y_pred_abs = train_and_predict(model_abs, "混合模型(绝对值)", train_loader, val_loader, 
+                               X_test_past_tensor, X_test_future_tensor, y_test_bases, scaler, target_index, available_input_features, predict_diff=False)
 
-dummy_array_true = np.zeros((len(y_test_scaled), len(available_input_features)))
-dummy_array_true[:, target_index] = y_test_scaled[:, target_index].ravel()
-y_test_hybrid = scaler.inverse_transform(dummy_array_true)[:, target_index]
+# 2. 训练新方法（预测一阶差分）
+y_pred_diff = train_and_predict(model_diff, "混合模型(一阶差分)", train_loader, val_loader, 
+                                X_test_past_tensor, X_test_future_tensor, y_test_bases, scaler, target_index, available_input_features, predict_diff=True)
+
+# 获取真实值
+dummy_true = np.zeros((len(y_test_scaled), len(available_input_features)))
+dummy_true[:, target_index] = y_test_scaled[:, -1].ravel() # 取序列最后一个点
+y_test_hybrid = scaler.inverse_transform(dummy_true)[:, target_index]
 
 # --- 步骤 6: 评估与可视化 ---
 print("\n--- 性能对比 ---")
@@ -293,13 +311,15 @@ y_pred_phy_aligned = y_pred_phy[start_offset:end_offset]
 min_len = min(len(y_test_hybrid), len(y_test_phy_aligned))
 
 m1 = calculate_metrics(y_test_phy_aligned[:min_len], y_pred_phy_aligned[:min_len], "基准: 物理微分方程模型")
-m2 = calculate_metrics(y_test_hybrid[:min_len], y_pred_hybrid[:min_len], "本文: 混合深度学习模型")
+m2 = calculate_metrics(y_test_hybrid[:min_len], y_pred_abs[:min_len], "本文: 混合模型(绝对值)")
+m3 = calculate_metrics(y_test_hybrid[:min_len], y_pred_diff[:min_len], "本文: 混合模型(一阶差分)")
 
 plt.figure(figsize=(14, 7))
 plot_len = min(300, min_len)
 plt.plot(y_test_phy_aligned[:plot_len], label='真实值 (Ground Truth)', color='black', linewidth=2)
 plt.plot(y_pred_phy_aligned[:plot_len], label=f'物理模型预测 (R2={m1[2]:.2f})', color='blue', linestyle='--')
-plt.plot(y_pred_hybrid[:plot_len], label=f'混合模型预测 (R2={m2[2]:.2f})', color='red', linewidth=1.5)
+plt.plot(y_pred_abs[:plot_len], label=f'混合模型-绝对值 (R2={m2[2]:.2f})', color='red', linewidth=1.5, alpha=0.7)
+plt.plot(y_pred_diff[:plot_len], label=f'混合模型-一阶差分 (R2={m3[2]:.2f})', color='green', linewidth=1.5)
 
 plt.title(f"温室温度预测对比: 物理模型 vs 混合模型 (已优化)", fontsize=16)
 plt.xlabel("时间步 (1分钟/步)", fontsize=12)
@@ -312,14 +332,5 @@ plt.show()
 # --- 步骤 7: 输出结论文本 ---
 print("\n--- 结论分析 ---")
 print(f"1. 物理模型基于简化的线性假设，其 R2 分数为 {m1[2]:.4f}。")
-if m2[2] > m1[2]:
-    improvement = ((m1[0] - m2[0]) / m1[0]) * 100 if m1[0] != 0 else float('inf')
-    print(f"2. 经过优化的PyTorch混合模型表现更优，R2 分数达到 {m2[2]:.4f}。")
-    print(f"   相较于物理模型，混合模型的 MAE 从 {m1[0]:.4f} 降低到 {m2[0]:.4f}，精度提升了 {improvement:.1f}%。")
-else:
-    print(f"2. 即使经过优化，混合模型在此次运行中的表现（R2: {m2[2]:.4f}）仍未优于物理模型。这可能需要进一步调整模型结构或特征工程。")
-print(f"3. 结果验证了数据驱动的混合模型在捕捉复杂动态系统行为方面的潜力。")
-
-# 清理保存的模型文件
-if os.path.exists(best_model_path):
-    os.remove(best_model_path)
+print(f"2. 混合模型(绝对值方法) R2: {m2[2]:.4f}, MAE: {m2[0]:.4f}")
+print(f"3. 混合模型(一阶差分方法) R2: {m3[2]:.4f}, MAE: {m3[0]:.4f}")
