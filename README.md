@@ -10,13 +10,25 @@
 
 ---
 
-## 2. 数据集
+## 2. 项目文件结构
+
+```text
+strawberry/
+├── experiment_code.py                                      # 主程序代码 (包含预处理、预测、控制逻辑)
+├── Strawberry Greenhouse Environmental Control Dataset(version2).csv  # 数据集文件
+├── README.md                                               # 项目说明文档
+└── .gitignore                                              # Git 忽略配置文件
+```
+
+---
+
+## 3. 数据集
 
 本项目使用的数据集为 `Strawberry Greenhouse Environmental Control Dataset(version2).csv`，其中包含了温室的内外环境指标，如温度、湿度、CO2浓度等。
 
 ---
 
-## 3. 代码结构 (`experiment_code.py`)
+## 4. 代码结构 (`experiment_code.py`)
 
 脚本分为四个主要部分，按顺序执行。
 
@@ -63,7 +75,7 @@
 
 ---
 
-## 4. 如何运行
+## 5. 如何运行
 
 ### 4.1. 环境设置 (使用 Anaconda)
 为了避免依赖库冲突，强烈建议使用`conda`虚拟环境。
@@ -85,7 +97,7 @@ pip install pandas numpy torch scikit-learn matplotlib seaborn
 ```
 
 ### 4.3. 执行脚本
-确保 `experiment_code.py` 和数据集文件 `... (version2).csv` 在同一目录下，然后运行：
+确保 `experiment_code.py` 和数据集文件 `Strawberry Greenhouse Environmental Control Dataset(version2).csv` 在同一目录下，然后运行：
 ```bash
 python experiment_code.py
 ```

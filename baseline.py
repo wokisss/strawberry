@@ -14,35 +14,54 @@ import os
 # === 辅助函数与类定义 (PyTorch) ===
 
 # 创建时间序列数据
-def create_sequences(data, seq_length, forecast_horizon):
-    xs, ys = [], []
+def create_sequences(data, seq_length, forecast_horizon, future_indices):
+    xs_past, xs_future, ys = [], [], []
     # 确保不越界：数据总长度 - (输入序列长度 + 预测距离)
     for i in range(len(data) - seq_length - forecast_horizon + 1):
         # 输入：从 i 开始，取 seq_length 个点
         x = data[i:(i + seq_length)]
+        x_p = data[i:(i + seq_length)]
+        # 未来控制序列：从 seq_length 结束开始，取 forecast_horizon 个点
+        x_f = data[i + seq_length : i + seq_length + forecast_horizon, future_indices]
         # 输出：取加上 horizon 后的点 (减1是因为索引从0开始)
         y = data[i + seq_length + forecast_horizon - 1]
-        xs.append(x)
+        xs_past.append(x_p)
+        xs_future.append(x_f)
         ys.append(y)
-    return np.array(xs), np.array(ys)
+    return np.array(xs_past), np.array(xs_future), np.array(ys)
 
 # 定义混合模型 (CNN + BiGRU + Attention)
 class HybridModel(nn.Module):
-    def __init__(self, input_dim, hidden_dim=32, output_dim=1):
+    def __init__(self, input_dim, future_dim, future_steps, hidden_dim=32, output_dim=1):
         super(HybridModel, self).__init__()
         self.conv1 = nn.Conv1d(in_channels=input_dim, out_channels=64, kernel_size=3, padding=1)
         self.bigru = nn.GRU(input_size=64, hidden_size=hidden_dim, num_layers=2, batch_first=True, bidirectional=True)
         self.attention = nn.Linear(hidden_dim * 2, 1)
         self.fc = nn.Linear(hidden_dim * 2, output_dim)
+        
+        # 新增：未来控制序列的编码层 (简单的全连接层)
+        self.future_fc = nn.Linear(future_dim * future_steps, 32)
+        
+        # 修改：融合层输入维度增加
+        self.fc = nn.Linear(hidden_dim * 2 + 32, output_dim)
 
-    def forward(self, x):
-        x = x.permute(0, 2, 1)
+    def forward(self, x_past, x_future):
+        # 处理历史序列
+        x = x_past.permute(0, 2, 1)
         x = torch.relu(self.conv1(x))
         x = x.permute(0, 2, 1)
         gru_out, _ = self.bigru(x)
         attention_weights = torch.softmax(self.attention(gru_out), dim=1)
         attended_features = torch.sum(attention_weights * gru_out, dim=1)
         output = self.fc(attended_features)
+        
+        # 处理未来控制序列 (Flatten -> FC)
+        x_f = x_future.reshape(x_future.size(0), -1)
+        future_features = torch.relu(self.future_fc(x_f))
+        
+        # 融合
+        combined = torch.cat([attended_features, future_features], dim=1)
+        output = self.fc(combined)
         return output
 
 # 评估指标计算
@@ -65,6 +84,13 @@ try:
     # --- 步骤 1-3: 数据加载, 清洗, 重采样, 填充 ---
     print("--> 正在加载和预处理数据...")
     df = pd.read_csv(filename, encoding='latin1', sep=';', decimal=',', parse_dates=['Timestamp'], dayfirst=True, index_col='Timestamp')
+
+    # 修复：在转换为数值之前处理开关量列，防止被 to_numeric 转为 NaN 而丢弃
+    cols_to_binary = [' "Heater"', ' "Ventilation"', ' "Lighting"', ' "Pump 1"', ' "Valve 1"']
+    for col in cols_to_binary:
+        if col in df.columns:
+            df[col] = df[col].apply(lambda x: 1 if str(x).lower() in ['on', 'yes', '1'] else 0)
+
     for col in df.columns:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     df.dropna(axis=1, how='all', inplace=True)
@@ -100,7 +126,17 @@ y_physics = data[target_col].iloc[forecast_horizon:].values
 
 control_features = [col for col in [' "Heater"', ' "Ventilation"', ' "Lighting"'] if col in available_physics_features and col != target_col]
 feature_columns = [target_col] + control_features
-X_physics_features = X_physics[feature_columns].values
+
+# --- 物理模型增强：加入未来控制量的均值 ---
+# 计算未来 forecast_horizon 时间段内的控制变量均值
+X_physics_augmented = X_physics.copy()
+for col in control_features:
+    # rolling(window).mean() 计算的是过去窗口的均值，shift(-window) 将其对齐到未来
+    # 这样 X_physics_augmented[t] 就包含了 t 到 t+horizon 期间 heater 的平均开启率
+    X_physics_augmented[f'Future_Mean_{col}'] = data[col].rolling(window=forecast_horizon).mean().shift(-forecast_horizon).iloc[:-forecast_horizon]
+
+feature_columns = [target_col] + control_features + [f'Future_Mean_{col}' for col in control_features]
+X_physics_features = X_physics_augmented[feature_columns].fillna(0).values
 
 train_size = int(len(X_physics) * 0.8)
 if train_size == 0: sys.exit("错误: 训练数据不足。")
@@ -122,6 +158,8 @@ df_hybrid['DayOfWeek'] = df_hybrid.index.dayofweek
 input_features = [' "Temperature, °C"', ' "Humidity, %"', ' "CO?, ppm"', ' "Heater"', ' "Ventilation"', ' "Lighting"', 'Hour', 'DayOfWeek']
 available_input_features = [f for f in input_features if f in df_hybrid.columns]
 target_index = available_input_features.index(target_col)
+# 获取控制变量的索引
+control_indices = [available_input_features.index(col) for col in control_features]
 
 scaler = MinMaxScaler()
 scaled_features = scaler.fit_transform(df_hybrid[available_input_features])
@@ -148,24 +186,27 @@ train_data = train_data_full[:val_split_index]
 val_data = train_data_full[val_split_index:]
 
 # 创建序列
-X_train, y_train = create_sequences(train_data, sequence_length, forecast_horizon)
-X_val, y_val = create_sequences(val_data, sequence_length, forecast_horizon)
-X_test, y_test_scaled = create_sequences(test_data, sequence_length, forecast_horizon)
+X_train_past, X_train_future, y_train = create_sequences(train_data, sequence_length, forecast_horizon, control_indices)
+X_val_past, X_val_future, y_val = create_sequences(val_data, sequence_length, forecast_horizon, control_indices)
+X_test_past, X_test_future, y_test_scaled = create_sequences(test_data, sequence_length, forecast_horizon, control_indices)
 
-if len(X_train) == 0 or len(X_val) == 0 or len(X_test) == 0:
+if len(X_train_past) == 0 or len(X_val_past) == 0 or len(X_test_past) == 0:
     sys.exit("错误: 创建序列后数据不足以划分训练/验证/测试集。")
 
 # 转换为PyTorch张量
-X_train_tensor = torch.FloatTensor(X_train)
+X_train_past_tensor = torch.FloatTensor(X_train_past)
+X_train_future_tensor = torch.FloatTensor(X_train_future)
 y_train_tensor = torch.FloatTensor(y_train[:, target_index]).unsqueeze(1)
-X_val_tensor = torch.FloatTensor(X_val)
+X_val_past_tensor = torch.FloatTensor(X_val_past)
+X_val_future_tensor = torch.FloatTensor(X_val_future)
 y_val_tensor = torch.FloatTensor(y_val[:, target_index]).unsqueeze(1)
-X_test_tensor = torch.FloatTensor(X_test)
+X_test_past_tensor = torch.FloatTensor(X_test_past)
+X_test_future_tensor = torch.FloatTensor(X_test_future)
 
 # 创建DataLoader
-train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+train_dataset = TensorDataset(X_train_past_tensor, X_train_future_tensor, y_train_tensor)
 train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-val_dataset = TensorDataset(X_val_tensor, y_val_tensor)
+val_dataset = TensorDataset(X_val_past_tensor, X_val_future_tensor, y_val_tensor)
 val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 
 # --- 模型训练与早停机制 ---
@@ -173,8 +214,10 @@ val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"--> 使用设备: {device}")
 
-input_dim = X_train_tensor.shape[2]
-hybrid_model = HybridModel(input_dim=input_dim, hidden_dim=32, output_dim=1).to(device) # .to(device)
+input_dim = X_train_past_tensor.shape[2]
+future_dim = len(control_indices)
+
+hybrid_model = HybridModel(input_dim=input_dim, future_dim=future_dim, future_steps=forecast_horizon, hidden_dim=32, output_dim=1).to(device) # .to(device)
 criterion = nn.MSELoss()
 optimizer = torch.optim.Adam(hybrid_model.parameters(), lr=0.0001)
 
@@ -188,10 +231,10 @@ best_model_path = "best_hybrid_model.pth"
 for epoch in range(num_epochs):
     # 训练
     hybrid_model.train()
-    for batch_X, batch_y in train_loader:
-        batch_X, batch_y = batch_X.to(device), batch_y.to(device) # .to(device)
+    for batch_X_p, batch_X_f, batch_y in train_loader:
+        batch_X_p, batch_X_f, batch_y = batch_X_p.to(device), batch_X_f.to(device), batch_y.to(device)
         optimizer.zero_grad()
-        outputs = hybrid_model(batch_X)
+        outputs = hybrid_model(batch_X_p, batch_X_f)
         loss = criterion(outputs, batch_y)
         loss.backward()
         optimizer.step()
@@ -200,9 +243,9 @@ for epoch in range(num_epochs):
     hybrid_model.eval()
     val_loss = 0
     with torch.no_grad():
-        for batch_X, batch_y in val_loader:
-            batch_X, batch_y = batch_X.to(device), batch_y.to(device) # .to(device)
-            outputs = hybrid_model(batch_X)
+        for batch_X_p, batch_X_f, batch_y in val_loader:
+            batch_X_p, batch_X_f, batch_y = batch_X_p.to(device), batch_X_f.to(device), batch_y.to(device)
+            outputs = hybrid_model(batch_X_p, batch_X_f)
             loss = criterion(outputs, batch_y)
             val_loss += loss.item()
     
@@ -229,7 +272,7 @@ hybrid_model.load_state_dict(torch.load(best_model_path)) # 加载最佳模型
 hybrid_model.to(device) # 确保模型在正确的设备上
 hybrid_model.eval()
 with torch.no_grad():
-    y_pred_dl_tensor = hybrid_model(X_test_tensor.to(device)) # .to(device)
+    y_pred_dl_tensor = hybrid_model(X_test_past_tensor.to(device), X_test_future_tensor.to(device))
 
 # 反归一化
 y_pred_dl_scaled = y_pred_dl_tensor.cpu().numpy()
