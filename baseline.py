@@ -118,38 +118,88 @@ def create_sequences(data, seq_length, forecast_horizon, future_indices, target_
         y_bases.append(y_base)
     return np.array(xs_past), np.array(xs_future), np.array(ys), np.array(y_bases)
 
-# 2. 对比混合模型 (Complex Past + Simple GRU Future)
-class SimpleFutureModel(nn.Module):
+# 2. 分段混合模型 (SegmentedHybridModel) - 三头专家模型
+class SegmentedHybridModel(nn.Module):
     def __init__(self, input_dim, future_dim, forecast_horizon, hidden_dim=32):
-        super(SimpleFutureModel, self).__init__()
-        # 历史数据处理分支 (CNN + BiGRU + Attention)
+        super(SegmentedHybridModel, self).__init__()
+        
+        # --- 1. 共享特征提取器 (Shared Feature Extractor) ---
+        # 无论什么工况，历史数据的处理方式是一样的
         self.past_conv1 = nn.Conv1d(in_channels=input_dim, out_channels=64, kernel_size=3, padding=1)
         self.past_bigru = nn.GRU(input_size=64, hidden_size=hidden_dim, num_layers=2, batch_first=True, bidirectional=True)
         self.past_attention = nn.Linear(hidden_dim * 2, 1)
-       
-        # 未来控制序列处理分支 (仅使用单向 GRU)
+        
         self.future_gru = nn.GRU(input_size=future_dim, hidden_size=hidden_dim, num_layers=1, batch_first=True)
-       
-        # 融合层：历史特征 (hidden_dim * 2) + 未来特征 (hidden_dim)
-        self.fc = nn.Linear(hidden_dim * 2 + hidden_dim, forecast_horizon)
-    
+        
+        # --- 2. 分段输出头 (Segmented Output Heads) ---
+        # 关键改进：不再是 1 个 fc，而是 3 个独立的 fc，互不干扰
+        feature_size = hidden_dim * 2 + hidden_dim
+        
+        # 专家 A: 加热模式 (Heater Mode)
+        self.fc_heat = nn.Sequential(
+            nn.Linear(feature_size, 32),
+            nn.ReLU(),
+            nn.Linear(32, forecast_horizon)
+        )
+        
+        # 专家 B: 通风模式 (Ventilation Mode)
+        self.fc_vent = nn.Sequential(
+            nn.Linear(feature_size, 32),
+            nn.ReLU(),
+            nn.Linear(32, forecast_horizon)
+        )
+        
+        # 专家 C: 自然模式 (Natural Mode) - 重点解决早晨升温
+        self.fc_natural = nn.Sequential(
+            nn.Linear(feature_size, 32),
+            nn.ReLU(),
+            nn.Linear(32, forecast_horizon)
+        )
+
     def forward(self, x_past, x_future):
-        # 处理历史序列 (Complex)
+        # --- 1. 提取特征 ---
+        # 历史特征
         x_p = x_past.permute(0, 2, 1)
         x_p = torch.relu(self.past_conv1(x_p))
         x_p = x_p.permute(0, 2, 1)
         gru_out_p, _ = self.past_bigru(x_p)
         weights_p = torch.softmax(self.past_attention(gru_out_p), dim=1)
         attended_p = torch.sum(weights_p * gru_out_p, dim=1)
-       
-        # 处理未来控制序列 (Simple GRU)
+        
+        # 未来特征
         _, h_n = self.future_gru(x_future)
-        future_features = h_n[-1]  # 取最后一个时间步
-       
-        # 特征融合
+        future_features = h_n[-1]
+        
+        # 融合
         combined = torch.cat([attended_p, future_features], dim=1)
-        output = self.fc(combined)
-        return output
+        
+        # --- 2. 并行计算三个专家的预测 ---
+        pred_heat = self.fc_heat(combined)      # 假设全是加热
+        pred_vent = self.fc_vent(combined)      # 假设全是通风
+        pred_natural = self.fc_natural(combined)# 假设全是自然
+        
+        # --- 3. 动态门控融合 (Gated Fusion) ---
+        # 我们需要根据未来的控制动作 (x_future) 来决定信哪个专家
+        # 假设 x_future 的前两列分别是 Heater 和 Ventilation (0或1)
+        # 注意：这里我们取整个预测窗口的平均状态，或者针对每一步进行加权
+        # 为了适应当前结构（一次输出120步），我们取未来控制序列的均值作为权重
+        
+        # 提取控制信号 (Batch, Seq_Len, Features)
+        # 假设: Feature 0 = Heater, Feature 1 = Ventilation (需要根据你的future_indices确认!)
+        heater_signal = x_future[:, :, 0].mean(dim=1, keepdim=True) 
+        vent_signal = x_future[:, :, 1].mean(dim=1, keepdim=True)
+        
+        # 归一化权重 (防止同时开导致溢出，虽然实际不会)
+        # Natural 的权重 = 1 - Heater - Ventilation
+        # 限制 heater 和 vent 互斥 (如果不互斥，需要归一化)
+        w_heat = heater_signal
+        w_vent = vent_signal
+        w_natural = torch.clamp(1.0 - w_heat - w_vent, min=0.0) # 剩下的概率给自然
+        
+        # 最终预测 = 加权求和
+        final_pred = (w_heat * pred_heat) + (w_vent * pred_vent) + (w_natural * pred_natural)
+        
+        return final_pred
 
 # 评估指标计算
 def calculate_metrics(y_true, y_pred, name):
@@ -292,8 +342,14 @@ input_features += [c for c in df_hybrid.columns if '_Energy' in c]
 available_input_features = [f for f in input_features if f in df_hybrid.columns]
 target_index = available_input_features.index(target_col)
 
-# 获取控制变量的索引
-control_indices = [available_input_features.index(col) for col in control_features]
+# --- [修改] 强制指定未来特征顺序 (Heater, Ventilation在前) ---
+# 确保 Heater 是第0个，Ventilation 是第1个，以便模型正确提取控制信号
+priority_cols = ['Heater', 'Ventilation']
+priority_indices = [available_input_features.index(c) for c in priority_cols if c in available_input_features]
+
+# 其他控制变量 (Lighting 等)
+other_controls = [c for c in control_features if c not in priority_cols and c in available_input_features]
+other_control_indices = [available_input_features.index(c) for c in other_controls]
 
 # 将时间特征也视为“已知未来”的控制变量
 time_indices = [available_input_features.index(col) for col in ['Hour_Sin', 'Hour_Cos'] if col in available_input_features]
@@ -303,9 +359,10 @@ weather_cols = ['Outdoor_Temp', 'Outdoor_Hum', 'Outdoor_Wind', 'Outdoor_Solar', 
 weather_indices = [available_input_features.index(col) for col in weather_cols if col in available_input_features]
 
 # 2. 加入未来索引
-# 逻辑：未来预测 = f(未来控制 + 未来时间 + 未来天气预报)
-future_indices = control_indices + time_indices + weather_indices
-print(f"--> 未来特征索引检查: {future_indices} (确认包含了天气列的索引)")
+# 逻辑：未来预测 = f(未来控制 + 未来时间 + 未来天气预报) 
+# 强制顺序: Heater, Ventilation, ... others
+future_indices = priority_indices + other_control_indices + time_indices + weather_indices
+print(f"--> [Segmented Check] 未来特征前两列: {[available_input_features[i] for i in future_indices[:2]]}")
 
 scaler = MinMaxScaler()
 scaled_features = scaler.fit_transform(df_hybrid[available_input_features])
@@ -432,8 +489,8 @@ def train_and_predict(model, model_name, train_loader, val_loader, X_test_p, X_t
 input_dim, future_dim = X_train_past_tensor.shape[2], len(future_indices)
 
 # 实例化两个模型
-model_abs = SimpleFutureModel(input_dim, future_dim, forecast_horizon).to(device)
-model_diff = SimpleFutureModel(input_dim, future_dim, forecast_horizon).to(device)
+model_abs = SegmentedHybridModel(input_dim, future_dim, forecast_horizon).to(device)
+model_diff = SegmentedHybridModel(input_dim, future_dim, forecast_horizon).to(device)
 
 # 1. 训练原方法（预测绝对值）
 y_pred_abs = train_and_predict(model_abs, "混合模型(绝对值)", train_loader, val_loader,
