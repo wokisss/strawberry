@@ -11,52 +11,35 @@ from torch.utils.data import DataLoader, TensorDataset
 import os
 
 # === 辅助函数与类定义 (PyTorch) ===
-# === 新增: 轻量级 Neural ODE 插值模块 ===
+# === [新版] 物理增强模块：Neural ODE 导数提取器 ===
 class ODEF(nn.Module):
-    """定义常微分方程 dy/dt = f(t, y)"""
     def __init__(self, input_dim, hidden_dim=64):
         super(ODEF, self).__init__()
-        # 使用简单的 MLP 拟合导数场
         self.net = nn.Sequential(
-            nn.Linear(input_dim + 1, hidden_dim), # 输入: 当前状态 y + 时间 t
-            nn.Tanh(),                            # Tanh 激活函数适合物理连续量
-            nn.Linear(hidden_dim, hidden_dim),
+            nn.Linear(input_dim + 1, hidden_dim),
             nn.Tanh(),
-            nn.Linear(hidden_dim, input_dim)      # 输出: 变化率 dy/dt
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.Softplus(), # Softplus 比 Tanh 更适合拟合非负的物理量变化（如光照）
+            nn.Linear(hidden_dim, input_dim)
         )
 
     def forward(self, t, y):
-        # 拼接时间特征 (广播 t 以匹配 y 的 batch)
         t_vec = torch.ones_like(y[..., :1]) * t
         cat_input = torch.cat([y, t_vec], dim=-1)
         return self.net(cat_input)
 
-def rk4_step(func, t, y, dt):
-    """Runge-Kutta 4阶积分步进器 (手动实现，无需额外依赖)"""
-    k1 = func(t, y)
-    k2 = func(t + dt/2, y + dt/2 * k1)
-    k3 = func(t + dt/2, y + dt/2 * k2)
-    k4 = func(t + dt, y + dt * k3)
-    return y + (dt / 6) * (k1 + 2*k2 + 2*k3 + k4)
-
-def interpolate_outdoor_data_ode(df, outdoor_cols, steps_per_hour=60):
+def generate_ode_derivatives(df, target_cols):
     """
-    使用 Neural ODE 将每小时数据插值为分钟级数据
+    不改变原始数据的值，而是计算每分钟的'物理变化率'作为新特征
     """
-    print(f"--> [ODE] 正在启动神经微分方程插值 (目标列: {outdoor_cols})...")
+    print(f"--> [ODE Pro] 正在计算物理导数特征: {target_cols}...")
     
-    # 1. 提取原始小时级数据 (去除空值)
-    df_clean = df[outdoor_cols].dropna()
-    if len(df_clean) < 10:
-        print("--> [警告] 数据点过少，回退到线性插值。")
-        return df.resample('1min').interpolate()
-
-    # 归一化数据以加速收敛
+    # 1. 准备训练数据 (仅使用非空的小时级数据)
+    df_clean = df[target_cols].dropna()
     scaler = MinMaxScaler()
     data_np = scaler.fit_transform(df_clean.values)
     
-    # 准备训练张量
-    # 时间 t: 0, 1, 2, ... (小时)
+    # 时间归一化 (以小时为单位)
     timestamps = (df_clean.index - df_clean.index[0]).total_seconds() / 3600.0
     t_tensor = torch.FloatTensor(timestamps).reshape(-1, 1)
     y_tensor = torch.FloatTensor(data_np)
@@ -65,67 +48,56 @@ def interpolate_outdoor_data_ode(df, outdoor_cols, steps_per_hour=60):
     t_tensor = t_tensor.to(device)
     y_tensor = y_tensor.to(device)
     
-    # 2. 初始化模型
-    ode_func = ODEF(input_dim=len(outdoor_cols)).to(device)
-    optimizer = torch.optim.Adam(ode_func.parameters(), lr=0.01)
+    # 2. 训练 ODE 网络拟合变化趋势
+    ode_func = ODEF(input_dim=len(target_cols)).to(device)
+    optimizer = torch.optim.Adam(ode_func.parameters(), lr=0.02) # 提高学习率
     
-    # 3. 快速训练 (拟合导数函数)
-    print("    |-- 正在拟合物理变化规律 (Training ODE)...")
     ode_func.train()
-    for epoch in range(100): # 100次迭代通常足够拟合平滑曲线
+    print("    |-- 正在学习物理动力场 (Training Dynamics)...")
+    for epoch in range(300): # 增加迭代次数以捕捉细节
         optimizer.zero_grad()
-        
-        # 计算观测到的变化率 (近似导数)
+        # 拟合目标：使得模型预测的导数 接近于 真实数据的差分
+        # (y_{t+1} - y_t) / dt ~ f(t, y)
         dy_dt_target = (y_tensor[1:] - y_tensor[:-1]) / (t_tensor[1:] - t_tensor[:-1])
         t_mid = (t_tensor[1:] + t_tensor[:-1]) / 2
-        y_mid = (y_tensor[1:] + y_tensor[:-1]) / 2 # 简单中点估计
+        y_mid = (y_tensor[1:] + y_tensor[:-1]) / 2
         
-        pred_dy_dt = ode_func(t_mid, y_mid) # 模型预测的导数
-        
+        pred_dy_dt = ode_func(t_mid, y_mid)
         loss = torch.mean((pred_dy_dt - dy_dt_target) ** 2)
         loss.backward()
         optimizer.step()
         
-    # 4. 生成高分辨率分钟级数据 (积分过程)
-    print("    |-- 正在生成高精度分钟级数据...")
+    # 3. 推断：生成每分钟的导数
     ode_func.eval()
+    print("    |-- 正在生成分钟级导数特征...")
     
-    # 创建完整的时间轴 (分钟级)
+    # 创建完整的分钟级时间轴
     full_index = pd.date_range(start=df_clean.index[0], end=df_clean.index[-1], freq='1min')
     
-    interpolated_data = []
+    # 先对原始数据做简单的线性插值，作为 ODE 的输入状态 y
+    # (因为我们需要知道当前大概是多少度，才能算出当前的变化率)
+    df_linear_temp = df[target_cols].reindex(full_index).interpolate(method='linear').fillna(method='bfill')
+    y_interp_np = scaler.transform(df_linear_temp.values)
+    y_interp_tensor = torch.FloatTensor(y_interp_np).to(device)
+    
+    t_full_seconds = (full_index - df_clean.index[0]).total_seconds() / 3600.0
+    t_full_tensor = torch.FloatTensor(t_full_seconds).reshape(-1, 1).to(device)
     
     with torch.no_grad():
-        for i in range(len(data_np) - 1):
-            y_start = y_tensor[i].unsqueeze(0)
-            t_start = t_tensor[i].item()
-            dt = 1.0 / 60.0 # 1分钟步长
-            
-            # 这一小时内的60个点
-            segment_states = [y_start]
-            curr_y = y_start
-            curr_t = t_start
-            
-            for _ in range(59): # 0-59分
-                # 使用 RK4 求解下一步
-                curr_y = rk4_step(lambda t, y: ode_func(t, y), curr_t, curr_y, dt)
-                curr_t += dt
-                segment_states.append(curr_y)
-            
-            interpolated_data.append(torch.cat(segment_states, dim=0).cpu().numpy())
-            
-    # 添加最后一个点
-    interpolated_data.append(data_np[-1:].reshape(1, -1))
+        # 直接查询网络：在 t 时刻，状态为 y 时，变化率是多少？
+        derivs_tensor = ode_func(t_full_tensor, y_interp_tensor)
     
-    # 拼接并还原数据
-    high_res_np = np.concatenate(interpolated_data, axis=0)
+    derivs_np = derivs_tensor.cpu().numpy()
     
-    # 截取长度以匹配 time index
-    if len(high_res_np) > len(full_index):
-        high_res_np = high_res_np[:len(full_index)]
+    # 反归一化导数 (Scale back derivatives)
+    # y = scaler * raw => dy = scaler * draw => draw = dy / scaler
+    derivs_restored = derivs_np / (scaler.scale_ + 1e-8)
     
-    df_result = pd.DataFrame(scaler.inverse_transform(high_res_np), index=full_index, columns=outdoor_cols)
-    return df_result
+    # 创建 DataFrame，列名加后缀 "_Deriv"
+    new_cols = [f"{c}_Deriv" for c in target_cols]
+    df_derivs = pd.DataFrame(derivs_restored, index=full_index, columns=new_cols)
+    
+    return df_derivs
 
 # 创建时间序列数据
 def create_sequences(data, seq_length, forecast_horizon, future_indices, target_idx):
@@ -199,8 +171,14 @@ try:
     # --- 步骤 1-3: 数据加载, 清洗, 重采样, 填充 ---
     print("--> 正在加载和预处理数据...")
     df = pd.read_csv(filename, encoding='latin1', sep=';', decimal=',', parse_dates=['Timestamp'], dayfirst=True, index_col='Timestamp')
+    
+    # === [修复] 全局列名清洗 ===
+    # 去除列名中的引号和多余空格，统一命名规范，防止匹配失败
+    df.columns = [c.replace('"', '').strip() for c in df.columns]
+    print(f"--> 列名已清理: {list(df.columns)}")
+
     # 修复：在转换为数值之前处理开关量列，防止被 to_numeric 转为 NaN 而丢弃
-    cols_to_binary = [' "Heater"', ' "Ventilation"', ' "Lighting"', ' "Pump 1"', ' "Valve 1"']
+    cols_to_binary = ['Heater', 'Ventilation', 'Lighting', 'Pump 1', 'Valve 1']
     for col in cols_to_binary:
         if col in df.columns:
             df[col] = df[col].apply(lambda x: 1 if str(x).lower() in ['on', 'yes', '1'] else 0)
@@ -208,35 +186,41 @@ try:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     df.dropna(axis=1, how='all', inplace=True)
     
-    # === 修改开始: 使用 ODE 插值室外数据 ===
-    # 识别室外列 (通常以 Outdoor 开头)
-    outdoor_cols = [c for c in df.columns if 'Outdoor' in c or 'Solar' in c or 'Wind' in c]
+    # === [修改点] 数据处理逻辑 ===
+    print("--> 正在执行基础线性插值...")
+    # 1. 基础线性插值 (保留最真实的数据骨架)
+    df_resampled = df.resample('1min').mean().interpolate(method='linear').ffill().bfill()
     
-    # 分离处理：室外数据用 ODE 插值，室内数据(通常已有高频记录)保持原样或线性插值
+    # 2. 生成 ODE 导数特征 (增强物理信息)
+    outdoor_cols = [c for c in df.columns if 'Outdoor' in c or 'Solar' in c or 'Wind' in c or 'Illumination' in c]
+    
     if outdoor_cols:
-        # 对室外数据应用 ODE 插值
         try:
-            df_outdoor_high_res = interpolate_outdoor_data_ode(df, outdoor_cols)
+            # 计算导数
+            df_derivs = generate_ode_derivatives(df, outdoor_cols)
             
-            # 对其余列(室内)进行常规重采样
-            other_cols = [c for c in df.columns if c not in outdoor_cols]
-            df_indoor_resampled = df[other_cols].resample('1min').mean().interpolate(method='linear')
+            # 将导数特征合并到主表中
+            # 注意：这就增加了特征维度，模型会自动利用这些新信息
+            df_resampled = pd.concat([df_resampled, df_derivs], axis=1).dropna()
             
-            # 合并两个数据表，并对齐时间索引
-            df_resampled = pd.concat([df_indoor_resampled, df_outdoor_high_res], axis=1).ffill().bfill()
-            
-            # 确保索引一致
-            df_resampled = df_resampled.loc[df_indoor_resampled.index]
+            print(f"--> [成功] 已注入 {len(outdoor_cols)} 个物理导数特征 (后缀 _Deriv)")
             
         except Exception as e:
-            print(f"ODE插值失败，回退到普通方法: {e}")
-            df_resampled = df.resample('1min').mean().interpolate().ffill().bfill()
-    else:
-        # 如果找不到室外列，按原逻辑处理
-        df_resampled = df.resample('1min').mean().interpolate().ffill().bfill()
-        
-    print(f"--> [完成] 数据预处理与 ODE 增强完成。维度: {df_resampled.shape}")
-    # === 修改结束 ===
+            print(f"--> [警告] ODE 特征生成失败，仅使用原始数据: {e}")
+    
+    # === [新增] 能量累积特征 (Energy Accumulation) ===
+    # 目的: 让模型感知"加热器开了多久"，解决起步慢/滞后问题
+    control_cols = ['Heater', 'Ventilation', 'Lighting', 'Pump 1', 'Valve 1']
+    existing_control_cols = [c for c in control_cols if c in df_resampled.columns]
+    
+    if existing_control_cols:
+        print(f"--> [Energy] 正在构建能量累积特征 (Window=60min): {existing_control_cols}...")
+        for col in existing_control_cols:
+            # 计算过去60分钟的累积开启时长 (即能量输入)
+            df_resampled[f'{col}_Energy_60m'] = df_resampled[col].rolling(window=60, min_periods=1).sum()
+        df_resampled.fillna(0, inplace=True)
+
+    print(f"--> 最终数据维度: {df_resampled.shape}")
 except Exception as e:
     print(f"处理数据时发生错误: {e}")
     sys.exit(1)
@@ -248,8 +232,8 @@ print(f"\n--- 正在构建物理基准模型 ---")
 forecast_horizon = 120
 print(f"--> 物理模型预测步长设定为: {forecast_horizon} 分钟")
 
-physics_features = [' "Temperature, °C"', ' "Humidity, %"', ' "CO?, ppm"', ' "Heater"', ' "Ventilation"', ' "Lighting"', 'Outdoor_Temp', 'Outdoor_Hum', 'Outdoor_Wind', 'Outdoor_Solar']
-target_col = ' "Temperature, °C"'
+physics_features = ['Temperature, °C', 'Humidity, %', 'Illumination, lx', 'CO?, ppm', 'Heater', 'Ventilation', 'Lighting', 'Outdoor_Temp', 'Outdoor_Hum', 'Outdoor_Wind', 'Outdoor_Solar']
+target_col = 'Temperature, °C'
 available_physics_features = [col for col in physics_features if col in df_resampled.columns]
 
 # 准备数据
@@ -263,7 +247,7 @@ if len(data) < forecast_horizon + 1: sys.exit("错误: 物理模型数据不足�
 X_physics = data.iloc[:-forecast_horizon].copy()
 y_physics = data[target_col].iloc[forecast_horizon:].values
 
-control_features = [col for col in [' "Heater"', ' "Ventilation"', ' "Lighting"'] if col in available_physics_features and col != target_col]
+control_features = [col for col in ['Heater', 'Ventilation', 'Lighting'] if col in available_physics_features and col != target_col]
 
 # 使用所有可用的物理特征（包含室外天气等）
 feature_columns = available_physics_features
@@ -300,7 +284,11 @@ hour_float = df_hybrid.index.hour + df_hybrid.index.minute / 60.0
 df_hybrid['Hour_Sin'] = np.sin(2 * np.pi * hour_float / 24.0)
 df_hybrid['Hour_Cos'] = np.cos(2 * np.pi * hour_float / 24.0)
 
-input_features = [' "Temperature, °C"', ' "Humidity, %"', ' "CO?, ppm"', ' "Heater"', ' "Ventilation"', ' "Lighting"', 'Outdoor_Temp', 'Outdoor_Hum', 'Outdoor_Wind', 'Outdoor_Solar', 'Hour_Sin', 'Hour_Cos']
+input_features = ['Temperature, °C', 'Humidity, %', 'Illumination, lx', 'CO?, ppm', 'Heater', 'Ventilation', 'Lighting', 'Outdoor_Temp', 'Outdoor_Hum', 'Outdoor_Wind', 'Outdoor_Solar', 'Hour_Sin', 'Hour_Cos']
+# 自动添加导数特征
+input_features += [c for c in df_hybrid.columns if '_Deriv' in c]
+# 自动添加能量累积特征
+input_features += [c for c in df_hybrid.columns if '_Energy' in c]
 available_input_features = [f for f in input_features if f in df_hybrid.columns]
 target_index = available_input_features.index(target_col)
 
@@ -311,7 +299,7 @@ control_indices = [available_input_features.index(col) for col in control_featur
 time_indices = [available_input_features.index(col) for col in ['Hour_Sin', 'Hour_Cos'] if col in available_input_features]
 
 # 1. 定义天气列
-weather_cols = ['Outdoor_Temp', 'Outdoor_Hum', 'Outdoor_Wind', 'Outdoor_Solar']
+weather_cols = ['Outdoor_Temp', 'Outdoor_Hum', 'Outdoor_Wind', 'Outdoor_Solar', 'Illumination, lx']
 weather_indices = [available_input_features.index(col) for col in weather_cols if col in available_input_features]
 
 # 2. 加入未来索引
