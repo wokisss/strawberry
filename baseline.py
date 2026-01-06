@@ -11,6 +11,122 @@ from torch.utils.data import DataLoader, TensorDataset
 import os
 
 # === 辅助函数与类定义 (PyTorch) ===
+# === 新增: 轻量级 Neural ODE 插值模块 ===
+class ODEF(nn.Module):
+    """定义常微分方程 dy/dt = f(t, y)"""
+    def __init__(self, input_dim, hidden_dim=64):
+        super(ODEF, self).__init__()
+        # 使用简单的 MLP 拟合导数场
+        self.net = nn.Sequential(
+            nn.Linear(input_dim + 1, hidden_dim), # 输入: 当前状态 y + 时间 t
+            nn.Tanh(),                            # Tanh 激活函数适合物理连续量
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, input_dim)      # 输出: 变化率 dy/dt
+        )
+
+    def forward(self, t, y):
+        # 拼接时间特征 (广播 t 以匹配 y 的 batch)
+        t_vec = torch.ones_like(y[..., :1]) * t
+        cat_input = torch.cat([y, t_vec], dim=-1)
+        return self.net(cat_input)
+
+def rk4_step(func, t, y, dt):
+    """Runge-Kutta 4阶积分步进器 (手动实现，无需额外依赖)"""
+    k1 = func(t, y)
+    k2 = func(t + dt/2, y + dt/2 * k1)
+    k3 = func(t + dt/2, y + dt/2 * k2)
+    k4 = func(t + dt, y + dt * k3)
+    return y + (dt / 6) * (k1 + 2*k2 + 2*k3 + k4)
+
+def interpolate_outdoor_data_ode(df, outdoor_cols, steps_per_hour=60):
+    """
+    使用 Neural ODE 将每小时数据插值为分钟级数据
+    """
+    print(f"--> [ODE] 正在启动神经微分方程插值 (目标列: {outdoor_cols})...")
+    
+    # 1. 提取原始小时级数据 (去除空值)
+    df_clean = df[outdoor_cols].dropna()
+    if len(df_clean) < 10:
+        print("--> [警告] 数据点过少，回退到线性插值。")
+        return df.resample('1min').interpolate()
+
+    # 归一化数据以加速收敛
+    scaler = MinMaxScaler()
+    data_np = scaler.fit_transform(df_clean.values)
+    
+    # 准备训练张量
+    # 时间 t: 0, 1, 2, ... (小时)
+    timestamps = (df_clean.index - df_clean.index[0]).total_seconds() / 3600.0
+    t_tensor = torch.FloatTensor(timestamps).reshape(-1, 1)
+    y_tensor = torch.FloatTensor(data_np)
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    t_tensor = t_tensor.to(device)
+    y_tensor = y_tensor.to(device)
+    
+    # 2. 初始化模型
+    ode_func = ODEF(input_dim=len(outdoor_cols)).to(device)
+    optimizer = torch.optim.Adam(ode_func.parameters(), lr=0.01)
+    
+    # 3. 快速训练 (拟合导数函数)
+    print("    |-- 正在拟合物理变化规律 (Training ODE)...")
+    ode_func.train()
+    for epoch in range(100): # 100次迭代通常足够拟合平滑曲线
+        optimizer.zero_grad()
+        
+        # 计算观测到的变化率 (近似导数)
+        dy_dt_target = (y_tensor[1:] - y_tensor[:-1]) / (t_tensor[1:] - t_tensor[:-1])
+        t_mid = (t_tensor[1:] + t_tensor[:-1]) / 2
+        y_mid = (y_tensor[1:] + y_tensor[:-1]) / 2 # 简单中点估计
+        
+        pred_dy_dt = ode_func(t_mid, y_mid) # 模型预测的导数
+        
+        loss = torch.mean((pred_dy_dt - dy_dt_target) ** 2)
+        loss.backward()
+        optimizer.step()
+        
+    # 4. 生成高分辨率分钟级数据 (积分过程)
+    print("    |-- 正在生成高精度分钟级数据...")
+    ode_func.eval()
+    
+    # 创建完整的时间轴 (分钟级)
+    full_index = pd.date_range(start=df_clean.index[0], end=df_clean.index[-1], freq='1min')
+    
+    interpolated_data = []
+    
+    with torch.no_grad():
+        for i in range(len(data_np) - 1):
+            y_start = y_tensor[i].unsqueeze(0)
+            t_start = t_tensor[i].item()
+            dt = 1.0 / 60.0 # 1分钟步长
+            
+            # 这一小时内的60个点
+            segment_states = [y_start]
+            curr_y = y_start
+            curr_t = t_start
+            
+            for _ in range(59): # 0-59分
+                # 使用 RK4 求解下一步
+                curr_y = rk4_step(lambda t, y: ode_func(t, y), curr_t, curr_y, dt)
+                curr_t += dt
+                segment_states.append(curr_y)
+            
+            interpolated_data.append(torch.cat(segment_states, dim=0).cpu().numpy())
+            
+    # 添加最后一个点
+    interpolated_data.append(data_np[-1:].reshape(1, -1))
+    
+    # 拼接并还原数据
+    high_res_np = np.concatenate(interpolated_data, axis=0)
+    
+    # 截取长度以匹配 time index
+    if len(high_res_np) > len(full_index):
+        high_res_np = high_res_np[:len(full_index)]
+    
+    df_result = pd.DataFrame(scaler.inverse_transform(high_res_np), index=full_index, columns=outdoor_cols)
+    return df_result
+
 # 创建时间序列数据
 def create_sequences(data, seq_length, forecast_horizon, future_indices, target_idx):
     xs_past, xs_future, ys, y_bases = [], [], [], []
@@ -91,8 +207,36 @@ try:
     for col in df.columns:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     df.dropna(axis=1, how='all', inplace=True)
-    df_resampled = df.resample('1min').mean().ffill().bfill()
-    print(f"--> 数据预处理完成。维度: {df_resampled.shape}")
+    
+    # === 修改开始: 使用 ODE 插值室外数据 ===
+    # 识别室外列 (通常以 Outdoor 开头)
+    outdoor_cols = [c for c in df.columns if 'Outdoor' in c or 'Solar' in c or 'Wind' in c]
+    
+    # 分离处理：室外数据用 ODE 插值，室内数据(通常已有高频记录)保持原样或线性插值
+    if outdoor_cols:
+        # 对室外数据应用 ODE 插值
+        try:
+            df_outdoor_high_res = interpolate_outdoor_data_ode(df, outdoor_cols)
+            
+            # 对其余列(室内)进行常规重采样
+            other_cols = [c for c in df.columns if c not in outdoor_cols]
+            df_indoor_resampled = df[other_cols].resample('1min').mean().interpolate(method='linear')
+            
+            # 合并两个数据表，并对齐时间索引
+            df_resampled = pd.concat([df_indoor_resampled, df_outdoor_high_res], axis=1).ffill().bfill()
+            
+            # 确保索引一致
+            df_resampled = df_resampled.loc[df_indoor_resampled.index]
+            
+        except Exception as e:
+            print(f"ODE插值失败，回退到普通方法: {e}")
+            df_resampled = df.resample('1min').mean().interpolate().ffill().bfill()
+    else:
+        # 如果找不到室外列，按原逻辑处理
+        df_resampled = df.resample('1min').mean().interpolate().ffill().bfill()
+        
+    print(f"--> [完成] 数据预处理与 ODE 增强完成。维度: {df_resampled.shape}")
+    # === 修改结束 ===
 except Exception as e:
     print(f"处理数据时发生错误: {e}")
     sys.exit(1)
