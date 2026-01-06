@@ -364,9 +364,31 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"--> 使用设备: {device}")
 
 # --- 训练函数 ---
-def train_and_predict(model, model_name, train_loader, val_loader, X_test_p, X_test_f, y_test_bases, scaler, target_idx, feat_cols, available_physics_features, predict_diff=False, lambda_trend=0.5):
+class SobolevLoss(nn.Module):
+    def __init__(self, lambda_deriv=0.5):
+        """
+        lambda_deriv: 导数项的权重。权重越大，模型越关注变化的趋势（升温速度）。
+        """
+        super().__init__()
+        self.lambda_deriv = lambda_deriv
+        self.mse = nn.MSELoss()
+
+    def forward(self, pred, target):
+        # 1. 基础的值误差 (Value Loss)
+        loss_value = self.mse(pred, target)
+        
+        # 2. 导数误差 (Derivative Loss) - 计算时间步之间的差分
+        # pred shape: [batch, seq_len]
+        pred_diff = pred[:, 1:] - pred[:, :-1]
+        target_diff = target[:, 1:] - target[:, :-1]
+        
+        loss_deriv = self.mse(pred_diff, target_diff)
+        
+        return loss_value + self.lambda_deriv * loss_deriv
+
+def train_and_predict(model, model_name, train_loader, val_loader, X_test_p, X_test_f, y_test_bases, scaler, target_idx, feat_cols, available_physics_features, predict_diff=False, lambda_trend=1.0):
     print(f"--> 正在训练 {model_name}...")
-    criterion = nn.MSELoss()
+    criterion = SobolevLoss(lambda_deriv=lambda_trend) # 强迫模型学习“变化率”
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
     num_epochs, patience = 200, 10
     best_val_loss, epochs_no_improve = float('inf'), 0
@@ -382,16 +404,7 @@ def train_and_predict(model, model_name, train_loader, val_loader, X_test_p, X_t
             # 如果是差分模式，目标是 (未来值 - 当前基准值)
             target = (b_y - b_base) if predict_diff else b_y
            
-            # 基础 MSE 损失
-            loss_mse = criterion(pred, target)
-           
-            # 任务三：趋势惩罚 (Gradient Penalty)
-            # 计算预测序列和目标序列的变化率（一阶差分）
-            pred_diff = pred[:, 1:] - pred[:, :-1]
-            target_diff = target[:, 1:] - target[:, :-1]
-            loss_trend = criterion(pred_diff, target_diff)
-           
-            loss = loss_mse + lambda_trend * loss_trend
+            loss = criterion(pred, target)
             loss.backward()
             optimizer.step()
        
