@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # mpc_control_system.py
 # 基于 Neural ODE 混合模型的 MPC 温室控制系统
 # 包含：数据处理 -> 模型训练 -> MPC/MDP 策略对比 -> 结果可视化
@@ -16,7 +17,7 @@ import sys
 import os
 import warnings
 
-# 忽略 sklearn 的 UserWarning (关于 feature names 的警告)
+# 忽略 sklearn 的 UserWarning
 warnings.filterwarnings("ignore", category=UserWarning, module='sklearn')
 
 # 设置绘图风格和字体
@@ -32,21 +33,24 @@ class PhysicsGreenhouseEnv:
     def __init__(self, initial_temp):
         self.current_temp = initial_temp
         
-    def step(self, action, outside_temp):
+    def step(self, action, outside_temp, solar_radiation=0.0):
         # 物理参数 (针对分钟级仿真调整)
         k_insulation = 0.05  # 隔热系数 (越小保温越好)
         power_heater = 0.5   # 加热功率 (°C/min)
         eff_vent = 0.1       # 通风效率
+        k_solar = 0.01       # [校准] 调大太阳辐射增益 (0.002 -> 0.01)，模拟真实温室的温室效应
+        
         
         # 动力学方程
-        # dT = -k*(Tin - Tout) + P_heat*u_heat - k_vent*u_vent*(Tin - Tout)
+        # dT = -k*(Tin - Tout) + P_heat*u_heat - k_vent*u_vent*(Tin - Tout) + k_solar*Solar
         delta_loss = - k_insulation * (self.current_temp - outside_temp)
         delta_heat = power_heater * action[0] 
         # 通风不仅带走热量，还试图将室内温度拉向室外温度
         delta_vent = - eff_vent * action[1] * (self.current_temp - outside_temp)
+        delta_solar = k_solar * solar_radiation
         
         # 更新状态 + 随机噪声
-        self.current_temp += delta_loss + delta_heat + delta_vent + np.random.normal(0, 0.05)
+        self.current_temp += delta_loss + delta_heat + delta_vent + delta_solar + np.random.normal(0, 0.05)
         return self.current_temp
 
 # ==============================================================================
@@ -125,8 +129,63 @@ class SegmentedHybridModel(nn.Module):
         return final_pred
 
 # ==============================================================================
+# ==============================================================================
 # 2. 控制器定义 (MPC & MDP)
 # ==============================================================================
+
+class DecisionControlModel(nn.Module):
+    """
+    【新增】决策专用代理模型 (Control-Oriented Surrogate Model)
+    
+    原理 (Separation of Prediction and Process Models):
+    - 预测任务: 使用原始 SegmentedHybridModel，由真实数据训练，负责拟合环境惯性、天气影响。
+    - 控制任务: 在预测结果上叠加 "物理引导梯度 (Physics-Guided Gradients)"。
+    
+    公式:
+    T_decision = T_prediction + Gain_heat * Heater + Gain_vent * Vent
+    
+    作用:
+    即使 T_prediction 因为数据惯性认为 "Heater开不开都一样"，这里强加的 Gain 项
+    也会让 MPC 求解器明确看到: Heater开启 -> T_decision 升高 -> Cost 降低 (如果太冷)。
+    """
+    def __init__(self, original_prediction_model, heater_gain=0.05, vent_gain=-0.05):
+        super(DecisionControlModel, self).__init__()
+        self.predictor = original_prediction_model  # 模型 A (Observer)
+        # 这些增益是在 "归一化空间" 下的近似值。
+        # 需根据 MinMaxScaler 的范围微调。假设 Temp 归一化后 range 0-1。
+        # 0.05 的增益意味着开启加热器能在 10分钟内 额外贡献 5% 的温度量程提升，
+        # 这是一个很强的"提示"，足以打破优化器的惰性。
+        self.heater_gain = heater_gain
+        self.vent_gain = vent_gain
+        
+    def forward(self, x_past, x_future):
+        # 1. 基准预测 (观测者模式)
+        # 关闭梯度计算以节省计算量? 不，MPC需要梯度。但可以 detach 原始模型如果不需要微调。
+        # 这里我们保留全梯度。
+        base_prediction = self.predictor(x_past, x_future)
+        
+        # 2. 提取动作信号 (Control Input)
+        # 假设 x_future 的前两列是 Heater, Ventilation
+        # x_future shape: (batch, horizon, feat_dim)
+        # 我们取整个 horizon 的平均动作强度，或者只取第一步?
+        # SegmentedHybridModel 输出的是 (batch, horizon) 的预测序列 (这里 horizon=1)
+        # 为了简单，我们只看 x_future 第一步的动作
+        
+        u_heat = x_future[:, 0, 0] # (batch, )
+        u_vent = x_future[:, 0, 1] # (batch, )
+        
+        # 3. 注入物理梯度 (Actor Mode)
+        # 注意广播机制
+        delta_physics = (u_heat * self.heater_gain) + (u_vent * self.vent_gain)
+        
+        # 修正预测值
+        # base_prediction shape: (batch, 1) or (batch, )
+        if base_prediction.dim() > 1:
+            delta_physics = delta_physics.unsqueeze(-1)
+            
+        control_prediction = base_prediction + delta_physics
+        
+        return control_prediction
 
 class MPC_Controller:
     """ 【新增】模型预测控制器 (Model Predictive Controller) """
@@ -144,7 +203,7 @@ class MPC_Controller:
             [0, 0], # 自然
             [1, 0], # 加热
             [0, 1], # 通风
-            [1, 1]  # (可选) 同时开启，通常不合理但也是一种状态
+            # [1, 1] 已移除: 既加热又通风是不合理的能源浪费
         ]
 
     def get_optimal_action(self, current_past_tensor, current_future_base):
@@ -270,12 +329,53 @@ def main():
         df[col] = pd.to_numeric(df[col], errors='coerce')
     df = df.resample('1min').mean().interpolate().ffill().bfill()
     
-    # 特征工程
+    # ========================================================================
+    # [新增] 加载外部天气数据 (NASA POWER)
+    # ========================================================================
+    weather_file = 'POWER_Point_Hourly_20250517_20250618_048d33N_025d93E_LST.csv'
+    if os.path.exists(weather_file):
+        print(f"--> 正在加载外部天气数据: {weather_file}")
+        # 读取 NASA POWER 数据 (跳过头部注释行)
+        df_weather = pd.read_csv(weather_file, skiprows=12)
+        
+        # 构建时间戳
+        df_weather['Timestamp'] = pd.to_datetime(
+            df_weather['YEAR'].astype(str) + '-' + 
+            df_weather['MO'].astype(str).str.zfill(2) + '-' + 
+            df_weather['DY'].astype(str).str.zfill(2) + ' ' + 
+            df_weather['HR'].astype(str).str.zfill(2) + ':00:00'
+        )
+        df_weather = df_weather.set_index('Timestamp')
+        
+        # 重命名列为标准名称
+        df_weather = df_weather.rename(columns={
+            'T2M': 'Outdoor_Temp',
+            'ALLSKY_SFC_SW_DWN': 'Outdoor_Solar',
+            'RH2M': 'Outdoor_Hum',
+            'WS2M': 'Outdoor_Wind'
+        })
+        
+        # 重采样到分钟级并插值
+        df_weather = df_weather[['Outdoor_Temp', 'Outdoor_Solar', 'Outdoor_Hum', 'Outdoor_Wind']]
+        df_weather = df_weather.resample('1min').interpolate(method='linear').ffill().bfill()
+        
+        # 合并到主数据 (使用 reindex 确保时间对齐)
+        df_weather = df_weather.reindex(df.index, method='ffill')
+        for col in df_weather.columns:
+            df[col] = df_weather[col]
+        df = df.ffill().bfill()
+        
+        print(f"    成功合并 {len(df_weather.columns)} 个天气特征: {list(df_weather.columns)}")
+    else:
+        print(f"--> [警告] 未找到外部天气文件 {weather_file}")
+    
+    # 特征工程 (暂时跳过 ODE 导数计算以避免数据丢失)
     outdoor_cols = [c for c in df.columns if 'Outdoor' in c or 'Solar' in c]
-    df_derivs = pd.DataFrame() # 初始化为空，防止报错
-    if outdoor_cols:
-        df_derivs = generate_ode_derivatives(df, outdoor_cols)
-        df = pd.concat([df, df_derivs], axis=1).dropna()
+    df_derivs = pd.DataFrame() # 暂时为空
+    # 注意：ODE 导数计算可能导致时间边界丢失，先跳过
+    # if outdoor_cols:
+    #     df_derivs = generate_ode_derivatives(df, outdoor_cols)
+    #     df = pd.concat([df, df_derivs], axis=1).dropna()
         
     print(f"--> 数据预处理完成，维度: {df.shape}")
 
@@ -289,10 +389,28 @@ def main():
     df = df[feature_order]
     target_idx = feature_order.index(target_col)
     
-    # 定义未来特征索引 (Future Inputs): 包含控制量、天气等
-    # 在这个模型中，我们假设 x_future 包含了所有特征的"未来预报"
-    # 但实际上 MPC 只能改变 Heater(idx=0) 和 Ventilation(idx=1)
-    future_indices = list(range(len(feature_order))) 
+    # ========================================================================
+    # [关键修复] 定义"干净"的未来特征索引 (future_indices)
+    # 只包含：控制量 (Heater, Vent) + 时间 + 天气预报
+    # 绝对不能包含: Temperature, Humidity, CO2 等"受控变量"
+    # 否则会产生数据泄露，模型直接从 x_future 里抄答案！
+    # ========================================================================
+    
+    # 1. 控制变量 (Controllable Actions) - 必须在前两位
+    control_cols = ['Heater', 'Ventilation']
+    control_indices = [feature_order.index(c) for c in control_cols if c in feature_order]
+    
+    # 2. 天气变量 (Weather Forecast) - 假设可从气象预报获取
+    # 直接使用之前已正确提取的 outdoor_cols (Line 333)
+    weather_indices = [feature_order.index(c) for c in outdoor_cols if c in feature_order]
+    
+    # 3. 组装干净的 future_indices
+    future_indices = control_indices + weather_indices
+    print(f"--> [数据泄露修复] future_indices 仅包含 {len(future_indices)} 列:")
+    print(f"    控制量: {[feature_order[i] for i in control_indices]}")
+    print(f"    天气预报: {[feature_order[i] for i in weather_indices]}")
+    print(f"    [DEBUG] outdoor_cols = {outdoor_cols}")
+    print(f"    [DEBUG] feature_order = {feature_order}") 
     
     scaler = MinMaxScaler()
     data_scaled = scaler.fit_transform(df)
@@ -315,7 +433,8 @@ def main():
     
     # 3. 模型初始化与训练 (或加载)
     print("\n--> 初始化混合预测模型...")
-    model = SegmentedHybridModel(input_dim=len(feature_order), future_dim=len(feature_order), forecast_horizon=1).to(device)
+    # 注意: future_dim 必须等于 len(future_indices)，不是所有特征数！
+    model = SegmentedHybridModel(input_dim=len(feature_order), future_dim=len(future_indices), forecast_horizon=1).to(device)
     # 注意: 为了 MPC 单步控制，这里 forecast_horizon 设为 1 (预测 horizon 分钟后的那一个点)
     
     # 简单训练循环 (模拟加载训练好的权重)
@@ -342,8 +461,13 @@ def main():
     # 4. 仿真实验：MPC vs MDP
     print("\n--> 开始对比仿真 (Simulation: MDP vs MPC)...")
     
-    # 初始化控制器
-    mpc = MPC_Controller(model, scaler, target_idx, future_indices, horizon=horizon, target_temp=25.0)
+    # 【修改】使用“双模型策略”：包装原始模型
+    # heater_gain=0.1: 在归一化空间下给你一个显著的升温奖励
+    # vent_gain=-0.5 (加大惩罚): 强行告诉模型"开窗必降温"，防止它利用历史数据的错误相关性(Vent=Hot)
+    decision_model = DecisionControlModel(model, heater_gain=0.2, vent_gain=-0.5)
+    
+    # 初始化控制器 (传入 decision_model 而不是原始 model)
+    mpc = MPC_Controller(decision_model, scaler, target_idx, future_indices, horizon=horizon, target_temp=25.0)
     mdp = LegacyMDPController()
     
     # 选取测试集的一段作为仿真区间 (例如 300 分钟)
@@ -408,24 +532,32 @@ def main():
             # 这里简化处理：假设室外温度是第 7 列 (根据 feature_order 逻辑推断)
             # feature_order = [H, V, L, Tin, Hin, CO2, Tout, ...]
             # 更好的方式是查找索引
-            # 尝试查找室外温度列索引
+            # 尝试查找室外温度和太阳辐射列索引
             tout_idx = -1
+            solar_idx = -1
             for idx, fname in enumerate(feature_order):
-                if 'outdoor' in fname.lower() or 'solar' in fname.lower(): # 简单启发式
+                fname_lower = fname.lower()
+                if 'outdoor' in fname_lower and ('temp' in fname_lower or '温度' in fname_lower): 
                     tout_idx = idx
-                    break
+                if 'solar' in fname_lower or 'radiation' in fname_lower or '辐射' in fname_lower:
+                    solar_idx = idx
             
+            # 获取室外温度
             if tout_idx != -1 and tout_idx < current_state_mpc.shape[2]:
                 curr_tout_norm = current_state_mpc[0, -1, tout_idx]
                 curr_tout = mpc._inverse_transform_target(curr_tout_norm, tout_idx)
             else:
-                # Fallback: 如果没找到室外温度数据，假定一个环境温度 (e.g. 15度)
-                # 或者使用上一时刻的室内温度减去一点点? 不，还是常数安全。
-                curr_tout = 15.0 
-
+                curr_tout = 15.0 # Fallback
+            
+            # 获取太阳辐射
+            if solar_idx != -1 and solar_idx < current_state_mpc.shape[2]:
+                curr_solar_norm = current_state_mpc[0, -1, solar_idx]
+                curr_solar = mpc._inverse_transform_target(curr_solar_norm, solar_idx)
+            else:
+                curr_solar = 0.0 # Fallback
             
             # 物理引擎推演下一步真实温度
-            next_temp_real = env_mpc.step(opt_action, curr_tout)
+            next_temp_real = env_mpc.step(opt_action, curr_tout, curr_solar)
             
             # 归一化回去以便填入状态序列
             # 注意：这里需要单独归一化一个标量，稍微麻烦。我们构造一个 dummy array
@@ -451,7 +583,8 @@ def main():
             # 同样获取 MDP 环境的室外温度 (假设和 MPC 环境时刻一致，其实就是 X_test_p 里的)
             # 这里重用 curr_tout 即可，因为时间步是一样的
             
-            next_temp_mdp_real = env_mdp.step(mdp_action, curr_tout)
+            # 同样获取 MDP 环境的室外温度和太阳辐射 (假设和 MPC 环境时刻一致)
+            next_temp_mdp_real = env_mdp.step(mdp_action, curr_tout, curr_solar)
             
             dummy_arr_mdp = np.zeros((1, len(scaler.scale_)))
             dummy_arr_mdp[0, target_idx] = next_temp_mdp_real
@@ -512,9 +645,15 @@ def main():
     axes[2].grid(True, alpha=0.3)
     
     plt.tight_layout()
-    save_path = "mpc_vs_mdp_simulation.png"
+    
+    # [修改] 保存到 results 文件夹并带时间戳
+    import datetime
+    os.makedirs("results", exist_ok=True)
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    save_path = os.path.join("results", f"mpc_simulation_{timestamp}.png")
+    
     plt.savefig(save_path)
-    print(f"--> [Success] 结果图已保存至: {save_path}")
+    print(f"--> [Success] 结果图已保存至: {os.path.abspath(save_path)}")
     
     # 如果在支持交互式环境运行，可以使用 plt.show()
     # plt.show()
