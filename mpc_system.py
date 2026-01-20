@@ -24,6 +24,16 @@ warnings.filterwarnings("ignore", category=UserWarning, module='sklearn')
 plt.rcParams['font.sans-serif'] = ['SimHei']  # 用黑体显示中文
 plt.rcParams['axes.unicode_minus'] = False    # 解决负号显示问题
 
+# ============== 固定随机种子 (确保可复现性) ==============
+SEED = 42
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+torch.cuda.manual_seed(SEED)
+torch.cuda.manual_seed_all(SEED)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
+print(f"--> 随机种子已固定: {SEED}")
+
 # 检查设备
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"--> 使用计算设备: {device}")
@@ -159,10 +169,15 @@ class DecisionControlModel(nn.Module):
         self.vent_gain = vent_gain
         
     def forward(self, x_past, x_future):
-        # 1. 基准预测 (观测者模式)
-        # 关闭梯度计算以节省计算量? 不，MPC需要梯度。但可以 detach 原始模型如果不需要微调。
-        # 这里我们保留全梯度。
-        base_prediction = self.predictor(x_past, x_future)
+        # 1. 基准预测 (观测者模式) - 关键修改：剥离神经网络对控制量的偏见
+        # 我们构建一个 "Neutral" 的未来输入，假设 Heater=0, Vent=0
+        # 让神经网络只预测 "自然环境演化" (基线温度)
+        x_future_neutral = x_future.clone()
+        x_future_neutral[:, :, 0] = 0.0 # Force Heater=0
+        x_future_neutral[:, :, 1] = 0.0 # Force Vent=0
+        
+        # Base Model 只看天气和历史，不看动作
+        base_prediction = self.predictor(x_past, x_future_neutral)
         
         # 2. 提取动作信号 (Control Input)
         # 假设 x_future 的前两列是 Heater, Ventilation
@@ -187,6 +202,8 @@ class DecisionControlModel(nn.Module):
         
         return control_prediction
 
+
+
 class MPC_Controller:
     """ 【新增】模型预测控制器 (Model Predictive Controller) """
     def __init__(self, model, scaler, target_idx, future_indices, horizon=10, target_temp=25.0):
@@ -205,6 +222,9 @@ class MPC_Controller:
             [0, 1], # 通风
             # [1, 1] 已移除: 既加热又通风是不合理的能源浪费
         ]
+        
+        # 积分误差累积项 (解决稳态误差)
+        self.integral_error = 0.0
 
     def get_optimal_action(self, current_past_tensor, current_future_base):
         """
@@ -239,12 +259,29 @@ class MPC_Controller:
             pred_val = self._inverse_transform_target(pred_norm.item(), self.target_idx)
             
             # 4. 计算代价函数 (Cost Function)
-            # Cost = (T_pred - T_target)^2 + lambda * Energy
+            # Cost = (T_pred - T_target)^2 + lambda * Energy + gamma * Integral
             temp_cost = (pred_val - self.target_temp) ** 2
+            
+            # 积分误差惩罚 (假设当前 action 能缓解误差)
+            # 如果当前温度偏低 (integral_error > 0), 我们希望 action 能提升温度
+            # 这里简单处理: 直接惩罚累计误差的绝对值，迫使系统尽快归零?
+            # 不，积分项通常是外层循环累积的。在优化内部，我们应该考虑"如果我不动，积分误差会继续恶化"。
+            # 简化策略: Cost += 0.1 * (self.integral_error + (self.target_temp - pred_val))**2
+            # 或者更简单的 PID 思想: Cost += - Ki * error * action (方向性引导)
+            
+            # 采用标准 MPC 积分法: 状态扩增。这里简化为直接在 Cost 加惩罚
+            # 如果我开加热 (action[0]=1)，且积分为正 (缺热)，则 Cost 降低
+            # 构造一个"偏置项": 
+            # predicted_error = self.target_temp - pred_val
+            # total_deviation = predicted_error + 0.1 * self.integral_error
+            # cost = total_deviation ** 2
+            
+            cost_deviation = (self.target_temp - pred_val + 0.2 * self.integral_error) ** 2
+            
             # 降低能耗惩罚权重，鼓励控制器在模型预测收益微弱时仍积极尝试
             energy_cost = 0.01 * (action[0] + action[1])
             
-            total_cost = temp_cost + energy_cost
+            total_cost = cost_deviation + energy_cost
             
             if total_cost < best_cost:
                 best_cost = total_cost
@@ -257,6 +294,13 @@ class MPC_Controller:
         dummy = np.zeros((1, len(self.scaler.scale_)))
         dummy[0, col_idx] = val
         return self.scaler.inverse_transform(dummy)[0, col_idx]
+
+    def update_integral(self, current_temp):
+        """ 更新积分误差 (在每步仿真结束后调用) """
+        error = self.target_temp - current_temp
+        self.integral_error += error
+        # 积分限幅 (Anti-windup) 防止积分饱和
+        self.integral_error = np.clip(self.integral_error, -20.0, 20.0)
 
 class LegacyMDPController:
     """ 【保留】旧的 MDP 控制器 (仅用于生成对比基准) """
@@ -426,10 +470,15 @@ def main():
     X_train_f, X_test_f = X_future[:train_size], X_future[train_size:]
     y_train, y_test = y[:train_size], y[train_size:]
     
-    # 转 Tensor
-    X_train_p_t = torch.FloatTensor(X_train_p).to(device)
-    X_train_f_t = torch.FloatTensor(X_train_f).to(device)
-    y_train_t = torch.FloatTensor(y_train).to(device)
+    # 转 Tensor (保留在 CPU，不要一次性全部加载到 GPU！)
+    X_train_p_t = torch.FloatTensor(X_train_p)  # 在 CPU
+    X_train_f_t = torch.FloatTensor(X_train_f)  # 在 CPU
+    y_train_t = torch.FloatTensor(y_train)       # 在 CPU
+    
+    # 创建 DataLoader 进行小批量训练 (解决 CUDA OOM 问题)
+    batch_size = 256  # 适合 4GB 显存的 batch size
+    train_dataset = TensorDataset(X_train_p_t, X_train_f_t, y_train_t)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     
     # 3. 模型初始化与训练 (或加载)
     print("\n--> 初始化混合预测模型...")
@@ -444,16 +493,23 @@ def main():
     print("--> 开始训练模型 (用于 MPC 预测核心)...")
     for epoch in range(50): # 增加训练轮数以尝试捕捉物理规律
         model.train()
-        optimizer.zero_grad()
-        # 这里为了简化，直接用最后一步的预测值训练
-        outputs = model(X_train_p_t, X_train_f_t) 
-        # outputs shape: (batch, 1) -> 需要 squeeze 吗？取决于定义。
-        # SegmentedHybridModel输出维度是 (batch, forecast_horizon)
-        loss = criterion(outputs, y_train_t.unsqueeze(1))
-        loss.backward()
-        optimizer.step()
+        epoch_loss = 0.0
+        for batch_p, batch_f, batch_y in train_loader:
+            # 每个 batch 才移动到 GPU，用完后自动释放
+            batch_p = batch_p.to(device)
+            batch_f = batch_f.to(device)
+            batch_y = batch_y.to(device)
+            
+            optimizer.zero_grad()
+            outputs = model(batch_p, batch_f)
+            loss = criterion(outputs, batch_y.unsqueeze(1))
+            loss.backward()
+            optimizer.step()
+            epoch_loss += loss.item()
+        
         if (epoch+1) % 5 == 0:
-            print(f"    Epoch {epoch+1}, Loss: {loss.item():.5f}")
+            avg_loss = epoch_loss / len(train_loader)
+            print(f"    Epoch {epoch+1}, Loss: {avg_loss:.5f}")
             
     model.eval()
     print("--> 模型就绪。")
@@ -464,7 +520,10 @@ def main():
     # 【修改】使用“双模型策略”：包装原始模型
     # heater_gain=0.1: 在归一化空间下给你一个显著的升温奖励
     # vent_gain=-0.5 (加大惩罚): 强行告诉模型"开窗必降温"，防止它利用历史数据的错误相关性(Vent=Hot)
-    decision_model = DecisionControlModel(model, heater_gain=0.2, vent_gain=-0.5)
+    # [修改] 降低 heater_gain 至 0.05 (约 1.25°C)，避免"过热恐惧"导致的不作为
+    # 配合 integral_error 解决稳态误差
+    # [修正] 采用解耦策略后，回调增益至 0.1 (约 2.5°C) 以保证响应力度
+    decision_model = DecisionControlModel(model, heater_gain=0.1, vent_gain=-0.5)
     
     # 初始化控制器 (传入 decision_model 而不是原始 model)
     mpc = MPC_Controller(decision_model, scaler, target_idx, future_indices, horizon=horizon, target_temp=25.0)
@@ -577,6 +636,9 @@ def main():
             
             # 记录真实温度
             history_mpc.append(next_temp_real)
+            
+            # [新增] 更新 MPC 积分误差
+            mpc.update_integral(next_temp_real)
 
         # 2) 推演 MDP 环境 (同理)
         with torch.no_grad():
