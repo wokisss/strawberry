@@ -171,8 +171,48 @@ class PhysicsBasedCounterfactualGenerator:
                 if act_code == current_action_code:
                     continue # 跳过真实发生的情况
                 
-                # 推演反事实结果
-                T_next_cf = self.physics_step(T_in, action_vec, T_out, Solar)
+                # 推演反事实结果 (Multi-step Integration)
+                # 我们需要循环 horizon 步，模拟未来一段时间的物理演变
+                # prediction horizon = X_future.shape[1]
+                horizon = X_future.shape[1]
+                
+                T_curr_sim = T_in
+                
+                # 遍历未来 horizon 步
+                for step_k in range(horizon):
+                    # 获取该步对应的室外环境
+                    # X_future shape: (batch, horizon, future_dim)
+                    # 注意：future_indices 决定了 X_future 中列的含义
+                    # 假设 future_indices 中包含 Outdoor 的顺序与 Generator 初始化时的 idx_tout 并不直接对应
+                    # 因为 idx_tout 是在 feature_order 中的索引，而 X_future 是抽取后的子集。
+                    # 这里为了简便和鲁棒，我们做一个映射假设：
+                    # 假设我们能在 X_future 中找到对应的 Weather 列。
+                    # 由于 X_future 的列顺序严格对应 future_indices，我们可以预处理出映射关系。
+                    # 但作为一个简单修复，我们可以利用 self.feature_order 和 future_indices 实时反查。
+                    
+                    # 获取第 step_k 步的特征向量
+                    step_future_vec = X_future[i, step_k, :]
+                    
+                    # 查找当前子集向量中的 T_out 和 Solar
+                    # 效率较低但安全
+                    t_out_val = 15.0
+                    solar_val = 0.0
+                    
+                    # 我们需要知道 T_out 在 X_future 中的相对索引
+                    # 这可以在外面预计算，但这里直接遍历 future_indices
+                    for local_idx, global_idx in enumerate(future_indices):
+                        if global_idx == self.idx_tout:
+                            t_out_val = self._inverse_transform_val(step_future_vec[local_idx], self.idx_tout)
+                        elif global_idx == self.idx_solar:
+                            solar_val = self._inverse_transform_val(step_future_vec[local_idx], self.idx_solar)
+                    
+                    # 物理推演一步
+                    # 注意：动作 action_vec 在整个 horizon 内保持不变 (MPC 常见假设，或者仅首步改变?)
+                    # 针对 Counterfactual 生成，我们假设"如果我采取了这个动作"，通常意味着在这个控制周期内维持该动作。
+                    # 简单起见，假设动作持续整个 horizon
+                    T_curr_sim = self.physics_step(T_curr_sim, action_vec, t_out_val, solar_val)
+                
+                T_next_cf = T_curr_sim
                 
                 # 物理一致性校验 (简单的边界检查)
                 if not (0.0 <= T_next_cf <= 50.0):
@@ -186,8 +226,7 @@ class PhysicsBasedCounterfactualGenerator:
                 aug_X_past.append(X_past[i])
                 
                 # X_future 需要修改动作部分
-                # 注意：假设 Horizon=1 或者我们在整个 Horizon 都应用此动作?
-                # 简单起见，仅修改第一步，或者全部修改。这里修改全部以保持一致性。
+                # 这里将动作填充到整个 horizon (对应上述假设)
                 x_future_new = X_future[i].copy() 
                 x_future_new[:, 0] = action_vec[0]
                 x_future_new[:, 1] = action_vec[1]
@@ -202,30 +241,64 @@ class PhysicsBasedCounterfactualGenerator:
             return np.array([]), np.array([]), np.array([])
 
 class CounterfactualDataset(Dataset):
-    """ 混合数据集: 原始数据 + 反事实数据 """
-    def __init__(self, X_past, X_future, y, generator, future_indices, cf_ratio=0.5):
+    """ 混合数据集: 原始数据 + 反事实数据 (支持缓存) """
+    def __init__(self, X_past, X_future, y, generator, future_indices, cf_ratio=0.5,
+                 cache_path=None, force_regenerate=False):
         """
         :param cf_ratio: 反事实数据占比 (0.0 - 1.0)
+        :param cache_path: 缓存文件路径 (如 'data/cf_cache.npz')，为 None 则不缓存
+        :param force_regenerate: 强制重新生成，忽略缓存
         """
+        import os
+        
         self.X_past_real = X_past
         self.X_future_real = X_future
         self.y_real = y
         
-        print("--> [A2] 正在生成物理反事实数据...")
-        X_p_cf, X_f_cf, y_cf = generator.generate_counterfactuals(
-            X_past, X_future, y, future_indices
-        )
+        X_p_cf, X_f_cf, y_cf = None, None, None
+        cache_loaded = False
+        
+        # 尝试加载缓存
+        if cache_path and os.path.exists(cache_path) and not force_regenerate:
+            try:
+                print(f"--> [A2] 正在加载反事实数据缓存: {cache_path}")
+                cached = np.load(cache_path)
+                X_p_cf = cached['X_past_cf']
+                X_f_cf = cached['X_future_cf']
+                y_cf = cached['y_cf']
+                cache_loaded = True
+                print(f"    成功加载 {len(y_cf)} 条反事实样本")
+            except Exception as e:
+                print(f"    [Warning] 缓存加载失败: {e}，将重新生成")
+                cache_loaded = False
+        
+        # 生成反事实数据
+        if not cache_loaded:
+            print("--> [A2] 正在生成物理反事实数据...")
+            X_p_cf, X_f_cf, y_cf = generator.generate_counterfactuals(
+                X_past, X_future, y, future_indices
+            )
+            
+            # 保存缓存
+            if cache_path and len(X_p_cf) > 0:
+                cache_dir = os.path.dirname(cache_path)
+                if cache_dir:
+                    os.makedirs(cache_dir, exist_ok=True)
+                np.savez_compressed(cache_path, 
+                                    X_past_cf=X_p_cf, 
+                                    X_future_cf=X_f_cf, 
+                                    y_cf=y_cf)
+                print(f"    反事实数据已缓存至: {cache_path}")
         
         self.num_real = len(X_past)
-        self.num_cf = len(X_p_cf) if len(X_p_cf) > 0 else 0
+        self.num_cf = len(X_p_cf) if X_p_cf is not None and len(X_p_cf) > 0 else 0
         
         print(f"    真实样本数: {self.num_real}")
-        print(f"    生成反事实样本数: {self.num_cf}")
+        print(f"    反事实样本数: {self.num_cf}")
         
         # 数据合并
         if self.num_cf > 0:
-            # 根据 ratio 进行采样，如果要控制比例的话
-            # 这里简单做全量合并，或者截断
+            # 根据 ratio 进行采样
             target_cf_count = int(self.num_real * cf_ratio)
             if self.num_cf > target_cf_count:
                 indices = np.random.choice(self.num_cf, target_cf_count, replace=False)

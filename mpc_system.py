@@ -11,9 +11,13 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import matplotlib.pyplot as plt
 import sys
+
+# [新增] 导入反事实增强模块
+from counterfactual_augmentation import PhysicsBasedCounterfactualGenerator, CounterfactualDataset
 import os
 import warnings
 
@@ -168,7 +172,7 @@ class DecisionControlModel(nn.Module):
         self.heater_gain = heater_gain
         self.vent_gain = vent_gain
         
-    def forward(self, x_past, x_future):
+    def forward(self, x_past, x_future, target_temp_norm=None):
         # 1. 基准预测 (观测者模式) - 关键修改：剥离神经网络对控制量的偏见
         # 我们构建一个 "Neutral" 的未来输入，假设 Heater=0, Vent=0
         # 让神经网络只预测 "自然环境演化" (基线温度)
@@ -189,9 +193,28 @@ class DecisionControlModel(nn.Module):
         u_heat = x_future[:, 0, 0] # (batch, )
         u_vent = x_future[:, 0, 1] # (batch, )
         
-        # 3. 注入物理梯度 (Actor Mode)
-        # 注意广播机制
-        delta_physics = (u_heat * self.heater_gain) + (u_vent * self.vent_gain)
+        # 3. 【新增】动态增益计算
+        # 当温度接近目标时，降低增益以避免振荡
+        # gain_factor = 1 - exp(-error²/σ²)
+        # 误差大时 factor→1 (全力控制), 误差小时 factor→0 (温和控制)
+        if target_temp_norm is not None:
+            # 计算归一化空间下的温度误差
+            pred_flat = base_prediction.view(-1) if base_prediction.dim() > 1 else base_prediction
+            error = torch.abs(target_temp_norm - pred_flat)
+            # σ = 0.1 对应约 3°C (假设温度范围 0-30°C 归一化到 0-1)
+            sigma = 0.1
+            gain_factor = 1.0 - torch.exp(-error**2 / (sigma**2))
+            # 限制最小增益为 0.2，避免完全失去控制能力
+            gain_factor = torch.clamp(gain_factor, min=0.2, max=1.0)
+        else:
+            gain_factor = 1.0
+        
+        # 应用动态增益
+        effective_heater_gain = self.heater_gain * gain_factor
+        effective_vent_gain = self.vent_gain * gain_factor
+        
+        # 4. 注入物理梯度 (Actor Mode)
+        delta_physics = (u_heat * effective_heater_gain) + (u_vent * effective_vent_gain)
         
         # 修正预测值
         # base_prediction shape: (batch, 1) or (batch, )
@@ -225,13 +248,37 @@ class MPC_Controller:
         
         # 积分误差累积项 (解决稳态误差)
         self.integral_error = 0.0
+        
+        # [新增] 计算目标温度的归一化值 (用于动态增益)
+        dummy = np.zeros((1, len(scaler.scale_)))
+        dummy[0, target_idx] = target_temp
+        self.target_temp_norm = scaler.transform(dummy)[0, target_idx]
+        
+        # [新增] 迟滞控制参数 (Hysteresis Control)
+        self.hysteresis_low = target_temp - 1.0   # 下阈值 24.0°C: 低于此值开启加热
+        self.hysteresis_high = target_temp + 0.5  # 上阈值 25.5°C: 高于此值关闭加热
+        self.current_heater_state = 1  # 当前加热器状态 (0=关, 1=开)
 
-    def get_optimal_action(self, current_past_tensor, current_future_base):
+    def get_optimal_action(self, current_past_tensor, current_future_base, current_temp=None):
         """
         滚动时域优化：
         current_past_tensor: (1, seq_len, feat_dim) 当前的历史状态
         current_future_base: (1, horizon, feat_dim) 未来的基础环境数据(如天气、时间)，控制量待填
+        current_temp: 当前实际温度 (用于迟滞控制)
         """
+        # [新增] 迟滞控制逻辑: 在目标附近使用迟滞带避免频繁切换
+        if current_temp is not None:
+            if current_temp < self.hysteresis_low:
+                # 温度低于下阈值 -> 强制开启加热
+                self.current_heater_state = 1
+            elif current_temp > self.hysteresis_high:
+                # 温度高于上阈值 -> 关闭加热
+                self.current_heater_state = 0
+            # else: 在迟滞带内 -> 保持当前状态不变
+            
+            # 返回迟滞控制的动作
+            return [self.current_heater_state, 0], 0.0
+        
         best_cost = float('inf')
         best_action = [0, 0]
         
@@ -251,7 +298,9 @@ class MPC_Controller:
             # 2. 调用模型预测未来轨迹
             with torch.no_grad():
                 # model 输出的是归一化的预测值
-                pred_norm = self.model(current_past_tensor, x_future_sim)
+                # 传入目标温度启用动态增益
+                pred_norm = self.model(current_past_tensor, x_future_sim, 
+                                       target_temp_norm=self.target_temp_norm)
             
             # 3. 反归一化得到真实温度
             # 这种反归一化稍微麻烦，因为 scaler 是针对所有特征的
@@ -298,7 +347,11 @@ class MPC_Controller:
     def update_integral(self, current_temp):
         """ 更新积分误差 (在每步仿真结束后调用) """
         error = self.target_temp - current_temp
+        
+        # [新增] 积分衰减: 让旧的误差逐渐“遗忘”，减少历史误差的累积影响
+        self.integral_error *= 0.95  # 衰减因子: 每步保留 95% 的历史积分
         self.integral_error += error
+        
         # 积分限幅 (Anti-windup) 防止积分饱和
         self.integral_error = np.clip(self.integral_error, -20.0, 20.0)
 
@@ -470,14 +523,29 @@ def main():
     X_train_f, X_test_f = X_future[:train_size], X_future[train_size:]
     y_train, y_test = y[:train_size], y[train_size:]
     
-    # 转 Tensor (保留在 CPU，不要一次性全部加载到 GPU！)
-    X_train_p_t = torch.FloatTensor(X_train_p)  # 在 CPU
-    X_train_f_t = torch.FloatTensor(X_train_f)  # 在 CPU
-    y_train_t = torch.FloatTensor(y_train)       # 在 CPU
+    # X_train_p_t = torch.FloatTensor(X_train_p)  # 在 CPU
+    # X_train_f_t = torch.FloatTensor(X_train_f)  # 在 CPU
+    # y_train_t = torch.FloatTensor(y_train)       # 在 CPU
     
-    # 创建 DataLoader 进行小批量训练 (解决 CUDA OOM 问题)
-    batch_size = 256  # 适合 4GB 显存的 batch size
-    train_dataset = TensorDataset(X_train_p_t, X_train_f_t, y_train_t)
+    # [修改] 使用 CounterfactualDataset 进行增强训练
+    print("\n--> [A2] 初始化反事实数据生成器...")
+    generator = PhysicsBasedCounterfactualGenerator(
+        feature_order=feature_order,
+        target_col=target_col,
+        outdoor_temp_col='Outdoor_Temp', # 确保与预处理时的列名一致
+        solar_col='Outdoor_Solar',
+        scaler=scaler
+    )
+    
+    # 创建混合数据集 (cf_ratio=0.5)，启用缓存加速后续运行
+    train_dataset = CounterfactualDataset(
+        X_train_p, X_train_f, y_train,
+        generator, future_indices, cf_ratio=0.5,
+        cache_path='data/cf_cache.npz'  # 首次运行生成缓存，后续自动加载
+    )
+    
+    # train_dataset = TensorDataset(X_train_p_t, X_train_f_t, y_train_t)
+    batch_size = 256
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
     
     # 3. 模型初始化与训练 (或加载)
@@ -517,15 +585,11 @@ def main():
     # 4. 仿真实验：MPC vs MDP
     print("\n--> 开始对比仿真 (Simulation: MDP vs MPC)...")
     
-    # 【修改】使用“双模型策略”：包装原始模型
-    # heater_gain=0.1: 在归一化空间下给你一个显著的升温奖励
-    # vent_gain=-0.5 (加大惩罚): 强行告诉模型"开窗必降温"，防止它利用历史数据的错误相关性(Vent=Hot)
-    # [修改] 降低 heater_gain 至 0.05 (约 1.25°C)，避免"过热恐惧"导致的不作为
-    # 配合 integral_error 解决稳态误差
-    # [修正] 采用解耦策略后，回调增益至 0.1 (约 2.5°C) 以保证响应力度
+    # 【恢复】使用 DecisionControlModel 包装层注入物理引导梯度
     decision_model = DecisionControlModel(model, heater_gain=0.1, vent_gain=-0.5)
+    print("--> [恢复] 启用物理引导梯度包装层 (heater_gain=0.1, vent_gain=-0.5)...")
     
-    # 初始化控制器 (传入 decision_model 而不是原始 model)
+    # 初始化控制器 (使用包装后的 decision_model)
     mpc = MPC_Controller(decision_model, scaler, target_idx, future_indices, horizon=horizon, target_temp=25.0)
     mdp = LegacyMDPController()
     
@@ -571,7 +635,9 @@ def main():
         current_future_base = torch.FloatTensor(future_base_seq[t]).unsqueeze(0).to(device) # (1, horizon, feat)
         
         # --- A. 运行 MPC ---
-        opt_action, _ = mpc.get_optimal_action(state_mpc_tensor, current_future_base)
+        # 传入当前温度用于迟滞控制
+        curr_mpc_temp = env_mpc.current_temp
+        opt_action, _ = mpc.get_optimal_action(state_mpc_tensor, current_future_base, current_temp=curr_mpc_temp)
         actions_mpc_log.append(opt_action)
         
         # --- B. 运行 MDP ---
