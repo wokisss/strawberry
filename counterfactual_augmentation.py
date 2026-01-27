@@ -63,15 +63,21 @@ class PhysicsBasedCounterfactualGenerator:
             
             for i, col in enumerate(self.feature_order):
                 c_lower = col.lower()
-                if self.outdoor_temp_col.lower() in c_lower or 'outdoor_temp' in c_lower:
-                    self.idx_tout = i
-                if self.solar_col.lower() in c_lower or 'solar' in c_lower:
-                    self.idx_solar = i
+                # [修复] 安全处理 outdoor_temp_col=None 的情况
+                if self.outdoor_temp_col is not None:
+                    if self.outdoor_temp_col.lower() in c_lower or 'outdoor_temp' in c_lower:
+                        self.idx_tout = i
+                # [修复] 安全处理 solar_col=None 的情况
+                if self.solar_col is not None:
+                    if self.solar_col.lower() in c_lower or 'solar' in c_lower or 'illumination' in c_lower:
+                        self.idx_solar = i
             
             if self.idx_tout == -1: 
-                print(f"[Warning] 未找到室外温度列 '{self.outdoor_temp_col}'，将使用默认值 15.0")
+                if self.outdoor_temp_col:
+                    print(f"[Warning] 未找到室外温度列 '{self.outdoor_temp_col}'，将使用默认值 15.0")
             if self.idx_solar == -1:
-                print(f"[Warning] 未找到太阳辐射列 '{self.solar_col}'，将使用默认值 0.0")
+                if self.solar_col:
+                    print(f"[Warning] 未找到太阳辐射列 '{self.solar_col}'，将使用默认值 0.0")
                 
         except ValueError as e:
             print(f"[Error] 特征索引查找失败: {e}")
