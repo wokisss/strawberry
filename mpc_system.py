@@ -266,18 +266,18 @@ class MPC_Controller:
         current_future_base: (1, horizon, feat_dim) 未来的基础环境数据(如天气、时间)，控制量待填
         current_temp: 当前实际温度 (用于迟滞控制)
         """
-        # [新增] 迟滞控制逻辑: 在目标附近使用迟滞带避免频繁切换
-        if current_temp is not None:
-            if current_temp < self.hysteresis_low:
-                # 温度低于下阈值 -> 强制开启加热
-                self.current_heater_state = 1
-            elif current_temp > self.hysteresis_high:
-                # 温度高于上阈值 -> 关闭加热
-                self.current_heater_state = 0
-            # else: 在迟滞带内 -> 保持当前状态不变
-            
-            # 返回迟滞控制的动作
-            return [self.current_heater_state, 0], 0.0
+        # [修改] 移除迟滞控制逻辑，强制启用 MPC 优化
+        # if current_temp is not None:
+        #     if current_temp < self.hysteresis_low:
+        #         # 温度低于下阈值 -> 强制开启加热
+        #         self.current_heater_state = 1
+        #     elif current_temp > self.hysteresis_high:
+        #         # 温度高于上阈值 -> 关闭加热
+        #         self.current_heater_state = 0
+        #     # else: 在迟滞带内 -> 保持当前状态不变
+        #     
+        #     # 返回迟滞控制的动作
+        #     return [self.current_heater_state, 0], 0.0
         
         best_cost = float('inf')
         best_action = [0, 0]
@@ -357,19 +357,19 @@ class MPC_Controller:
 
 class LegacyMDPController:
     """ 【保留】旧的 MDP 控制器 (仅用于生成对比基准) """
-    def __init__(self):
+    def __init__(self, target_temp=25.0):
+        self.target_temp = target_temp
         # 简化的查表逻辑，模拟原 MDP 的行为
-        # 状态: Rational(20-25), Cold(<20), Hot(>25)
-        # 动作: 0(Wait), 1(Act) -> 这里映射回 [Heater, Vent]
+        # 状态: Rational(target-28), Cold(<target), Hot(>28)
         pass
         
     def get_action(self, current_temp):
-        # 简单的基于规则的策略 (模拟 MDP 收敛后的结果)
-        # 目标: 维持 22-25 度
-        if current_temp < 22.0:
-            return [1, 0] # 太冷 -> 开加热
+        # [已修正] 严格对齐目标温度，消除"设定偏差"
+        # 方案2: < target 开加热; > 28 开通风
+        if current_temp < self.target_temp:
+            return [1, 0] # 太冷 -> 开加热 (Strict Baseline)
         elif current_temp > 28.0:
-            return [0, 1] # 太热 -> 开通风
+            return [0, 1] # 太热 -> 开通风 (保持原上限宽松)
         else:
             return [0, 0] # 适宜 -> 待机
 
@@ -591,7 +591,7 @@ def main():
     
     # 初始化控制器 (使用包装后的 decision_model)
     mpc = MPC_Controller(decision_model, scaler, target_idx, future_indices, horizon=horizon, target_temp=25.0)
-    mdp = LegacyMDPController()
+    mdp = LegacyMDPController(target_temp=25.0)
     
     # 选取测试集的一段作为仿真区间 (例如 300 分钟)
     sim_steps = 300
