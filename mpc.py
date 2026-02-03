@@ -286,22 +286,25 @@ class MPC_Controller:
                 pred_vals.append(val_real)
             pred_vals = np.array(pred_vals)
             
-            # 4. 计算代价 (Cost Function) - 简化为单点优化 (与 mpc_system.py 一致)
+            # 4. 计算代价 (Cost Function) - [修复] 全轨迹加权优化
             # ========================================
             
-            # [关键修正] 只使用序列的最后一个点来计算 Cost
-            # 这与 mpc_system.py 的单点预测逻辑对齐
-            pred_final = pred_vals[-1]  # 只取第 H 步的预测温度
+            # [修复] 使用整条轨迹来计算 Cost，而非仅最后一点
+            # 这样能让优化器看到整个升温过程的收益
             
-            # 4.1 跟踪误差 (Tracking Cost) - 包含积分偏置
-            # 与 mpc_system.py 一致: (target - pred + 0.2 * integral)^2
-            cost_deviation = (self.target_temp - pred_final + 0.2 * self.integral_error) ** 2
+            # 4.1 轨迹跟踪误差 (Trajectory Tracking Cost)
+            # 对整条轨迹的平均误差进行惩罚
+            trajectory_error = np.mean((self.target_temp - pred_vals) ** 2)
             
-            # 4.2 能源代价 (Energy Cost) - 低权重
+            # 4.2 终端误差加权 (Terminal Cost) - 强调最终状态
+            pred_final = pred_vals[-1]
+            terminal_error = 5.0 * (self.target_temp - pred_final + 0.2 * self.integral_error) ** 2
+            
+            # 4.3 能源代价 (Energy Cost) - 低权重
             energy_cost = 0.01 * (action[0] + action[1])
             
-            # 总成本 (与 mpc_system.py 完全一致)
-            total_cost = cost_deviation + energy_cost
+            # 总成本 = 轨迹误差 + 终端误差 + 能耗
+            total_cost = trajectory_error + terminal_error + energy_cost
             
             if total_cost < best_cost:
                 best_cost = total_cost
@@ -600,11 +603,11 @@ def main():
     print("\n--> 开始对比仿真 (Simulation: MDP vs MPC)...")
     
     # 【恢复】使用 DecisionControlModel 包装层注入物理引导梯度
-    # [优化] 调整为"每分钟增益" (Per-Step Gain) 以配合 cumsum
-    # 10 步累积后应有显著效果: 0.04 * 10 = 0.4 (约 12°C 归一化后的变化)
-    # 这里设定 heater_gain=0.04, vent_gain=-0.08 (强化通风效果)
-    decision_model = DecisionControlModel(model, heater_gain=0.04, vent_gain=-0.08)
-    print("--> [调整] 物理引导梯度包装层 (Per-Step Gains: H=0.04, V=-0.08)...")
+    # [修复] 大幅增加物理引导增益，让优化器明确感知加热收益
+    # heater_gain: 0.04 -> 0.12 (每步增益提升3倍)
+    # 10 步累积后: 0.12 * 10 = 1.2 (归一化空间下约36°C的温度量程)
+    decision_model = DecisionControlModel(model, heater_gain=0.12, vent_gain=-0.10)
+    print("--> [修复] 物理引导梯度包装层 (Per-Step Gains: H=0.12, V=-0.10)...")
     
     # 初始化控制器 (使用包装后的 decision_model)
     mpc = MPC_Controller(decision_model, scaler, target_idx, future_indices, horizon=horizon, target_temp=25.0)
