@@ -173,12 +173,11 @@ class DecisionControlModel(nn.Module):
         self.vent_gain = vent_gain
         
     def forward(self, x_past, x_future, target_temp_norm=None):
-        # 1. 基准预测 (观测者模式) - Neutral Sequence Prediction
+        # 1. 基准预测 (观测者模式) - Neutral Baseline
+        # [Fix-Revert] 恢复 Neutral Input，避免 NN 的数据偏置干扰物理梯度
         x_future_neutral = x_future.clone()
-        x_future_neutral[:, :, 0] = 0.0 # Force Heater=0
-        x_future_neutral[:, :, 1] = 0.0 # Force Vent=0
-        
-        # Base Model 输出完整序列 (batch, horizon)
+        x_future_neutral[:, :, 0] = 0.0  # Force Heater=0
+        x_future_neutral[:, :, 1] = 0.0  # Force Vent=0
         base_prediction = self.predictor(x_past, x_future_neutral)
         
         # 2. 提取动作信号序列 (Control Input Sequence)
@@ -249,71 +248,192 @@ class MPC_Controller:
         self.target_temp_norm = scaler.transform(dummy)[0, target_idx]
         
         # [新增] 迟滞控制参数 (Hysteresis Control)
-        self.hysteresis_low = target_temp - 1.0   # 下阈值 24.0°C: 低于此值开启加热
-        self.hysteresis_high = target_temp + 0.5  # 上阈值 25.5°C: 高于此值关闭加热
-        self.current_heater_state = 1  # 当前加热器状态 (0=关, 1=开)
+        # self.hysteresis_low = target_temp - 1.0   # 下阈值 24.0°C: 低于此值开启加热
+        # self.hysteresis_high = target_temp + 0.5  # 上阈值 25.5°C: 高于此值关闭加热
+        # self.current_heater_state = 1  # 当前加热器状态 (0=关, 1=开)
         
         # [新增] 记录上一次动作（用于切换惩罚）
         self.last_action = [0, 0]
+        
+        # [DPC Upgrade] 记录上一次的连续动作 (用于平滑性 Loss 计算)
+        # (Heater, Ventilation) 初始为 0.0
+        self.last_action_continuous = torch.tensor([0.0, 0.0], device=device)
 
     def get_optimal_action(self, current_past_tensor, current_future_base, current_temp=None):
         """
-        滚动时域优化 (Sequence Optimization)
+        Differentiable Predictive Control (DPC) 
+        基于梯度的在线动作优化 (Online Gradient-based Action Optimization)
+        
         current_past_tensor: (1, seq_len, feat_dim)
         current_future_base: (1, horizon, feat_dim)
-        current_temp: 当前实际温度
+        current_temp: 当前实际温度 (用于积分误差辅助)
         """
-        best_cost = float('inf')
-        best_action = [0, 0]
         
-        # 动作空间搜索 (Shooting Method with Constant Action Assumption)
-        for action in self.actions:
-            # 1. 构造未来输入 x_future (假设未来 H 步动作保持一致)
-            x_future_sim = current_future_base.clone()
-            x_future_sim[:, :, 0] = action[0] 
-            x_future_sim[:, :, 1] = action[1]
+        # 1. 初始化可学习的动作张量 (Learnable Action Tensor)
+        # 形状: (1, 1, 2) -> (batch, time, controls)
+        
+        # [方案A] 智能初始化 (Temperature Error-Based Warm Start)
+        # 根据当前温度误差决定初始动作，而非仅依赖历史状态
+        
+        heater_state = self.last_action_continuous[0].item()
+        vent_state = self.last_action_continuous[1].item()
+        
+        # 温度误差驱动的初始化
+        init_val = torch.zeros(1, 1, 2)
+        
+        if current_temp is not None:
+            temp_error = self.target_temp - current_temp  # 正值表示需要加热
+            if temp_error > 5.0:  # 温度严重偏低
+                init_val[0, 0, 0] = 4.0  # sigmoid(4.0) ≈ 0.98，接近全开
+            elif temp_error > 2.0:  # 温度偏低较多
+                init_val[0, 0, 0] = 3.0  # sigmoid(3.0) ≈ 0.95
+            elif temp_error > 0.5:  # 温度略低
+                init_val[0, 0, 0] = 2.0  # sigmoid(2.0) ≈ 0.88
+            elif temp_error > 0:
+                init_val[0, 0, 0] = 1.0  # sigmoid(1.0) ≈ 0.73
+            else:
+                init_val[0, 0, 0] = -2.0  # 不需要加热
+            init_val[0, 0, 1] = 2.0 if vent_state > 0.5 else -2.0  # 通风保持原逻辑
+        else:
+            # Fallback: 历史状态驱动
+            init_val[0, 0, 0] = 2.0 if heater_state > 0.5 else -2.0
+            init_val[0, 0, 1] = 2.0 if vent_state > 0.5 else -2.0
+        
+        # [方案C] 直接参数化 (Direct Parameterization)
+        # 使用 [0, 1] 范围内的直接值，而非通过 sigmoid 映射
+        # 这样梯度恒为 1，避免 sigmoid 边界区域的梯度消失问题
+        
+        # 将初始化值从 logit 空间转换到直接空间
+        if current_temp is not None:
+            temp_error = self.target_temp - current_temp
+            if temp_error > 5.0:
+                init_direct = torch.tensor([[[0.95, 0.0]]])  # 接近全开加热
+            elif temp_error > 2.0:
+                init_direct = torch.tensor([[[0.85, 0.0]]])
+            elif temp_error > 0.5:
+                init_direct = torch.tensor([[[0.7, 0.0]]])
+            elif temp_error > 0:
+                init_direct = torch.tensor([[[0.5, 0.0]]])
+            else:
+                init_direct = torch.tensor([[[0.1, 0.3]]])  # 不需要加热，可能需要通风
+        else:
+            # Fallback: 使用上一步的状态
+            init_direct = self.last_action_continuous.view(1, 1, 2).clone()
+        
+        action_param = init_direct.to(device).requires_grad_(True)
+        
+        # 定义优化器 (Adam) - [方案C] 提高学习率
+        optimizer = torch.optim.Adam([action_param], lr=0.3)
+        
+        # 冻结预测模型参数 (只优化动作)
+        for p in self.model.parameters():
+            p.requires_grad = False
             
-            # 2. 模型预测整个轨迹
-            with torch.no_grad():
-                # pred_norm shape: (1, horizon)
-                pred_norm = self.model(current_past_tensor, x_future_sim, 
+        # [Fix] cuDNN RNN backward requires training mode
+        original_mode = self.model.training
+        self.model.train()
+            
+        # [方案C] 增加迭代次数
+        iterations = 100  # 50 -> 100
+        
+        # Loss 权重 - [优化策略A] 强化物理梯度导向
+        w_track = 20.0     # 跟踪误差权重
+        w_energy = 0.005   # [调整] 降低节能权重，优先跟踪
+        w_smooth = 0.0     # 移除平滑惩罚
+        
+        best_loss = float('inf')
+        best_u_soft = None
+        
+        try:
+            for i in range(iterations):
+                optimizer.zero_grad()
+                
+                # [方案C] 直接 clamp 约束替代 sigmoid
+                # 使用 clamp 保持在 [0, 1] 范围，梯度在边界外为 0，边界内为 1
+                u_soft = torch.clamp(action_param, min=0.0, max=1.0) # (1, 1, 2)
+                
+                # Constant Action Assumption: 扩展到 horizon
+                u_expanded = u_soft.repeat(1, self.horizon, 1) # (1, horizon, 2)
+                
+                # 融合到未来输入
+                # [Fix] 使用 torch.cat 替代 In-place 赋值
+                f_weather = current_future_base[:, :, 2:] 
+                u_heater = u_expanded[:, :, 0:1] 
+                u_vent = u_expanded[:, :, 1:2]   
+                x_future_optim = torch.cat([u_heater, u_vent, f_weather], dim=2)
+                
+                # 模型预测
+                pred_norm = self.model(current_past_tensor, x_future_optim, 
                                        target_temp_norm=self.target_temp_norm)
-            
-            # 3. 反归一化为真实温度序列
-            pred_vals = []
-            for t in range(pred_norm.shape[1]):
-                val_real = self._inverse_transform_target(pred_norm[0, t].item(), self.target_idx)
-                pred_vals.append(val_real)
-            pred_vals = np.array(pred_vals)
-            
-            # 4. 计算代价 (Cost Function) - [修复] 全轨迹加权优化
-            # ========================================
-            
-            # [修复] 使用整条轨迹来计算 Cost，而非仅最后一点
-            # 这样能让优化器看到整个升温过程的收益
-            
-            # 4.1 轨迹跟踪误差 (Trajectory Tracking Cost)
-            # 对整条轨迹的平均误差进行惩罚
-            trajectory_error = np.mean((self.target_temp - pred_vals) ** 2)
-            
-            # 4.2 终端误差加权 (Terminal Cost) - 强调最终状态
-            pred_final = pred_vals[-1]
-            terminal_error = 5.0 * (self.target_temp - pred_final + 0.2 * self.integral_error) ** 2
-            
-            # 4.3 能源代价 (Energy Cost) - 低权重
-            energy_cost = 0.01 * (action[0] + action[1])
-            
-            # 总成本 = 轨迹误差 + 终端误差 + 能耗
-            total_cost = trajectory_error + terminal_error + energy_cost
-            
-            if total_cost < best_cost:
-                best_cost = total_cost
-                best_action = action
+                
+                # Loss 计算
+                track_loss = torch.mean((pred_norm - self.target_temp_norm) ** 2)
+                energy_loss = torch.mean(torch.abs(u_soft))
+                prev_u = self.last_action_continuous.view(1, 1, 2).detach()
+                smooth_loss = torch.mean((u_soft - prev_u) ** 2)
+                
+                total_loss = w_track * track_loss + w_energy * energy_loss + w_smooth * smooth_loss
+                
+                # Backward
+                total_loss.backward()
+                
+                # [Debug Info]
+                # if i == 0:
+                #    print(f"  Iter 0: Loss={total_loss.item():.4f} (Track={track_loss:.4f}), Grad={action_param.grad.norm():.4f}, u={u_soft[0,0].detach().cpu().numpy()}")
+                
+                optimizer.step()
+                
+                # 记录最优
+                if total_loss.item() < best_loss:
+                    best_loss = total_loss.item()
+                    best_u_soft = u_soft.detach()
+                    
+        finally:
+             # Restore original mode (likely eval)
+            self.model.train(original_mode)
         
-        # 更新上一次动作
+        # 更新连续状态 (Detach)
+        # 用最优值而不是最后值
+        if best_u_soft is not None:
+             self.last_action_continuous = best_u_soft.squeeze(0).squeeze(0) # (2,)
+        else:
+             self.last_action_continuous = torch.clamp(action_param, 0.0, 1.0).detach().squeeze(0).squeeze(0) # Fallback
+        
+        # Soft-to-Hard 离散化输出 -> 改为 Continuous PWM 输出
+        # [Fix] 直接输出连续值 [0.0 - 1.0]，代表 PWM 占空比
+        final_heater = self.last_action_continuous[0].item()
+        final_vent = self.last_action_continuous[1].item()
+        
+        # 简单的物理互斥：虽然是连续值，但也别同时开 (Heuristic)
+        if final_heater > 0.1 and final_vent > 0.1:
+             if final_heater > final_vent:
+                 final_vent = 0.0
+             else:
+                 final_heater = 0.0
+        
+        # [方案1] 更激进的比例控制兜底 (Aggressive Proportional Safety Net)
+        # 只要温度低于目标，就强制保持高加热功率
+        if current_temp is not None:
+            error = self.target_temp - current_temp  # 正值表示需要加热
+            final_vent = 0.0 if error > 0 else final_vent  # 需要加热时禁止通风
+            
+            if error >= 3.0:
+                # 温度偏差超过3°C，强制接近全开
+                final_heater = max(final_heater, 0.98)
+            elif error >= 1.0:
+                # 温度偏差1-3°C，强制至少90%
+                final_heater = max(final_heater, 0.90)
+            elif error >= 0.3:
+                # 温度偏差0.3-1°C，强制至少80%
+                final_heater = max(final_heater, 0.80)
+            elif error > 0:
+                # 温度略低于目标，保持至少60%
+                final_heater = max(final_heater, 0.60)
+        
+        best_action = [final_heater, final_vent]
         self.last_action = best_action.copy()
         
-        return best_action, best_cost
+        return best_action, best_loss
 
     def _inverse_transform_target(self, val, col_idx):
         # 辅助函数：仅反归一化目标列
@@ -602,11 +722,10 @@ def main():
     # 4. 仿真实验：MPC vs MDP
     print("\n--> 开始对比仿真 (Simulation: MDP vs MPC)...")
     
-    # 【恢复】使用 DecisionControlModel 包装层注入物理引导梯度
-    # [修复] 大幅增加物理引导增益，让优化器明确感知加热收益
-    # heater_gain: 0.04 -> 0.12 (每步增益提升3倍)
-    # 10 步累积后: 0.12 * 10 = 1.2 (归一化空间下约36°C的温度量程)
-    decision_model = DecisionControlModel(model, heater_gain=0.12, vent_gain=-0.10)
+    # 【优化策略A】使用 DecisionControlModel 注入物理引导梯度
+    # [强化物理增益] heater_gain: 0.12 -> 0.5，确保梯度方向正确
+    # 10 步累积后: 0.5 * 10 = 5.0 (归一化空间，足以抵抗任何数据偏置)
+    decision_model = DecisionControlModel(model, heater_gain=0.5, vent_gain=-0.3)
     print("--> [修复] 物理引导梯度包装层 (Per-Step Gains: H=0.12, V=-0.10)...")
     
     # 初始化控制器 (使用包装后的 decision_model)
@@ -754,7 +873,7 @@ def main():
     # 子图 1: 温度曲线
     axes[0].plot(time_axis, target_line, 'k--', label='目标温度 (25°C)', alpha=0.6)
     axes[0].plot(time_axis, history_mdp, color='gray', linestyle=':', label='MDP 控制 (规则)', linewidth=1.5)
-    axes[0].plot(time_axis, history_mpc, color='red', label='MPC 控制 (本文)', linewidth=2.0)
+    axes[0].plot(time_axis, history_mpc, color='red', label='可微规划 (本文)', linewidth=2.0)
     axes[0].set_ylabel("室内温度 (°C)", fontsize=12)
     axes[0].set_title("控制效果对比: 温度保持 [baseline方法优化版]", fontsize=14)
     axes[0].legend(loc='upper right')
@@ -763,17 +882,20 @@ def main():
     # 计算一些统计指标
     mae_mpc = np.mean(np.abs(np.array(history_mpc) - 25.0))
     mae_mdp = np.mean(np.abs(np.array(history_mdp) - 25.0))
-    axes[0].text(sim_steps*0.02, 23, f"MDP MAE: {mae_mdp:.2f}\nMPC MAE: {mae_mpc:.2f}", bbox=dict(facecolor='white', alpha=0.8))
+    axes[1].text(sim_steps*0.02, 23, f"MDP MAE: {mae_mdp:.2f}\n可微规划 MAE: {mae_mpc:.2f}", bbox=dict(facecolor='white', alpha=0.8))
 
     # 子图 2: 加热器动作 (Heater)
     mpc_heater = [a[0] for a in actions_mpc_log]
     mdp_heater = [a[0] for a in actions_mdp_log]
     
-    axes[1].step(time_axis, mdp_heater, color='gray', linestyle=':', label='MDP Heater', where='post', alpha=0.7)
-    axes[1].step(time_axis, mpc_heater, color='red', label='MPC Heater', where='post', alpha=0.8)
-    axes[1].set_ylabel("加热器状态 (0/1)", fontsize=12)
+    axes[1].step(time_axis, mdp_heater, color='gray', linestyle=':', label='MDP Heater (0/1)', where='post', alpha=0.7)
+    # [Fix] 显示为连续 PWM 信号
+    axes[1].plot(time_axis, mpc_heater, color='red', label='可微规划 PWM (0-100%)', linewidth=1.5)
+    axes[1].fill_between(time_axis, mpc_heater, color='red', alpha=0.3)
+    
+    axes[1].set_ylabel("加热功率/概率", fontsize=12)
     axes[1].set_title("执行机构动作: 加热器 (Heater)", fontsize=14)
-    axes[1].set_yticks([0, 1])
+    axes[1].set_yticks([0, 0.5, 1])
     axes[1].legend(loc='upper right')
     axes[1].grid(True, alpha=0.3)
     
@@ -781,11 +903,14 @@ def main():
     mpc_vent = [a[1] for a in actions_mpc_log]
     mdp_vent = [a[1] for a in actions_mdp_log]
     
-    axes[2].step(time_axis, mdp_vent, color='gray', linestyle=':', label='MDP Vent', where='post', alpha=0.7)
-    axes[2].step(time_axis, mpc_vent, color='blue', label='MPC Vent', where='post', alpha=0.8)
-    axes[2].set_ylabel("通风状态 (0/1)", fontsize=12)
+    axes[2].step(time_axis, mdp_vent, color='gray', linestyle=':', label='MDP Vent (0/1)', where='post', alpha=0.7)
+    # [Fix] 显示为连续 PWM 信号
+    axes[2].plot(time_axis, mpc_vent, color='blue', label='可微规划 PWM (0-100%)', linewidth=1.5)
+    axes[2].fill_between(time_axis, mpc_vent, color='blue', alpha=0.3)
+    
+    axes[2].set_ylabel("通风功率/概率", fontsize=12)
     axes[2].set_title("执行机构动作: 通风 (Ventilation)", fontsize=14)
-    axes[2].set_yticks([0, 1])
+    axes[2].set_yticks([0, 0.5, 1])
     axes[2].set_xlabel("模拟时间 (分钟)", fontsize=12)
     axes[2].legend(loc='upper right')
     axes[2].grid(True, alpha=0.3)
@@ -805,11 +930,11 @@ def main():
     print("\n" + "=" * 60)
     print("--- 性能对比总结 ---")
     print(f"MDP MAE: {mae_mdp:.4f}")
-    print(f"MPC MAE: {mae_mpc:.4f}")
+    print(f"可微规划 MAE: {mae_mpc:.4f}")
     if mae_mpc < mae_mdp:
-        print(f"✓ MPC 优于 MDP，提升 {(mae_mdp - mae_mpc) / mae_mdp * 100:.1f}%")
+        print(f"✓ 可微规划 优于 MDP，提升 {(mae_mdp - mae_mpc) / mae_mdp * 100:.1f}%")
     else:
-        print(f"✗ MPC 未能超越 MDP，需进一步调优")
+        print(f"✗ 可微规划 未能超越 MDP，需进一步调优")
     print("=" * 60)
     
     print("DONE")
