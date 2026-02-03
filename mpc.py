@@ -43,27 +43,57 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"--> 使用计算设备: {device}")
 
 class PhysicsGreenhouseEnv:
-    """ 基于物理常识的简化温室环境 (用于仿真 ground truth) """
+    """ 
+    基于物理常识的简化温室环境 (用于仿真 ground truth) 
+    
+    该类模拟了一个简化的温室热力学系统，用于在仿真实验中作为"真实世界"的反馈源。
+    它根据当前温度、控制动作（加热/通风）、外部天气（温度/光照）计算下一时刻的温度。
+    """
     def __init__(self, initial_temp):
         self.current_temp = initial_temp
         
     def step(self, action, outside_temp, solar_radiation=0.0):
-        # 物理参数 (针对分钟级仿真调整)
-        k_insulation = 0.05  # 隔热系数 (越小保温越好)
+        """
+        执行一步物理仿真
+        
+        Args:
+            action (list/array): 控制动作 [heater_power, ventilation_rate]
+            outside_temp (float):室外温度 (°C)
+            solar_radiation (float): 太阳辐射强度 (归一化或原始值，此处作为增益系数的输入)
+            
+        Returns:
+            float: 更新后的室内温度
+        """
+        # --- 物理参数定义 (针对分钟级仿真调整) ---
+        # k_insulation: 隔热系数 (W/m^2·K 简化版)。值越小表示温室保温性能越好，热流失越慢。
+        k_insulation = 0.05  
+        
+        # power_heater: 加热器最大功率带来的温升能力 (°C/min)。
+        # 0.5 意味着全功率加热1分钟可提升 0.5°C (假设无热损耗)。
         power_heater = 0.5   # [恢复] 加热功率 (0.35->0.5)，确保能抵抗热流失
-        eff_vent = 0.1       # 通风效率
+        
+        # eff_vent: 通风效率。表示通风带走热量的速率，同时也试图将室内温度拉向室外温度。
+        eff_vent = 0.1       
+        
+        # k_solar: 太阳辐射增益系数。模拟温室效应，将光照转化为热量。
         k_solar = 0.01       # [校准] 调大太阳辐射增益 (0.002 -> 0.01)，模拟真实温室的温室效应
         
         
-        # 动力学方程
-        # dT = -k*(Tin - Tout) + P_heat*u_heat - k_vent*u_vent*(Tin - Tout) + k_solar*Solar
+        # --- 动力学方程 (一阶热力学微分方程的离散化) ---
+        # 基本公式: dT/dt = Q_loss + Q_heater + Q_vent + Q_solar
+        # 其中:
+        # 1. 传导热损耗: -k * (Tin - Tout)
+        # 2. 加热增益: +P_heat * u_heat
+        # 3. 通风热交换: -k_vent * u_vent * (Tin - Tout)
+        # 4. 太阳辐射增益: +k_solar * Solar
+        
         delta_loss = - k_insulation * (self.current_temp - outside_temp)
         delta_heat = power_heater * action[0] 
         # 通风不仅带走热量，还试图将室内温度拉向室外温度
         delta_vent = - eff_vent * action[1] * (self.current_temp - outside_temp)
         delta_solar = k_solar * solar_radiation
         
-        # 更新状态 + 随机噪声
+        # 更新状态 + 随机过程噪声 (模拟未建模的扰动)
         self.current_temp += delta_loss + delta_heat + delta_vent + delta_solar + np.random.normal(0, 0.05)
         return self.current_temp
 
@@ -72,73 +102,107 @@ class PhysicsGreenhouseEnv:
 # ==============================================================================
 
 class ODEF(nn.Module):
-    """ 神经微分方程 (Neural ODE) 导数提取器 """
+    """ 
+    神经微分方程 (Neural ODE) 导数提取器 
+    
+    用于从数据中学习系统的连续时间动力学特性。
+    f(t, y) = dy/dt
+    网络拟合的是状态 y 在时间 t 的变化率。
+    """
     def __init__(self, input_dim, hidden_dim=64):
         super(ODEF, self).__init__()
         self.net = nn.Sequential(
-            nn.Linear(input_dim + 1, hidden_dim),
-            nn.Tanh(),
+            nn.Linear(input_dim + 1, hidden_dim), # 输入: 状态 y + 时间 t
+            nn.Tanh(),                            # Tanh 激活函数常用于物理建模，输出范围 [-1, 1]
             nn.Linear(hidden_dim, hidden_dim),
-            nn.Softplus(),
-            nn.Linear(hidden_dim, input_dim)
+            nn.Softplus(),                        # Softplus 保证平滑性
+            nn.Linear(hidden_dim, input_dim)      # 输出: dy/dt，维度与输入状态相同
         )
 
     def forward(self, t, y):
+        # 构造时间向量，使其与 batch 维度匹配
         t_vec = torch.ones_like(y[..., :1]) * t
         cat_input = torch.cat([y, t_vec], dim=-1)
         return self.net(cat_input)
 
 class SegmentedHybridModel(nn.Module):
-    """ 分段混合模型 (三头专家系统) - 与 baseline.py 完全一致 """
+    """ 
+    分段混合模型 (Segmented Hybrid Model) - 三头专家系统
+    
+    这是一个结合了历史时序特征提取和未来控制信号处理的混合预测模型。
+    核心特点是采用了"专家混合 (Mixture of Experts)" 架构，针对不同的控制模式（加热、通风、自然）
+    设计了专门的预测头，并根据控制信号自动加权融合。
+    
+    Inputs:
+        x_past: (batch, past_seq_len, input_dim) - 历史观测序列
+        x_future: (batch, forecast_horizon, future_dim) - 未来控制量和外部天气
+        
+    Outputs:
+        final_pred: (batch, forecast_horizon) - 预测的目标变量（如温度）序列
+    """
     def __init__(self, input_dim, future_dim, forecast_horizon, hidden_dim=32):
         super(SegmentedHybridModel, self).__init__()
         
-        # 共享特征提取器
+        # --- 共享特征提取器 (Encoder) ---
+        # 1. CNN 提取局部时序模式 (滑动窗口特征)
         self.past_conv1 = nn.Conv1d(in_channels=input_dim, out_channels=64, kernel_size=3, padding=1)
+        # 2. BiGRU 捕捉长距离时序依赖 (双向)
         self.past_bigru = nn.GRU(input_size=64, hidden_size=hidden_dim, num_layers=2, batch_first=True, bidirectional=True)
+        # 3. Attention 层计算时间步的重要性权重
         self.past_attention = nn.Linear(hidden_dim * 2, 1)
+        # 4. GRU 处理未来输入序列 (Decoder 部分)
         self.future_gru = nn.GRU(input_size=future_dim, hidden_size=hidden_dim, num_layers=1, batch_first=True)
         
-        # 分段输出头
+        # --- 分段输出头 (Expert Decoders) ---
+        # 特征维度 = 历史上下文 (hidden*2) + 未来上下文 (hidden)
         feature_size = hidden_dim * 2 + hidden_dim
         
-        # 专家 A: 加热模式
+        # 专家 A: 加热模式专用预测头 (拟合加热状态下的温升曲线)
         self.fc_heat = nn.Sequential(nn.Linear(feature_size, 32), nn.ReLU(), nn.Linear(32, forecast_horizon))
-        # 专家 B: 通风模式
+        # 专家 B: 通风模式专用预测头 (拟合降温曲线)
         self.fc_vent = nn.Sequential(nn.Linear(feature_size, 32), nn.ReLU(), nn.Linear(32, forecast_horizon))
-        # 专家 C: 自然模式
+        # 专家 C: 自然模式专用预测头 (拟合自然冷却/加热曲线)
         self.fc_natural = nn.Sequential(nn.Linear(feature_size, 32), nn.ReLU(), nn.Linear(32, forecast_horizon))
 
     def forward(self, x_past, x_future):
-        # 历史特征提取
+        # --- 1. 历史特征提取 (History Encoding) ---
+        # Conv1d 需要输入维度为 (batch, channels, seq_len)
         x_p = x_past.permute(0, 2, 1)
         x_p = torch.relu(self.past_conv1(x_p))
-        x_p = x_p.permute(0, 2, 1)
-        gru_out_p, _ = self.past_bigru(x_p)
+        x_p = x_p.permute(0, 2, 1) # 还原为 (batch, seq_len, channels)
+        
+        # BiGRU 编码
+        gru_out_p, _ = self.past_bigru(x_p) # gru_out_p: (batch, seq_len, hidden*2)
+        
+        # Attention 加权聚合
         weights_p = torch.softmax(self.past_attention(gru_out_p), dim=1)
-        attended_p = torch.sum(weights_p * gru_out_p, dim=1)
+        attended_p = torch.sum(weights_p * gru_out_p, dim=1) # (batch, hidden*2)
         
-        # 未来特征提取
+        # --- 2. 未来特征提取 (Future Encoding) ---
+        # 只需要最后一个 Hidden State 作为未来的上下文概览
         _, h_n = self.future_gru(x_future)
-        future_features = h_n[-1]
+        future_features = h_n[-1] # (batch, hidden)
         
-        # 特征融合
+        # --- 3. 特征融合 ---
         combined = torch.cat([attended_p, future_features], dim=1)
         
-        # 专家预测
+        # --- 4. 专家预测 (Expert Prediction) ---
         pred_heat = self.fc_heat(combined)
         pred_vent = self.fc_vent(combined)
         pred_natural = self.fc_natural(combined)
         
-        # 门控融合 (根据 Heater 和 Ventilation 的状态)
+        # --- 5. 门控融合 (Gating Mechanism) ---
+        # 根据未来的平均控制动作强度，动态决定信赖哪个专家
         # 假设 x_future 的前两列是 Heater, Ventilation
         heater_signal = x_future[:, :, 0].mean(dim=1, keepdim=True)
         vent_signal = x_future[:, :, 1].mean(dim=1, keepdim=True)
         
         w_heat = heater_signal
         w_vent = vent_signal
+        # 自然模式权重为剩余部分 (保证权重和近似为1)
         w_natural = torch.clamp(1.0 - w_heat - w_vent, min=0.0)
         
+        # 加权求和得到最终预测
         final_pred = (w_heat * pred_heat) + (w_vent * pred_vent) + (w_natural * pred_natural)
         return final_pred
 
@@ -149,14 +213,17 @@ class SegmentedHybridModel(nn.Module):
 
 class DecisionControlModel(nn.Module):
     """
-    【新增】决策专用代理模型 (Control-Oriented Surrogate Model)
+    【核心改进】决策专用代理模型 (Control-Oriented Surrogate Model)
+    包含物理引导梯度 (Physics-Guided Gradients / PGG) 机制
     
-    原理 (Separation of Prediction and Process Models):
-    - 预测任务: 使用原始 SegmentedHybridModel，由真实数据训练，负责拟合环境惯性、天气影响。
-    - 控制任务: 在预测结果上叠加 "物理引导梯度 (Physics-Guided Gradients)"。
+    设计理念 (Separation of Prediction and Process Models):
+    单纯的数据驱动模型（如上面的 SegmentedHybridModel）往往具有"惰性"，即倾向于预测状态保持不变，
+    导致优化器认为"不开加热器温度也不会降太快"，从而陷入局部最优。
+    
+    本模型通过显式注入物理先验知识（Physics Priors），强行建立 动作 -> 结果 的梯度关联。
     
     公式:
-    T_decision = T_prediction + Gain_heat * Heater + Gain_vent * Vent
+    T_decision = T_prediction + Accumulate( Gain_heat * Heater + Gain_vent * Vent )
     
     作用:
     即使 T_prediction 因为数据惯性认为 "Heater开不开都一样"，这里强加的 Gain 项
@@ -164,17 +231,20 @@ class DecisionControlModel(nn.Module):
     """
     def __init__(self, original_prediction_model, heater_gain=0.05, vent_gain=-0.05):
         super(DecisionControlModel, self).__init__()
-        self.predictor = original_prediction_model  # 模型 A (Observer)
-        # 这些增益是在 "归一化空间" 下的近似值。
+        self.predictor = original_prediction_model  # 基础预测模型 A (Observer)
+        
+        # 物理增益参数 (在归一化空间下的近似值)
         # 需根据 MinMaxScaler 的范围微调。假设 Temp 归一化后 range 0-1。
-        # 0.05 的增益意味着开启加热器能在 10分钟内 额外贡献 5% 的温度量程提升，
+        # 0.05 的增益意味着开启加热器能在单位时间内 额外贡献 5% 的温度量程提升。
         # 这是一个很强的"提示"，足以打破优化器的惰性。
         self.heater_gain = heater_gain
         self.vent_gain = vent_gain
         
     def forward(self, x_past, x_future, target_temp_norm=None):
         # 1. 基准预测 (观测者模式) - Neutral Baseline
-        # [Fix-Revert] 恢复 Neutral Input，避免 NN 的数据偏置干扰物理梯度
+        # [Fix-Revert] 恢复 Neutral Input，避免 NN 的数据偏置干扰物理梯度。
+        # 我们先让神经网络预测"如果不操作会怎样" (或者假设操作为0)，
+        # 这样我们添加的物理项就是纯粹的"操作增量"。
         x_future_neutral = x_future.clone()
         x_future_neutral[:, :, 0] = 0.0  # Force Heater=0
         x_future_neutral[:, :, 1] = 0.0  # Force Vent=0
@@ -185,12 +255,14 @@ class DecisionControlModel(nn.Module):
         u_heat_seq = x_future[:, :, 0] # (batch, horizon)
         u_vent_seq = x_future[:, :, 1] # (batch, horizon)
         
-        # 3. [优化] 动态增益计算 (Sequence-Aware)
-        # 针对序列中的每个点计算增益
+        # 3. [优化] 动态增益计算 (Sequence-Aware / State-Dependent Gain)
+        # 静态增益可能在温度已经很高时导致过度加热。
+        # 我们使用高斯核函数：当 CurrentTemp 远离 TargetTemp 时，物理增益更强；接近时减弱。
         if target_temp_norm is not None:
             # error shape: (batch, horizon)
             error_seq = torch.abs(target_temp_norm - base_prediction)
             sigma = 0.1
+            # 增益因子随误差增大而增大，最大为 1.0，最小为 0.2 (保留基础物理响应)
             gain_factor_seq = 1.0 - torch.exp(-error_seq**2 / (sigma**2))
             gain_factor_seq = torch.clamp(gain_factor_seq, min=0.2, max=1.0)
         else:
@@ -202,14 +274,16 @@ class DecisionControlModel(nn.Module):
         
         # 4. 注入物理梯度 (Actor Mode) - Cumulative Integration
         # [核心修正] 温度变化率是累积的: T[t] = T[t-1] + delta_t
-        # 所以这里的 delta_physics 应该是对每步增益的累积求和
+        # NN 输出的是 T[t]，但我们要叠加的是由于动作导致的 delta_T 的累积值。
         
+        # 计算每一步的温变增量
         step_delta_physics = (u_heat_seq * effective_heater_gain) + (u_vent_seq * effective_vent_gain)
         
-        # 使用 cumsum 模拟积分过程
+        # 使用 cumsum 模拟积分过程 (Integration)
+        # 动作在 t=0 产生的影响会持续叠加到 t=1, 2, ...
         delta_physics_accum = torch.cumsum(step_delta_physics, dim=1)
         
-        # reshape if necessary (mostly not needed as base_prediction is batch, horizon)
+        # 最终预测 = 数据驱动基准 + 物理引导修正
         if base_prediction.dim() == 2 and delta_physics_accum.dim() == 2:
              control_prediction = base_prediction + delta_physics_accum
         else:
@@ -221,7 +295,13 @@ class DecisionControlModel(nn.Module):
 
 
 class MPC_Controller:
-    """ 【新增】模型预测控制器 (Model Predictive Controller) """
+    """ 
+    【新增】模型预测控制器 (Model Predictive Controller) 
+    
+    实现了基于梯度的模型预测控制 (Gradient-based MPC / DPC)。
+    不同于传统的基于搜索的 MPC (如 MPPI 或 CEM)，本方法直接利用 PyTorch 的自动微分功能，
+    通过梯度下降优化控制动作序列，以最小化预测的损失函数。
+    """
     def __init__(self, model, scaler, target_idx, future_indices, horizon=10, target_temp=25.0):
         self.model = model
         self.scaler = scaler
@@ -239,24 +319,19 @@ class MPC_Controller:
             # [1, 1] 已移除: 既加热又通风是不合理的能源浪费
         ]
         
-        # 积分误差累积项 (解决稳态误差)
+        # 积分误差累积项 (PID 控制中的 I 项，解决稳态误差)
         self.integral_error = 0.0
         
-        # [新增] 计算目标温度的归一化值 (用于动态增益)
+        # [新增] 计算目标温度的归一化值 (用于动态增益和 Loss 计算)
         dummy = np.zeros((1, len(scaler.scale_)))
         dummy[0, target_idx] = target_temp
         self.target_temp_norm = scaler.transform(dummy)[0, target_idx]
         
-        # [新增] 迟滞控制参数 (Hysteresis Control)
-        # self.hysteresis_low = target_temp - 1.0   # 下阈值 24.0°C: 低于此值开启加热
-        # self.hysteresis_high = target_temp + 0.5  # 上阈值 25.5°C: 高于此值关闭加热
-        # self.current_heater_state = 1  # 当前加热器状态 (0=关, 1=开)
-        
-        # [新增] 记录上一次动作（用于切换惩罚）
+        # [新增] 记录上一次动作
         self.last_action = [0, 0]
         
-        # [DPC Upgrade] 记录上一次的连续动作 (用于平滑性 Loss 计算)
-        # (Heater, Ventilation) 初始为 0.0
+        # [DPC Upgrade] 记录上一次的连续动作 (Heater, Vent) 初始为 0.0
+        # 用于计算动作平滑度损失 (Smoothness Loss) 和作为热启动 (Warm Start) 的基础
         self.last_action_continuous = torch.tensor([0.0, 0.0], device=device)
 
     def get_optimal_action(self, current_past_tensor, current_future_base, current_temp=None):
@@ -264,16 +339,28 @@ class MPC_Controller:
         Differentiable Predictive Control (DPC) 
         基于梯度的在线动作优化 (Online Gradient-based Action Optimization)
         
-        current_past_tensor: (1, seq_len, feat_dim)
-        current_future_base: (1, horizon, feat_dim)
-        current_temp: 当前实际温度 (用于积分误差辅助)
+        原理:
+        1. 将控制动作 u 视为可学习的参数 (Requires Grad)。
+        2. 将 u 输入到可微代理解 (DecisionControlModel) 得到预测轨迹。
+        3. 计算 Loss (预测轨迹与目标的偏差 + 能耗)。
+        4. 反向传播梯度，更新 u。
+        
+        Args:
+            current_past_tensor: (1, seq_len, feat_dim) 历史状态
+            current_future_base: (1, horizon, feat_dim) 未来环境预报 (天气等不可控因素)
+            current_temp: 当前实际温度 (用于积分误差辅助和初始化)
+            
+        Returns:
+            best_action: 优化后的 [Heater, Vent] 控制指令
         """
         
         # 1. 初始化可学习的动作张量 (Learnable Action Tensor)
         # 形状: (1, 1, 2) -> (batch, time, controls)
+        # 由于我们假设在一个视界内保持动作不变 (控制步长=预测视界)，所以 time维度为1
         
         # [方案A] 智能初始化 (Temperature Error-Based Warm Start)
-        # 根据当前温度误差决定初始动作，而非仅依赖历史状态
+        # 根据当前温度误差决定初始动作，为优化器提供一个好的起点，
+        # 避免陷入局部极小值 (例如需要加热时却初始化在通风区域)。
         
         heater_state = self.last_action_continuous[0].item()
         vent_state = self.last_action_continuous[1].item()
@@ -300,8 +387,8 @@ class MPC_Controller:
             init_val[0, 0, 1] = 2.0 if vent_state > 0.5 else -2.0
         
         # [方案C] 直接参数化 (Direct Parameterization)
-        # 使用 [0, 1] 范围内的直接值，而非通过 sigmoid 映射
-        # 这样梯度恒为 1，避免 sigmoid 边界区域的梯度消失问题
+        # 使用 [0, 1] 范围内的直接值，而非通过 sigmoid 映射 logits。
+        # 这样梯度恒为 1，避免 sigmoid 边界区域的梯度消失问题 (Vanishing Gradients)。
         
         # 将初始化值从 logit 空间转换到直接空间
         if current_temp is not None:
@@ -320,12 +407,13 @@ class MPC_Controller:
             # Fallback: 使用上一步的状态
             init_direct = self.last_action_continuous.view(1, 1, 2).clone()
         
+        # 将动作设置为可求导的叶子节点
         action_param = init_direct.to(device).requires_grad_(True)
         
-        # 定义优化器 (Adam) - [方案C] 提高学习率
+        # 定义优化器 (Adam) - [方案C] 使用较高的学习率以快速收敛
         optimizer = torch.optim.Adam([action_param], lr=0.3)
         
-        # 冻结预测模型参数 (只优化动作)
+        # 冻结预测模型参数 (只优化动作，不更新模型权重)
         for p in self.model.parameters():
             p.requires_grad = False
             
@@ -333,13 +421,13 @@ class MPC_Controller:
         original_mode = self.model.training
         self.model.train()
             
-        # [方案C] 增加迭代次数
-        iterations = 100  # 50 -> 100
+        # [方案C] 迭代次数
+        iterations = 100  
         
-        # Loss 权重 - [优化策略A] 强化物理梯度导向
-        w_track = 20.0     # 跟踪误差权重
-        w_energy = 0.005   # [调整] 降低节能权重，优先跟踪
-        w_smooth = 0.0     # 移除平滑惩罚
+        # Loss 权重配置
+        w_track = 20.0     # 跟踪误差权重 (最优先)
+        w_energy = 0.005   # [调整] 降低节能权重，防止为了省电而不加热
+        w_smooth = 0.0     # 平滑惩罚 (此处设为0，允许快速响应)
         
         best_loss = float('inf')
         best_u_soft = None
@@ -348,42 +436,39 @@ class MPC_Controller:
             for i in range(iterations):
                 optimizer.zero_grad()
                 
-                # [方案C] 直接 clamp 约束替代 sigmoid
-                # 使用 clamp 保持在 [0, 1] 范围，梯度在边界外为 0，边界内为 1
+                # [方案C] 直接 clamp 约束
+                # 约束动作在 [0, 1] 合法范围内
+                # clamp 的梯度特性：在边界内 grad=1，在边界外 grad=0
                 u_soft = torch.clamp(action_param, min=0.0, max=1.0) # (1, 1, 2)
                 
-                # Constant Action Assumption: 扩展到 horizon
+                # Constant Action Assumption: 假设在预测时域内保持同一种动作
                 u_expanded = u_soft.repeat(1, self.horizon, 1) # (1, horizon, 2)
                 
                 # 融合到未来输入
-                # [Fix] 使用 torch.cat 替代 In-place 赋值
+                # 将优化的控制动作与固定的未来天气拼接
                 f_weather = current_future_base[:, :, 2:] 
                 u_heater = u_expanded[:, :, 0:1] 
                 u_vent = u_expanded[:, :, 1:2]   
                 x_future_optim = torch.cat([u_heater, u_vent, f_weather], dim=2)
                 
-                # 模型预测
+                # 模型预测 (前向传播)
                 pred_norm = self.model(current_past_tensor, x_future_optim, 
                                        target_temp_norm=self.target_temp_norm)
                 
                 # Loss 计算
-                track_loss = torch.mean((pred_norm - self.target_temp_norm) ** 2)
-                energy_loss = torch.mean(torch.abs(u_soft))
+                track_loss = torch.mean((pred_norm - self.target_temp_norm) ** 2) # 跟踪误差
+                energy_loss = torch.mean(torch.abs(u_soft)) # 能耗 (动作幅度)
                 prev_u = self.last_action_continuous.view(1, 1, 2).detach()
-                smooth_loss = torch.mean((u_soft - prev_u) ** 2)
+                smooth_loss = torch.mean((u_soft - prev_u) ** 2) # 动作平滑度
                 
                 total_loss = w_track * track_loss + w_energy * energy_loss + w_smooth * smooth_loss
                 
-                # Backward
+                # Backward (计算 loss 对 action_param 的梯度)
                 total_loss.backward()
-                
-                # [Debug Info]
-                # if i == 0:
-                #    print(f"  Iter 0: Loss={total_loss.item():.4f} (Track={track_loss:.4f}), Grad={action_param.grad.norm():.4f}, u={u_soft[0,0].detach().cpu().numpy()}")
                 
                 optimizer.step()
                 
-                # 记录最优
+                # 记录最优解 (Loss 最小的动作)
                 if total_loss.item() < best_loss:
                     best_loss = total_loss.item()
                     best_u_soft = u_soft.detach()
@@ -392,19 +477,18 @@ class MPC_Controller:
              # Restore original mode (likely eval)
             self.model.train(original_mode)
         
-        # 更新连续状态 (Detach)
-        # 用最优值而不是最后值
+        # 更新连续状态
         if best_u_soft is not None:
              self.last_action_continuous = best_u_soft.squeeze(0).squeeze(0) # (2,)
         else:
-             self.last_action_continuous = torch.clamp(action_param, 0.0, 1.0).detach().squeeze(0).squeeze(0) # Fallback
+             self.last_action_continuous = torch.clamp(action_param, 0.0, 1.0).detach().squeeze(0).squeeze(0)
         
-        # Soft-to-Hard 离散化输出 -> 改为 Continuous PWM 输出
-        # [Fix] 直接输出连续值 [0.0 - 1.0]，代表 PWM 占空比
+        # 离散化输出 or Continuous PWM 输出
+        # 这里直接输出连续值 [0.0 - 1.0]，代表 PWM (脉宽调制) 占空比
         final_heater = self.last_action_continuous[0].item()
         final_vent = self.last_action_continuous[1].item()
         
-        # 简单的物理互斥：虽然是连续值，但也别同时开 (Heuristic)
+        # 简单的物理互斥逻辑：加热和通风不应同时进行
         if final_heater > 0.1 and final_vent > 0.1:
              if final_heater > final_vent:
                  final_vent = 0.0
@@ -412,7 +496,8 @@ class MPC_Controller:
                  final_heater = 0.0
         
         # [方案1] 更激进的比例控制兜底 (Aggressive Proportional Safety Net)
-        # 只要温度低于目标，就强制保持高加热功率
+        # 纯梯度优化有时可能不够鲁棒，这里加上一层基于规则的"安全网"。
+        # 只要温度低于目标，就强制保持一定比例的加热功率，防止优化器"偷懒"。
         if current_temp is not None:
             error = self.target_temp - current_temp  # 正值表示需要加热
             final_vent = 0.0 if error > 0 else final_vent  # 需要加热时禁止通风
@@ -445,15 +530,20 @@ class MPC_Controller:
         """ 更新积分误差 (在每步仿真结束后调用) """
         error = self.target_temp - current_temp
         
-        # [新增] 积分衰减: 让旧的误差逐渐"遗忘"，减少历史误差的累积影响
-        self.integral_error *= 0.95  # 衰减因子: 每步保留 95% 的历史积分
+        # [新增] 积分衰减: 让旧的误差逐渐"遗忘"，减少历史误差的累积影响 (Leaky Integral)
+        self.integral_error *= 0.95  # 衰减因子
         self.integral_error += error
         
-        # 积分限幅 (Anti-windup) 防止积分饱和
+        # 积分限幅 (Anti-windup) 防止积分饱和导致超调
         self.integral_error = np.clip(self.integral_error, -20.0, 20.0)
 
 class LegacyMDPController:
-    """ 【保留】旧的 MDP 控制器 (仅用于生成对比基准) """
+    """ 
+    【保留】旧的 MDP 控制器 (作为对比 Baseline) 
+    
+    使用传统的规则/查表逻辑（Rule-based Control），模拟简单的马尔可夫决策过程。
+    用于与本文提出的 DPC 方法进行性能对比。
+    """
     def __init__(self, target_temp=25.0):
         self.target_temp = target_temp
         # 简化的查表逻辑，模拟原 MDP 的行为
@@ -461,6 +551,15 @@ class LegacyMDPController:
         pass
         
     def get_action(self, current_temp):
+        """
+        获取动作 (基于简单的阈值规则)
+        
+        Args:
+           current_temp: 当前温度
+           
+        Returns:
+           [heater, vent] (离散 0/1)
+        """
         # [已修正] 严格对齐目标温度，消除"设定偏差"
         # 方案2: < target 开加热; > 28 开通风
         if current_temp < self.target_temp:
