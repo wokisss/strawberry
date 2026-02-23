@@ -53,9 +53,10 @@ class PWMDriver:
 
 class PWMSimulator:
     """
-    PWM 仿真器: 在仿真循环中模拟 PWM 离散化效果
+    PWM 仿真器: 在仿真循环中模拟 PWM 离散化效果 (周期锁定模式)
 
-    在每个仿真步中，根据当前 PWM 周期内的位置决定实际输出 0/1。
+    每个 PWM 周期开始时锁定占空比，整个周期内不接受新值。
+    周期中间调用 set_duty 的值会被暂存，在下一个周期开始时生效。
 
     Args:
         driver: PWMDriver 实例
@@ -63,12 +64,19 @@ class PWMSimulator:
 
     def __init__(self, driver):
         self.driver = driver
-        self._schedules = {}    # channel_name → schedule
+        self._schedules = {}    # channel_name → 当前锁定的 schedule
+        self._pending = {}      # channel_name → 待生效的占空比 (暂存)
         self._tick = 0
 
     def set_duty(self, channel, duty_cycle):
-        """设置通道占空比 (下一个周期生效)"""
-        self._schedules[channel] = self.driver.duty_to_schedule(duty_cycle)
+        """设置通道占空比 (下一个周期开始时生效)"""
+        self._pending[channel] = duty_cycle
+
+    def _apply_pending(self):
+        """将暂存的占空比应用为新 schedule"""
+        for ch, duty in self._pending.items():
+            self._schedules[ch] = self.driver.duty_to_schedule(duty)
+        self._pending.clear()
 
     def step(self):
         """
@@ -77,6 +85,12 @@ class PWMSimulator:
         Returns:
             dict: {channel_name: bool} 每个通道的当前开关状态
         """
+        cycle = self.driver.cycle
+
+        # 周期开始时：锁定新的占空比
+        if self._tick % cycle == 0:
+            self._apply_pending()
+
         states = {}
         for ch, schedule in self._schedules.items():
             idx = self._tick % len(schedule)
@@ -88,3 +102,4 @@ class PWMSimulator:
         """重置仿真时钟"""
         self._tick = 0
         self._schedules.clear()
+        self._pending.clear()
