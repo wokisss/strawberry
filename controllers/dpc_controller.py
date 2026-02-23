@@ -52,14 +52,15 @@ class DPCController:
             }
             self._integral_decay = config.integral_decay
             self._integral_clip = config.integral_clip
+            self._vent_suppress_margin = getattr(config, 'vent_suppress_margin', 2.0)
         else:
             self.horizon = horizon
             self.target_temp = target_temp
-            self._lr = 0.3
+            self._lr = 0.2
             self._iterations = 100
             self._w_track = 20.0
-            self._w_energy = 0.005
-            self._w_smooth = 0.0
+            self._w_energy = 0.001
+            self._w_smooth = 0.1
             self._safety = {
                 'tier1_error': 3.0, 'tier1_min': 0.98,
                 'tier2_error': 1.0, 'tier2_min': 0.90,
@@ -68,6 +69,7 @@ class DPCController:
             }
             self._integral_decay = 0.95
             self._integral_clip = 20.0
+            self._vent_suppress_margin = 2.0
 
         # 设备
         self._device = next(model.parameters()).device
@@ -122,7 +124,7 @@ class DPCController:
             p.requires_grad = False
 
         original_mode = self.model.training
-        self.model.train()  # cuDNN RNN backward requires training mode
+        self.model.train()  # cuDNN RNN backward 需要 train 模式 (模型无 Dropout，不影响结果)
 
         best_loss = float('inf')
         best_u_soft = None
@@ -190,7 +192,10 @@ class DPCController:
         # 比例安全兜底 (Proportional Safety Net)
         if current_temp is not None:
             error = self.target_temp - current_temp
-            final_vent = 0.0 if error > 0 else final_vent
+            # 通风抑制区: 只有当温度超过目标 + margin 时才允许通风
+            # 防止温度刚过目标就开通风，被 PWM 锁定后温度骤降
+            if error > -self._vent_suppress_margin:
+                final_vent = 0.0
 
             s = self._safety
             if error >= s['tier1_error']:

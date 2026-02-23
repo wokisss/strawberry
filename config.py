@@ -80,14 +80,22 @@ class Config:
     heater_gain: float = 0.5      # 加热物理增益 (归一化空间)
     vent_gain: float = -0.3       # 通风物理增益 (归一化空间)
     target_temp: float = 25.0     # 目标温度 (°C)
-    dpc_lr: float = 0.3           # DPC优化器学习率
+    dpc_lr: float = 0.2           # DPC优化器学习率
     dpc_iterations: int = 100     # DPC优化迭代次数
     w_track: float = 20.0         # 跟踪误差权重
-    w_energy: float = 0.005       # 节能权重
-    w_smooth: float = 0.0         # 平滑惩罚权重 (当前禁用)
+    w_energy: float = 0.001       # 节能权重 (降低以给优化器更多自由度)
+    w_smooth: float = 0.1         # 平滑惩罚权重 (抑制动作跳变)
+    vent_suppress_margin: float = 2.0  # 通风抑制边界: temp < target+2°C 时禁止通风
 
     # ======================== MDP参数 ========================
     mdp_vent_threshold: float = 28.0  # MDP 开通风阈值
+
+    # ======================== PSO控制器参数 ========================
+    pso_n_particles: int = 30         # 粒子数量
+    pso_n_generations: int = 50       # 迭代代数
+    pso_w_inertia: float = 0.7        # 惯性权重
+    pso_c1: float = 1.5               # 认知因子 (向个体最优靠拢)
+    pso_c2: float = 1.5               # 社会因子 (向全局最优靠拢)
 
     # ======================== PWM驱动参数 ========================
     pwm_cycle: int = 10       # PWM周期 (分钟)

@@ -4,7 +4,7 @@ simulation/visualizer.py
 --------------------------
 仿真结果可视化
 
-生成温度曲线 + 动作对比图，支持 PWM 离散化展示。
+生成 DPC vs PSO 对比图：温度曲线 + 动作对比 + 计算耗时。
 """
 
 import os
@@ -39,7 +39,7 @@ class Visualizer:
 
     def plot_comparison(self, sim_result, save=True):
         """
-        绘制 MPC vs MDP 对比图
+        绘制 DPC vs PSO 对比图 (4 子图)
 
         Args:
             sim_result: SimResult 对象
@@ -54,90 +54,99 @@ class Visualizer:
         target_line = [target_temp] * sim_steps
         pwm_on = sim_result.pwm_enabled
 
-        fig, axes = plt.subplots(3, 1, figsize=(14, 13), sharex=True)
+        fig, axes = plt.subplots(4, 1, figsize=(14, 16), sharex=True)
+
+        # 颜色定义
+        DPC_COLOR = '#E53935'   # 红色
+        PSO_COLOR = '#1E88E5'   # 蓝色
 
         # --- 子图1: 温度曲线 ---
-        axes[0].plot(time_axis, target_line, 'k--', label=f'目标温度 ({target_temp}°C)', alpha=0.6)
-        axes[0].plot(time_axis, sim_result.history_mdp, color='gray', linestyle=':',
-                     label='MDP 控制 (规则)', linewidth=1.5)
-        axes[0].plot(time_axis, sim_result.history_mpc, color='red',
-                     label='可微规划 (DPC+PWM)' if pwm_on else '可微规划 (DPC)', linewidth=2.0)
+        axes[0].plot(time_axis, target_line, 'k--',
+                     label=f'目标温度 ({target_temp}°C)', alpha=0.6, linewidth=1)
+        axes[0].plot(time_axis, sim_result.history_pso, color=PSO_COLOR,
+                     label='PSO 粒子群优化', linewidth=1.5, alpha=0.8)
+        axes[0].plot(time_axis, sim_result.history_dpc, color=DPC_COLOR,
+                     label='DPC 可微规划', linewidth=2.0)
         axes[0].set_ylabel("室内温度 (°C)", fontsize=12)
-        axes[0].set_title("控制效果对比: 温度保持", fontsize=14)
+        axes[0].set_title("控制效果对比: DPC (梯度优化) vs PSO (粒子群优化)", fontsize=14)
         axes[0].legend(loc='upper right')
         axes[0].grid(True, alpha=0.3)
 
-        # MAE 统计
-        mae_mpc = np.mean(np.abs(np.array(sim_result.history_mpc) - target_temp))
-        mae_mdp = np.mean(np.abs(np.array(sim_result.history_mdp) - target_temp))
+        # MAE
+        mae_dpc = np.mean(np.abs(np.array(sim_result.history_dpc) - target_temp))
+        mae_pso = np.mean(np.abs(np.array(sim_result.history_pso) - target_temp))
+
+        axes[0].text(0.02, 0.85,
+                     f"DPC MAE: {mae_dpc:.4f}\nPSO MAE: {mae_pso:.4f}",
+                     bbox=dict(facecolor='white', alpha=0.8),
+                     transform=axes[0].transAxes, verticalalignment='top', fontsize=10)
 
         # --- 子图2: 加热器动作 ---
-        mpc_heater = [a[0] for a in sim_result.actions_mpc]
-        mdp_heater = [a[0] for a in sim_result.actions_mdp]
+        dpc_heater = [a[0] for a in sim_result.actions_dpc]
+        pso_heater = [a[0] for a in sim_result.actions_pso]
 
-        axes[1].step(time_axis, mdp_heater, color='gray', linestyle=':',
-                     label='MDP Heater (0/1)', where='post', alpha=0.7)
+        if pwm_on and sim_result.pwm_actions_dpc:
+            pwm_dpc_h = [a[0] for a in sim_result.pwm_actions_dpc]
+            pwm_pso_h = [a[0] for a in sim_result.pwm_actions_pso]
+            self._draw_pwm_bars(axes[1], time_axis, pwm_dpc_h, DPC_COLOR, alpha=0.15)
+            self._draw_pwm_bars(axes[1], time_axis, pwm_pso_h, PSO_COLOR, alpha=0.15)
 
-        if pwm_on:
-            # PWM 离散动作 (实际继电器状态)
-            pwm_heater = [a[0] for a in sim_result.pwm_actions_mpc]
-            self._draw_pwm_bars(axes[1], time_axis, pwm_heater, 'red', alpha=0.25)
-            axes[1].plot(time_axis, mpc_heater, color='red',
-                         label=f'DPC 连续占空比', linewidth=1.5)
-            # PWM 周期分隔线
-            for x in range(0, sim_steps, self._pwm_cycle):
-                axes[1].axvline(x, color='red', alpha=0.08, linewidth=0.5)
-            # 图例
-            relay_patch = mpatches.Patch(color='red', alpha=0.25, label=f'PWM 继电器 ON (周期={self._pwm_cycle}min)')
-            handles, labels = axes[1].get_legend_handles_labels()
-            handles.append(relay_patch)
-            axes[1].legend(handles=handles, loc='upper right', fontsize=9)
-        else:
-            axes[1].plot(time_axis, mpc_heater, color='red',
-                         label='可微规划 PWM (0-100%)', linewidth=1.5)
-            axes[1].fill_between(time_axis, mpc_heater, color='red', alpha=0.3)
-            axes[1].legend(loc='upper right')
-
-        axes[1].set_ylabel("加热功率/概率", fontsize=12)
+        axes[1].plot(time_axis, dpc_heater, color=DPC_COLOR,
+                     label='DPC 占空比', linewidth=1.5)
+        axes[1].plot(time_axis, pso_heater, color=PSO_COLOR,
+                     label='PSO 占空比', linewidth=1.5, alpha=0.8)
+        axes[1].set_ylabel("加热功率", fontsize=12)
         axes[1].set_title("执行机构动作: 加热器 (Heater)", fontsize=14)
         axes[1].set_yticks([0, 0.5, 1])
+        axes[1].legend(loc='upper right')
         axes[1].grid(True, alpha=0.3)
 
-        # MAE 文本
-        axes[1].text(0.02, 0.85,
-                     f"MDP MAE: {mae_mdp:.2f}\nDPC MAE: {mae_mpc:.2f}",
-                     bbox=dict(facecolor='white', alpha=0.8),
-                     transform=axes[1].transAxes, verticalalignment='top', fontsize=10)
-
         # --- 子图3: 通风动作 ---
-        mpc_vent = [a[1] for a in sim_result.actions_mpc]
-        mdp_vent = [a[1] for a in sim_result.actions_mdp]
+        dpc_vent = [a[1] for a in sim_result.actions_dpc]
+        pso_vent = [a[1] for a in sim_result.actions_pso]
 
-        axes[2].step(time_axis, mdp_vent, color='gray', linestyle=':',
-                     label='MDP Vent (0/1)', where='post', alpha=0.7)
+        if pwm_on and sim_result.pwm_actions_dpc:
+            pwm_dpc_v = [a[1] for a in sim_result.pwm_actions_dpc]
+            pwm_pso_v = [a[1] for a in sim_result.pwm_actions_pso]
+            self._draw_pwm_bars(axes[2], time_axis, pwm_dpc_v, DPC_COLOR, alpha=0.15)
+            self._draw_pwm_bars(axes[2], time_axis, pwm_pso_v, PSO_COLOR, alpha=0.15)
 
-        if pwm_on:
-            pwm_vent = [a[1] for a in sim_result.pwm_actions_mpc]
-            self._draw_pwm_bars(axes[2], time_axis, pwm_vent, 'blue', alpha=0.25)
-            axes[2].plot(time_axis, mpc_vent, color='blue',
-                         label='DPC 连续占空比', linewidth=1.5)
-            for x in range(0, sim_steps, self._pwm_cycle):
-                axes[2].axvline(x, color='blue', alpha=0.08, linewidth=0.5)
-            relay_patch = mpatches.Patch(color='blue', alpha=0.25, label=f'PWM 继电器 ON (周期={self._pwm_cycle}min)')
-            handles, labels = axes[2].get_legend_handles_labels()
-            handles.append(relay_patch)
-            axes[2].legend(handles=handles, loc='upper right', fontsize=9)
-        else:
-            axes[2].plot(time_axis, mpc_vent, color='blue',
-                         label='可微规划 PWM (0-100%)', linewidth=1.5)
-            axes[2].fill_between(time_axis, mpc_vent, color='blue', alpha=0.3)
-            axes[2].legend(loc='upper right')
-
-        axes[2].set_ylabel("通风功率/概率", fontsize=12)
+        axes[2].plot(time_axis, dpc_vent, color=DPC_COLOR,
+                     label='DPC 占空比', linewidth=1.5)
+        axes[2].plot(time_axis, pso_vent, color=PSO_COLOR,
+                     label='PSO 占空比', linewidth=1.5, alpha=0.8)
+        axes[2].set_ylabel("通风功率", fontsize=12)
         axes[2].set_title("执行机构动作: 通风 (Ventilation)", fontsize=14)
         axes[2].set_yticks([0, 0.5, 1])
-        axes[2].set_xlabel("模拟时间 (分钟)", fontsize=12)
+        axes[2].legend(loc='upper right')
         axes[2].grid(True, alpha=0.3)
+
+        # --- 子图4: 计算耗时对比 ---
+        if sim_result.time_dpc and sim_result.time_pso:
+            # 滑动平均 (窗口=10)
+            window = 10
+            dpc_t = np.array(sim_result.time_dpc)
+            pso_t = np.array(sim_result.time_pso)
+
+            if len(dpc_t) >= window:
+                dpc_smooth = np.convolve(dpc_t, np.ones(window)/window, mode='valid')
+                pso_smooth = np.convolve(pso_t, np.ones(window)/window, mode='valid')
+                t_axis_smooth = range(window - 1, sim_steps)
+                axes[3].plot(t_axis_smooth, dpc_smooth, color=DPC_COLOR,
+                             label=f'DPC (avg {np.mean(dpc_t):.0f}ms)', linewidth=1.5)
+                axes[3].plot(t_axis_smooth, pso_smooth, color=PSO_COLOR,
+                             label=f'PSO (avg {np.mean(pso_t):.0f}ms)', linewidth=1.5, alpha=0.8)
+            else:
+                axes[3].plot(time_axis, dpc_t, color=DPC_COLOR,
+                             label=f'DPC (avg {np.mean(dpc_t):.0f}ms)', linewidth=1.5)
+                axes[3].plot(time_axis, pso_t, color=PSO_COLOR,
+                             label=f'PSO (avg {np.mean(pso_t):.0f}ms)', linewidth=1.5, alpha=0.8)
+
+        axes[3].set_ylabel("每步耗时 (ms)", fontsize=12)
+        axes[3].set_title("计算效率对比: 每步优化耗时", fontsize=14)
+        axes[3].set_xlabel("模拟时间 (分钟)", fontsize=12)
+        axes[3].legend(loc='upper right')
+        axes[3].grid(True, alpha=0.3)
 
         plt.tight_layout()
 
@@ -147,30 +156,44 @@ class Visualizer:
 
         # 打印性能对比
         print("\n" + "=" * 60)
-        print("--- 性能对比总结 ---")
+        print("--- 性能对比总结: DPC vs PSO ---")
         if pwm_on:
             print(f"[PWM 离散化已启用] 周期={self._pwm_cycle}分钟")
-        print(f"MDP MAE: {mae_mdp:.4f}")
-        print(f"DPC MAE: {mae_mpc:.4f}")
-        if mae_mpc < mae_mdp:
-            print(f"✓ DPC 优于 MDP，提升 {(mae_mdp - mae_mpc) / mae_mdp * 100:.1f}%")
+        print(f"DPC MAE: {mae_dpc:.4f}")
+        print(f"PSO MAE: {mae_pso:.4f}")
+        if mae_dpc < mae_pso:
+            print(f"✓ DPC 优于 PSO，提升 {(mae_pso - mae_dpc) / mae_pso * 100:.1f}%")
+        elif mae_pso < mae_dpc:
+            print(f"✓ PSO 优于 DPC，提升 {(mae_dpc - mae_pso) / mae_dpc * 100:.1f}%")
         else:
-            print(f"✗ DPC 未能超越 MDP，需进一步调优")
+            print(f"= 两者持平")
+
+        if sim_result.time_dpc and sim_result.time_pso:
+            avg_dpc = np.mean(sim_result.time_dpc)
+            avg_pso = np.mean(sim_result.time_pso)
+            print(f"\nDPC 平均耗时: {avg_dpc:.1f} ms/step")
+            print(f"PSO 平均耗时: {avg_pso:.1f} ms/step")
+            speedup = avg_pso / avg_dpc if avg_dpc > 0 else float('inf')
+            if speedup > 1:
+                print(f"DPC 快 {speedup:.1f}x")
+            else:
+                print(f"PSO 快 {1/speedup:.1f}x")
+
         print("=" * 60)
 
         return save_path
 
     def _draw_pwm_bars(self, ax, time_axis, pwm_values, color, alpha=0.3):
-        """绘制 PWM ON/OFF 的柱状区域 (ON=1 时涂色)"""
+        """绘制 PWM ON/OFF 的柱状区域"""
         for t, val in zip(time_axis, pwm_values):
-            if val > 0.5:  # ON
+            if val > 0.5:
                 ax.axvspan(t, t + 1, color=color, alpha=alpha, linewidth=0)
 
     def save_figure(self, fig):
-        """保存图片到 results 目录"""
+        """保存图片"""
         os.makedirs(self._results_dir, exist_ok=True)
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        save_path = os.path.join(self._results_dir, f"mpc_pwm_{timestamp}.png")
+        save_path = os.path.join(self._results_dir, f"dpc_vs_pso_{timestamp}.png")
         fig.savefig(save_path, dpi=150)
         print(f"---> 结果图已保存至: {os.path.abspath(save_path)}")
         return save_path

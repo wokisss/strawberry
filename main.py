@@ -5,7 +5,7 @@ main.py
 温室 MPC 控制系统入口
 
 重构后的简洁入口文件，按顺序调用各模块完成:
-    数据处理 → 模型训练 → 仿真对比 (含 PWM Sim-to-Real) → 结果可视化
+    数据处理 → 模型训练 → 仿真对比 (DPC vs PSO + PWM) → 结果可视化
 """
 
 import warnings
@@ -17,7 +17,7 @@ from data_processing.processor import DataProcessor
 from models.segmented_hybrid import SegmentedHybridModel
 from models.decision_model import DecisionControlModel
 from controllers.dpc_controller import DPCController
-from controllers.mdp_controller import LegacyMDPController
+from controllers.pso_controller import PSOController
 from controllers.pwm_driver import PWMDriver, PWMSimulator
 from environment.physics_env import PhysicsGreenhouseEnv
 from training.trainer import Trainer
@@ -40,8 +40,8 @@ def setup_seed(seed):
 
 def main():
     print("=" * 60)
-    print("--- 智能温室控制系统 (MPC vs MDP) ---")
-    print("--- 模块化重构版 + Sim-to-Real PWM ---")
+    print("--- 智能温室控制系统 ---")
+    print("--- DPC (可微规划) vs PSO (粒子群优化) ---")
     print("=" * 60)
 
     # 0. 配置
@@ -72,39 +72,56 @@ def main():
     trainer = Trainer(model, config=cfg, device=device)
     trainer.train(datasets['X_train_p'], datasets['X_train_f'], datasets['y_train'])
 
-    # 3. 控制器初始化
-    print("\n---> 初始化控制器...")
+    # 3. 决策模型 (共享同一个 DecisionControlModel)
+    print("\n---> 初始化决策模型...")
     decision_model = DecisionControlModel(model, config=cfg)
     print(f"    物理引导梯度层 (Heater Gain={cfg.heater_gain}, Vent Gain={cfg.vent_gain})")
 
+    # 4. 控制器初始化
+    print("\n---> 初始化 DPC 控制器 (梯度优化)...")
+    print(f"    lr={cfg.dpc_lr}, iterations={cfg.dpc_iterations}")
     dpc = DPCController(
         decision_model, processor.scaler, processor.target_idx,
         processor.future_indices, config=cfg
     )
-    mdp = LegacyMDPController(
-        target_temp=cfg.target_temp, vent_threshold=cfg.mdp_vent_threshold
+
+    print(f"---> 初始化 PSO 控制器 (粒子群优化)...")
+    print(f"    粒子数={cfg.pso_n_particles}, 代数={cfg.pso_n_generations}, "
+          f"惯性={cfg.pso_w_inertia}, c1={cfg.pso_c1}, c2={cfg.pso_c2}")
+    pso = PSOController(
+        decision_model, processor.scaler, processor.target_idx,
+        processor.future_indices, config=cfg
     )
 
-    # 4. PWM 驱动器 (Sim-to-Real)
+    # 5. PWM 驱动器 (DPC 和 PSO 各自独立的 PWM 实例)
     print(f"\n---> 初始化 PWM 驱动器...")
     print(f"    周期={cfg.pwm_cycle}min, 最小吸合={cfg.pwm_min_on}min, 最小关断={cfg.pwm_min_off}min")
-    pwm_driver = PWMDriver(
+
+    pwm_driver_dpc = PWMDriver(
         cycle_minutes=cfg.pwm_cycle,
         min_on_minutes=cfg.pwm_min_on,
         min_off_minutes=cfg.pwm_min_off
     )
-    pwm_sim = PWMSimulator(pwm_driver)
+    pwm_sim_dpc = PWMSimulator(pwm_driver_dpc)
 
-    # 5. 仿真 (DPC + PWM vs MDP)
-    print("\n---> 开始对比仿真 (DPC+PWM vs MDP)...")
+    pwm_driver_pso = PWMDriver(
+        cycle_minutes=cfg.pwm_cycle,
+        min_on_minutes=cfg.pwm_min_on,
+        min_off_minutes=cfg.pwm_min_off
+    )
+    pwm_sim_pso = PWMSimulator(pwm_driver_pso)
+
+    # 6. 仿真 (DPC vs PSO)
+    print("\n---> 开始对比仿真 (DPC vs PSO + PWM)...")
     sim = Simulator(
-        dpc, mdp, PhysicsGreenhouseEnv,
+        dpc, pso, PhysicsGreenhouseEnv,
         processor.feature_order, processor.scaler, processor.target_idx,
-        config=cfg, device=device, pwm_sim=pwm_sim
+        config=cfg, device=device,
+        pwm_sim_dpc=pwm_sim_dpc, pwm_sim_pso=pwm_sim_pso
     )
     result = sim.run(datasets['X_test_p'], datasets['X_test_f'], config=cfg)
 
-    # 6. 可视化
+    # 7. 可视化
     print("\n---> 绘制结果...")
     viz = Visualizer(config=cfg)
     viz.plot_comparison(result)
