@@ -67,7 +67,24 @@ class Config:
     power_heater: float = 0.5     # 加热器最大功率 (°C/min)
     eff_vent: float = 0.1         # 通风效率
     k_solar: float = 0.01         # 太阳辐射增益系数
-    noise_std: float = 0.05       # 过程噪声标准差
+    noise_std: float = 0.05       # 过程噪声标准差 (已被 OU 过程替代，保留兼容)
+
+    # ======================== 环境噪声参数 ========================
+    # OU 过程噪声 (时间相关的过程扰动，替代简单白噪声)
+    ou_theta: float = 0.15          # OU 回复速率 (越大噪声越快回到均值)
+    ou_sigma: float = 0.05          # OU 波动强度 (°C)
+    ou_mu: float = 0.0              # OU 均值
+
+    # 传感器噪声 (测量不确定性，仅影响观测值)
+    sensor_noise_std: float = 0.05  # 传感器高斯噪声标准差 (°C)
+
+    # 执行器噪声 (功率波动，乘性噪声)
+    actuator_noise_low: float = 0.95  # 执行器乘性噪声下界
+    actuator_noise_high: float = 1.05 # 执行器乘性噪声上界
+
+    # 风扰动 (随机阵风脉冲)
+    wind_gust_prob: float = 0.05    # 每步发生阵风概率 (5%)
+    wind_gust_magnitude: float = 0.2 # 阵风造成温度变化幅度 (°C)
 
     # ======================== 模型参数 ========================
     hidden_dim: int = 32
@@ -77,7 +94,7 @@ class Config:
     lambda_trend: float = 0.3     # 趋势惩罚权重
 
     # ======================== DPC控制器参数 ========================
-    heater_gain: float = 0.5      # 加热物理增益 (归一化空间)
+    heater_gain: float = 0.15     # 加热物理增益 (校准后: 让优化器输出更高的加热功率)
     vent_gain: float = -0.3       # 通风物理增益 (归一化空间)
     target_temp: float = 25.0     # 目标温度 (°C)
     dpc_lr: float = 0.2           # DPC优化器学习率
