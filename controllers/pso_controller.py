@@ -32,17 +32,21 @@ class PSOController:
         config: Config 对象
     """
 
-    def __init__(self, model, scaler, target_idx, future_indices,
+    def __init__(self, model, scaler, target_indices, future_indices,
                  config=None, horizon=10, target_temp=25.0):
         self.model = model
         self.scaler = scaler
-        self.target_idx = target_idx
+        self.target_indices = target_indices
         self.future_indices = future_indices
 
         if config is not None:
             self.horizon = config.horizon
             self.target_temp = config.target_temp
-            self._w_track = config.w_track
+            self.target_hum = config.target_hum
+            self.target_co2 = config.target_co2
+            self._w_track_temp = config.w_track_temp
+            self._w_track_hum = config.w_track_hum
+            self._w_track_co2 = config.w_track_co2
             self._w_energy = config.w_energy
             self._w_smooth = config.w_smooth
             # PSO 参数
@@ -91,14 +95,23 @@ class PSOController:
         # 积分误差
         self.integral_error = 0.0
 
-        # 目标温度归一化值
+        # 目标归一化值
         dummy = np.zeros((1, len(scaler.scale_)))
-        dummy[0, target_idx] = self.target_temp
-        self.target_temp_norm = scaler.transform(dummy)[0, target_idx]
+        dummy[0, target_indices[0]] = self.target_temp
+        dummy[0, target_indices[1]] = self.target_hum
+        dummy[0, target_indices[2]] = self.target_co2
+        
+        self.target_temp_norm = scaler.transform(dummy)[0, target_indices[0]]
+        self.target_hum_norm = scaler.transform(dummy)[0, target_indices[1]]
+        self.target_co2_norm = scaler.transform(dummy)[0, target_indices[2]]
 
-        # 上一步动作记录
-        self.last_action = [0, 0]
-        self.last_action_continuous = np.array([0.0, 0.0])
+        self.target_norms = torch.tensor([
+            self.target_temp_norm, self.target_hum_norm, self.target_co2_norm
+        ], device=self._device).view(1, 1, 3)
+
+        # 上一步动作记录 (4维)
+        self.last_action = [0, 0, 0, 0]
+        self.last_action_continuous = np.array([0.0, 0.0, 0.0, 0.0])
 
         # 性能统计
         self.last_step_time = 0.0
@@ -108,7 +121,7 @@ class PSOController:
         批量评估所有粒子的适应度 (Loss)
 
         Args:
-            particles: (N, 2) ndarray，每行 = [heater, vent]
+            particles: (N, 4) ndarray，每行 = [heater, vent, humidifier, co2_gen]
             current_past_tensor: (1, seq_len, feat_dim)
             current_future_base: (1, horizon, future_dim)
 
@@ -123,30 +136,41 @@ class PSOController:
             future_batch = current_future_base.repeat(N, 1, 1)         # (N, horizon, fdim)
 
             # 替换控制动作
-            actions_tensor = torch.FloatTensor(particles).to(self._device)  # (N, 2)
-            u_heater = actions_tensor[:, 0:1].unsqueeze(1).repeat(1, self.horizon, 1)  # (N, H, 1)
-            u_vent = actions_tensor[:, 1:2].unsqueeze(1).repeat(1, self.horizon, 1)    # (N, H, 1)
+            if isinstance(particles, torch.Tensor):
+                actions_tensor = particles.clone().detach().to(self._device)
+            else:
+                actions_tensor = torch.tensor(particles, dtype=torch.float32, device=self._device)  # (N, 4)
+            u_expanded = actions_tensor.unsqueeze(1).repeat(1, self.horizon, 1)  # (N, H, 4)
 
-            f_weather = future_batch[:, :, 2:]   # (N, H, fdim-2)
-            x_future_optim = torch.cat([u_heater, u_vent, f_weather], dim=2)
+            f_weather = future_batch[:, :, 4:]   # (N, H, fdim-4)
+            x_future_optim = torch.cat([u_expanded, f_weather], dim=2)
 
             # 前向预测
             pred_norm = self.model(past_batch, x_future_optim,
                                    target_temp_norm=self.target_temp_norm)
 
-            # 计算 Loss
-            track_loss = torch.mean((pred_norm - self.target_temp_norm) ** 2, dim=1)  # (N,)
+            # 计算 Loss (多目标)
+            track_error_sq = (pred_norm - self.target_norms.expand(N, self.horizon, 3)) ** 2
+            loss_temp = torch.mean(track_error_sq[:, :, 0], dim=1)
+            loss_hum = torch.mean(track_error_sq[:, :, 1], dim=1)
+            loss_co2 = torch.mean(track_error_sq[:, :, 2], dim=1)
+
+            track_loss = (self._w_track_temp * loss_temp +
+                          self._w_track_hum * loss_hum +
+                          self._w_track_co2 * loss_co2)
+                          
             energy_loss = torch.mean(torch.abs(actions_tensor), dim=1)                  # (N,)
 
             # 平滑惩罚
             prev_u = torch.FloatTensor(self.last_action_continuous).to(self._device)
             smooth_loss = torch.mean((actions_tensor - prev_u.unsqueeze(0)) ** 2, dim=1)  # (N,)
 
-            total_loss = (self._w_track * track_loss
+            total_loss = (track_loss
                           + self._w_energy * energy_loss
                           + self._w_smooth * smooth_loss)
 
-            return total_loss.cpu().numpy()
+            # 保持返回 Tensor 避免与 Numpy 转换的开销
+            return total_loss.to(torch.float32)
 
     def get_optimal_action(self, current_past_tensor, current_future_base, current_temp=None):
         """
@@ -170,40 +194,42 @@ class PSOController:
         self.model.eval()
 
         try:
-            # ======== 初始化粒子群 ========
-            # 位置: 随机撒在 [0, 1]²
-            positions = np.random.uniform(0.0, 1.0, size=(N, 2))
+            # ======== 初始化粒子群 (纯 Tensor 运算) ========
+            # 位置: 随机撒在 [0, 1]^4
+            positions = torch.rand(N, 4, device=self._device)
 
             # 智能初始化: 将一部分粒子放在温度误差驱动的初始点附近
             if current_temp is not None:
                 temp_error = self.target_temp - current_temp
                 if temp_error > 5.0:
-                    seed_action = [0.95, 0.0]
+                    seed_action = [0.95, 0.0, 0.0, 0.0]
                 elif temp_error > 2.0:
-                    seed_action = [0.85, 0.0]
+                    seed_action = [0.85, 0.0, 0.0, 0.0]
                 elif temp_error > 0.5:
-                    seed_action = [0.7, 0.0]
+                    seed_action = [0.7, 0.0, 0.0, 0.0]
                 elif temp_error > 0:
-                    seed_action = [0.5, 0.0]
+                    seed_action = [0.5, 0.0, 0.0, 0.0]
                 else:
-                    seed_action = [0.1, 0.3]
+                    seed_action = [0.1, 0.3, 0.0, 0.0]
+
+                seed_tensor = torch.tensor(seed_action, dtype=torch.float32, device=self._device)
 
                 # 前 25% 的粒子集中在种子点附近 (高斯扰动)
                 n_seeded = max(1, N // 4)
-                positions[:n_seeded] = np.clip(
-                    np.array(seed_action) + np.random.normal(0, 0.1, size=(n_seeded, 2)),
+                positions[:n_seeded] = torch.clamp(
+                    seed_tensor + torch.randn(n_seeded, 4, device=self._device) * 0.1,
                     0.0, 1.0
                 )
                 # 放一个粒子精确在上一步动作位置
-                positions[0] = np.clip(self.last_action_continuous, 0.0, 1.0)
+                positions[0] = torch.clamp(torch.tensor(self.last_action_continuous, dtype=torch.float32, device=self._device), 0.0, 1.0)
 
             # 速度: 初始小随机速度
-            velocities = np.random.uniform(-0.1, 0.1, size=(N, 2))
+            velocities = torch.empty(N, 4, device=self._device).uniform_(-0.1, 0.1)
 
             # 个体最优和全局最优
-            pbest_positions = positions.copy()
-            pbest_losses = np.full(N, float('inf'))
-            gbest_position = positions[0].copy()
+            pbest_positions = positions.clone()
+            pbest_losses = torch.full((N,), float('inf'), dtype=torch.float32, device=self._device)
+            gbest_position = positions[0].clone()
             gbest_loss = float('inf')
 
             # ======== 迭代优化 ========
@@ -219,35 +245,38 @@ class PSOController:
                 pbest_losses[improved] = losses[improved]
 
                 # 3. 更新全局最优
-                gen_best_idx = np.argmin(losses)
+                gen_best_idx = torch.argmin(losses)
                 if losses[gen_best_idx] < gbest_loss:
-                    gbest_loss = losses[gen_best_idx]
-                    gbest_position = positions[gen_best_idx].copy()
+                    gbest_loss = losses[gen_best_idx].item()
+                    gbest_position = positions[gen_best_idx].clone()
 
-                # 4. 更新速度和位置 (标准 PSO 公式)
-                r1 = np.random.uniform(0, 1, size=(N, 2))
-                r2 = np.random.uniform(0, 1, size=(N, 2))
+                # 4. 更新速度和位置 (标准 PSO 公式, 纯 Tensor)
+                r1 = torch.rand(N, 4, device=self._device)
+                r2 = torch.rand(N, 4, device=self._device)
 
                 velocities = (self._w_inertia * velocities
                               + self._c1 * r1 * (pbest_positions - positions)
                               + self._c2 * r2 * (gbest_position - positions))
 
                 # 速度限幅
-                velocities = np.clip(velocities, -0.3, 0.3)
+                velocities = torch.clamp(velocities, min=-0.3, max=0.3)
 
                 # 更新位置
                 positions = positions + velocities
-                positions = np.clip(positions, 0.0, 1.0)
+                positions = torch.clamp(positions, min=0.0, max=1.0)
 
         finally:
             self.model.train(original_mode)
 
         # ======== 后处理 (与 DPC 完全一致) ========
-        final_heater = gbest_position[0]
-        final_vent = gbest_position[1]
+        gbest_position_np = gbest_position.cpu().numpy()
+        final_heater = gbest_position_np[0]
+        final_vent = gbest_position_np[1]
+        final_fog = gbest_position_np[2]
+        final_lighting = gbest_position_np[3]
 
         # 更新连续状态
-        self.last_action_continuous = gbest_position.copy()
+        self.last_action_continuous = gbest_position_np.copy()
 
         # 物理互斥
         if final_heater > 0.1 and final_vent > 0.1:
@@ -259,9 +288,6 @@ class PSOController:
         # 比例安全兜底 (与 DPC 完全一致)
         if current_temp is not None:
             error = self.target_temp - current_temp
-            # 通风抑制区 (与 DPC 一致)
-            if error > -self._vent_suppress_margin:
-                final_vent = 0.0
 
             s = self._safety
             if error >= s['tier1_error']:
@@ -273,7 +299,7 @@ class PSOController:
             elif error > 0:
                 final_heater = max(final_heater, s['tier4_min'])
 
-        best_action = [final_heater, final_vent]
+        best_action = [final_heater, final_vent, final_fog, final_lighting]
         self.last_action = best_action.copy()
         self.last_step_time = time.time() - t_start
         return best_action, gbest_loss

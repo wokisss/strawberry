@@ -24,20 +24,24 @@ class DPCController:
         5. 物理互斥 + 比例安全兜底
     """
 
-    def __init__(self, model, scaler, target_idx, future_indices,
+    def __init__(self, model, scaler, target_indices, future_indices,
                  config=None, horizon=10, target_temp=25.0):
         self.model = model
         self.scaler = scaler
-        self.target_idx = target_idx
+        self.target_indices = target_indices
         self.future_indices = future_indices
 
         # 从 config 或参数读取
         if config is not None:
             self.horizon = config.horizon
             self.target_temp = config.target_temp
+            self.target_hum = config.target_hum
+            self.target_co2 = config.target_co2
             self._lr = config.dpc_lr
             self._iterations = config.dpc_iterations
-            self._w_track = config.w_track
+            self._w_track_temp = config.w_track_temp
+            self._w_track_hum = config.w_track_hum
+            self._w_track_co2 = config.w_track_co2
             self._w_energy = config.w_energy
             self._w_smooth = config.w_smooth
             # 安全兜底参数
@@ -77,14 +81,23 @@ class DPCController:
         # 积分误差 (Leaky Integral for PID-I)
         self.integral_error = 0.0
 
-        # 目标温度归一化值
+        # 目标归一化值
         dummy = np.zeros((1, len(scaler.scale_)))
-        dummy[0, target_idx] = self.target_temp
-        self.target_temp_norm = scaler.transform(dummy)[0, target_idx]
+        dummy[0, target_indices[0]] = self.target_temp
+        dummy[0, target_indices[1]] = self.target_hum
+        dummy[0, target_indices[2]] = self.target_co2
+        
+        self.target_temp_norm = scaler.transform(dummy)[0, target_indices[0]]
+        self.target_hum_norm = scaler.transform(dummy)[0, target_indices[1]]
+        self.target_co2_norm = scaler.transform(dummy)[0, target_indices[2]]
 
-        # 上一步动作记录
-        self.last_action = [0, 0]
-        self.last_action_continuous = torch.tensor([0.0, 0.0], device=self._device)
+        self.target_norms = torch.tensor([
+            self.target_temp_norm, self.target_hum_norm, self.target_co2_norm
+        ], device=self._device).view(1, 1, 3)
+
+        # 上一步动作记录 (4维)
+        self.last_action = [0, 0, 0, 0]
+        self.last_action_continuous = torch.tensor([0.0, 0.0, 0.0, 0.0], device=self._device)
 
     def get_optimal_action(self, current_past_tensor, current_future_base, current_temp=None):
         """
@@ -99,21 +112,21 @@ class DPCController:
             best_action: [heater, vent] 最优动作
             best_loss: 最优 loss 值
         """
-        # 1. 温度误差驱动的智能初始化 (Direct Parameterization)
+        # 1. 智能初始化
         if current_temp is not None:
             temp_error = self.target_temp - current_temp
             if temp_error > 5.0:
-                init_direct = torch.tensor([[[0.95, 0.0]]])
+                init_direct = torch.tensor([[[0.95, 0.0, 0.0, 0.0]]])
             elif temp_error > 2.0:
-                init_direct = torch.tensor([[[0.85, 0.0]]])
+                init_direct = torch.tensor([[[0.85, 0.0, 0.0, 0.0]]])
             elif temp_error > 0.5:
-                init_direct = torch.tensor([[[0.7, 0.0]]])
+                init_direct = torch.tensor([[[0.7, 0.0, 0.0, 0.0]]])
             elif temp_error > 0:
-                init_direct = torch.tensor([[[0.5, 0.0]]])
+                init_direct = torch.tensor([[[0.5, 0.0, 0.0, 0.0]]])
             else:
-                init_direct = torch.tensor([[[0.1, 0.3]]])
+                init_direct = torch.tensor([[[0.1, 0.3, 0.0, 0.0]]])
         else:
-            init_direct = self.last_action_continuous.view(1, 1, 2).clone()
+            init_direct = self.last_action_continuous.view(1, 1, 4).clone()
 
         action_param = init_direct.to(self._device).requires_grad_(True)
 
@@ -140,24 +153,30 @@ class DPCController:
                 u_expanded = u_soft.repeat(1, self.horizon, 1)
 
                 # 拼接: 优化动作 + 固定天气
-                f_weather = current_future_base[:, :, 2:]
-                u_heater = u_expanded[:, :, 0:1]
-                u_vent = u_expanded[:, :, 1:2]
-                x_future_optim = torch.cat([u_heater, u_vent, f_weather], dim=2)
+                f_weather = current_future_base[:, :, 4:]
+                x_future_optim = torch.cat([u_expanded, f_weather], dim=2)
 
-                # 前向预测
+                # 前向预测 (B, horizon, 3)
                 pred_norm = self.model(
                     current_past_tensor, x_future_optim,
                     target_temp_norm=self.target_temp_norm
                 )
 
-                # Loss
-                track_loss = torch.mean((pred_norm - self.target_temp_norm) ** 2)
+                # Loss (多目标追踪)
+                track_error_sq = (pred_norm - self.target_norms) ** 2
+                loss_temp = torch.mean(track_error_sq[:, :, 0])
+                loss_hum = torch.mean(track_error_sq[:, :, 1])
+                loss_co2 = torch.mean(track_error_sq[:, :, 2])
+                
+                track_loss = (self._w_track_temp * loss_temp +
+                              self._w_track_hum * loss_hum +
+                              self._w_track_co2 * loss_co2)
+                              
                 energy_loss = torch.mean(torch.abs(u_soft))
-                prev_u = self.last_action_continuous.view(1, 1, 2).detach()
+                prev_u = self.last_action_continuous.view(1, 1, 4).detach()
                 smooth_loss = torch.mean((u_soft - prev_u) ** 2)
 
-                total_loss = (self._w_track * track_loss
+                total_loss = (track_loss
                               + self._w_energy * energy_loss
                               + self._w_smooth * smooth_loss)
 
@@ -181,8 +200,10 @@ class DPCController:
 
         final_heater = self.last_action_continuous[0].item()
         final_vent = self.last_action_continuous[1].item()
+        final_fog = self.last_action_continuous[2].item()
+        final_lighting = self.last_action_continuous[3].item()
 
-        # 物理互斥: 加热和通风不同时进行
+        # 物理互斥
         if final_heater > 0.1 and final_vent > 0.1:
             if final_heater > final_vent:
                 final_vent = 0.0
@@ -192,10 +213,6 @@ class DPCController:
         # 比例安全兜底 (Proportional Safety Net)
         if current_temp is not None:
             error = self.target_temp - current_temp
-            # 通风抑制区: 只有当温度超过目标 + margin 时才允许通风
-            # 防止温度刚过目标就开通风，被 PWM 锁定后温度骤降
-            if error > -self._vent_suppress_margin:
-                final_vent = 0.0
 
             s = self._safety
             if error >= s['tier1_error']:
@@ -207,7 +224,7 @@ class DPCController:
             elif error > 0:
                 final_heater = max(final_heater, s['tier4_min'])
 
-        best_action = [final_heater, final_vent]
+        best_action = [final_heater, final_vent, final_fog, final_lighting]
         self.last_action = best_action.copy()
         return best_action, best_loss
 

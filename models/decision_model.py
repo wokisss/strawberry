@@ -24,28 +24,26 @@ class DecisionControlModel(nn.Module):
 
     Args:
         original_prediction_model: 基础预测模型 (SegmentedHybridModel)
-        config: Config 对象 (可选)。若提供则从中读取增益参数。
-        heater_gain: 加热物理增益 (归一化空间)
-        vent_gain: 通风物理增益 (归一化空间)
+        config: Config 对象 (必须提供，以读取多变量增益参数)
     """
 
-    def __init__(self, original_prediction_model, config=None,
-                 heater_gain=0.05, vent_gain=-0.05):
+    def __init__(self, original_prediction_model, config):
         super(DecisionControlModel, self).__init__()
         self.predictor = original_prediction_model
 
-        if config is not None:
-            self.heater_gain = config.heater_gain
-            self.vent_gain = config.vent_gain
-            self._sigma = config.gain_sigma
-            self._gain_min = config.gain_min
-            self._gain_max = config.gain_max
-        else:
-            self.heater_gain = heater_gain
-            self.vent_gain = vent_gain
-            self._sigma = 0.1
-            self._gain_min = 0.2
-            self._gain_max = 1.0
+        self.heater_gain_temp = config.heater_gain_temp
+        self.heater_gain_hum = config.heater_gain_hum
+        self.vent_gain_temp = config.vent_gain_temp
+        self.vent_gain_hum = config.vent_gain_hum
+        self.vent_gain_co2 = config.vent_gain_co2
+        self.fog_gain_temp = config.fog_gain_temp
+        self.fog_gain_hum = config.fog_gain_hum
+        self.lighting_gain_temp = config.lighting_gain_temp
+        self.lighting_gain_co2 = config.lighting_gain_co2
+            
+        self._sigma = config.gain_sigma
+        self._gain_min = config.gain_min
+        self._gain_max = config.gain_max
 
     def forward(self, x_past, x_future, target_temp_norm=None):
         """
@@ -55,39 +53,46 @@ class DecisionControlModel(nn.Module):
             target_temp_norm: 目标温度归一化值 (标量，用于动态增益)
 
         Returns:
-            control_prediction: (B, horizon)
+            control_prediction: (B, horizon, 3)
         """
         # 1. 基准预测 (Neutral Input — 假设不操作)
         x_future_neutral = x_future.clone()
         x_future_neutral[:, :, 0] = 0.0  # Heater=0
         x_future_neutral[:, :, 1] = 0.0  # Vent=0
+        x_future_neutral[:, :, 2] = 0.0  # Fog=0
+        x_future_neutral[:, :, 3] = 0.0  # Lighting=0
         base_prediction = self.predictor(x_past, x_future_neutral)
 
         # 2. 提取动作序列
         u_heat_seq = x_future[:, :, 0]   # (B, horizon)
         u_vent_seq = x_future[:, :, 1]   # (B, horizon)
+        u_fog_seq = x_future[:, :, 2]    # (B, horizon)
+        u_lighting_seq = x_future[:, :, 3]    # (B, horizon)
 
         # 3. 动态增益 (State-Dependent Gain)
-        #    高斯核: 误差越大增益越强，接近目标时减弱
+        #    根据目标温度计算误差强度作为增益因子
         if target_temp_norm is not None:
-            error_seq = torch.abs(target_temp_norm - base_prediction)
+            # 简化：使用基础预测的温度维度 [batch, horizon, 0] 计算误差
+            temp_pred = base_prediction[:, :, 0] if base_prediction.dim() == 3 else base_prediction
+            error_seq = torch.abs(target_temp_norm - temp_pred)
             gain_factor_seq = 1.0 - torch.exp(-error_seq ** 2 / (self._sigma ** 2))
             gain_factor_seq = torch.clamp(gain_factor_seq, min=self._gain_min, max=self._gain_max)
         else:
-            gain_factor_seq = torch.ones_like(base_prediction)
+            gain_factor_seq = torch.ones_like(u_heat_seq)
 
-        effective_heater_gain = self.heater_gain * gain_factor_seq
-        effective_vent_gain = self.vent_gain * gain_factor_seq
+        # 4. 组装多变量物理梯度 (Cumulative Integration)
+        #    T[t] = base_T[t] + cumsum( delta_T )
+        delta_temp = (u_heat_seq * self.heater_gain_temp * gain_factor_seq) + (u_vent_seq * self.vent_gain_temp * gain_factor_seq) + (u_fog_seq * self.fog_gain_temp * gain_factor_seq) + (u_lighting_seq * self.lighting_gain_temp * gain_factor_seq)
+        delta_hum = (u_heat_seq * self.heater_gain_hum * gain_factor_seq) + (u_vent_seq * self.vent_gain_hum * gain_factor_seq) + (u_fog_seq * self.fog_gain_hum * gain_factor_seq)
+        delta_co2 = (u_vent_seq * self.vent_gain_co2 * gain_factor_seq) + (u_lighting_seq * self.lighting_gain_co2 * gain_factor_seq)
 
-        # 4. 物理梯度注入 (Cumulative Integration)
-        #    T[t] = base[t] + cumsum(delta_physics)
-        step_delta_physics = (u_heat_seq * effective_heater_gain) + (u_vent_seq * effective_vent_gain)
-        delta_physics_accum = torch.cumsum(step_delta_physics, dim=1)
+        delta_temp_accum = torch.cumsum(delta_temp, dim=1).unsqueeze(2) # (B, horizon, 1)
+        delta_hum_accum = torch.cumsum(delta_hum, dim=1).unsqueeze(2)   # (B, horizon, 1)
+        delta_co2_accum = torch.cumsum(delta_co2, dim=1).unsqueeze(2)   # (B, horizon, 1)
+
+        delta_physics_accum = torch.cat([delta_temp_accum, delta_hum_accum, delta_co2_accum], dim=2) # (B, horizon, 3)
 
         # 最终预测 = 数据驱动基准 + 物理修正
-        if base_prediction.dim() == 2 and delta_physics_accum.dim() == 2:
-            control_prediction = base_prediction + delta_physics_accum
-        else:
-            control_prediction = base_prediction + delta_physics_accum.view_as(base_prediction)
+        control_prediction = base_prediction + delta_physics_accum
 
         return control_prediction

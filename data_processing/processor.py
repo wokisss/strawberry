@@ -34,7 +34,7 @@ class DataProcessor:
         self.scaler = MinMaxScaler()
         self.feature_order = None
         self.future_indices = None
-        self.target_idx = None
+        self.target_indices = None
 
     def load_and_preprocess(self):
         """
@@ -147,7 +147,7 @@ class DataProcessor:
         self.feature_order = feature_order
 
         df = df[feature_order]
-        self.target_idx = feature_order.index(cfg.target_col)
+        self.target_indices = [feature_order.index(c) for c in cfg.target_cols]
 
         # 计算 future_indices
         control_indices = [feature_order.index(c) for c in cfg.control_cols if c in feature_order]
@@ -166,7 +166,7 @@ class DataProcessor:
         return data_scaled
 
     @staticmethod
-    def create_sequences(data, seq_length, forecast_horizon, future_indices, target_idx):
+    def create_sequences(data, seq_length, forecast_horizon, future_indices, target_indices):
         """
         滑窗序列化
 
@@ -177,7 +177,7 @@ class DataProcessor:
         for i in range(len(data) - seq_length - forecast_horizon + 1):
             xs_past.append(data[i:(i + seq_length)])
             xs_future.append(data[i + seq_length: i + seq_length + forecast_horizon, future_indices])
-            ys.append(data[i + seq_length: i + seq_length + forecast_horizon, target_idx])
+            ys.append(data[i + seq_length: i + seq_length + forecast_horizon, target_indices])
         return np.array(xs_past), np.array(xs_future), np.array(ys)
 
     def prepare_datasets(self, data_scaled):
@@ -192,7 +192,7 @@ class DataProcessor:
         """
         cfg = self.cfg
         X_past, X_future, y = self.create_sequences(
-            data_scaled, cfg.seq_len, cfg.horizon, self.future_indices, self.target_idx
+            data_scaled, cfg.seq_len, cfg.horizon, self.future_indices, self.target_indices
         )
 
         train_size = int(len(X_past) * cfg.train_ratio)

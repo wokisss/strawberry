@@ -23,12 +23,15 @@ class SegmentedHybridModel(nn.Module):
     Args:
         input_dim: 历史特征维度 (x_past 的最后一维)
         future_dim: 未来特征维度 (x_future 的最后一维)
+        target_dim: 预测目标变量的数量 (例如 温度, 湿度, CO2 = 3)
         forecast_horizon: 预测窗口长度
         hidden_dim: 隐藏层维度
     """
 
-    def __init__(self, input_dim, future_dim, forecast_horizon, hidden_dim=32):
+    def __init__(self, input_dim, future_dim, target_dim, forecast_horizon, hidden_dim=32):
         super(SegmentedHybridModel, self).__init__()
+        self.target_dim = target_dim
+        self.forecast_horizon = forecast_horizon
 
         # --- 共享特征提取器 (Encoder) ---
         # CNN 提取局部时序模式
@@ -50,18 +53,19 @@ class SegmentedHybridModel(nn.Module):
 
         # --- 分段输出头 (Expert Decoders) ---
         feature_size = hidden_dim * 2 + hidden_dim
+        out_features = forecast_horizon * target_dim
 
-        # 专家 A: 加热模式 (拟合温升曲线)
+        # 专家 A: 加热模式 (拟合温升、湿度下降曲线)
         self.fc_heat = nn.Sequential(
-            nn.Linear(feature_size, 32), nn.ReLU(), nn.Linear(32, forecast_horizon)
+            nn.Linear(feature_size, 64), nn.ReLU(), nn.Linear(64, out_features)
         )
-        # 专家 B: 通风模式 (拟合降温曲线)
+        # 专家 B: 通风模式 (拟合降温、降湿、CO2调节曲线)
         self.fc_vent = nn.Sequential(
-            nn.Linear(feature_size, 32), nn.ReLU(), nn.Linear(32, forecast_horizon)
+            nn.Linear(feature_size, 64), nn.ReLU(), nn.Linear(64, out_features)
         )
-        # 专家 C: 自然模式 (拟合自然冷却/加热曲线)
+        # 专家 C: 自然模式 (拟合自然环境变化曲线)
         self.fc_natural = nn.Sequential(
-            nn.Linear(feature_size, 32), nn.ReLU(), nn.Linear(32, forecast_horizon)
+            nn.Linear(feature_size, 64), nn.ReLU(), nn.Linear(64, out_features)
         )
 
     def forward(self, x_past, x_future):
@@ -95,6 +99,7 @@ class SegmentedHybridModel(nn.Module):
         pred_natural = self.fc_natural(combined)
 
         # 5. 门控融合 (根据控制信号强度加权)
+        # 控制维度已经扩展为 [Heater, Vent, Humidifier, CO2_Gen]
         heater_signal = x_future[:, :, 0].mean(dim=1, keepdim=True)
         vent_signal = x_future[:, :, 1].mean(dim=1, keepdim=True)
 
@@ -102,5 +107,8 @@ class SegmentedHybridModel(nn.Module):
         w_vent = vent_signal
         w_natural = torch.clamp(1.0 - w_heat - w_vent, min=0.0)
 
-        final_pred = (w_heat * pred_heat) + (w_vent * pred_vent) + (w_natural * pred_natural)
+        final_pred_flat = (w_heat * pred_heat) + (w_vent * pred_vent) + (w_natural * pred_natural)
+        
+        # Reshape to (batch, horizon, target_dim)
+        final_pred = final_pred_flat.view(-1, self.forecast_horizon, self.target_dim)
         return final_pred

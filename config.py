@@ -26,7 +26,11 @@ class Config:
     cf_cache_path: str = 'data/cf_cache_baseline_h15_weather.npz'
 
     # ======================== 数据特征 ========================
-    target_col: str = 'Temperature, °C'
+    # 多目标控制：温度、湿度、CO2
+    target_cols: List[str] = field(default_factory=lambda: [
+        'Temperature, °C', 'Humidity, %', 'CO?, ppm'
+    ])
+    
     outdoor_temp_col: str = 'Outdoor_Temp'
     outdoor_solar_col: str = 'Outdoor_Solar'
     outdoor_hum_col: str = 'Outdoor_Hum'
@@ -34,12 +38,12 @@ class Config:
 
     # 开关量列 (需要转为二进制)
     binary_cols: List[str] = field(default_factory=lambda: [
-        'Heater', 'Ventilation', 'Lighting', 'Pump 1', 'Valve 1'
+        'Heater', 'Ventilation', 'Fog', 'Lighting', 'Pump 1', 'Valve 1'
     ])
 
-    # 特征顺序 (Heater, Ventilation 在最前面，方便控制器操控)
+    # 特征顺序 (控制变量在最前面)
     feature_order_base: List[str] = field(default_factory=lambda: [
-        'Heater', 'Ventilation', 'Lighting',
+        'Heater', 'Ventilation', 'Fog', 'Lighting',
         'Temperature, °C', 'Humidity, %', 'Illumination, lx', 'CO?, ppm',
         'Hour_Sin', 'Hour_Cos'
     ])
@@ -48,13 +52,15 @@ class Config:
         'Outdoor_Temp', 'Outdoor_Solar', 'Outdoor_Hum', 'Outdoor_Wind'
     ])
 
-    # 控制变量列名
-    control_cols: List[str] = field(default_factory=lambda: ['Heater', 'Ventilation'])
+    # 控制变量列名 (4维动作空间)
+    control_cols: List[str] = field(default_factory=lambda: [
+        'Heater', 'Ventilation', 'Fog', 'Lighting'
+    ])
 
     # 时间编码列名
     time_cols: List[str] = field(default_factory=lambda: ['Hour_Sin', 'Hour_Cos'])
 
-    # 室内光照代理列 (作为太阳辐射代理)
+    # 室内光照代理列 (如果有额外的光照度列，这里不强制加Lighting是因为Lighting算控制量)
     indoor_solar_proxy: List[str] = field(default_factory=lambda: ['Illumination, lx'])
 
     # ======================== 序列参数 ========================
@@ -94,15 +100,33 @@ class Config:
     lambda_trend: float = 0.3     # 趋势惩罚权重
 
     # ======================== DPC控制器参数 ========================
-    heater_gain: float = 0.15     # 加热物理增益 (校准后: 让优化器输出更高的加热功率)
-    vent_gain: float = -0.3       # 通风物理增益 (归一化空间)
+    # 多变量物理增益
+    heater_gain_temp: float = 0.15      # 加热对温度的影响
+    heater_gain_hum: float = -0.1       # 加热对相对湿度的影响 (温度升高，RH下降)
+    vent_gain_temp: float = -0.3        # 通风对温度的影响
+    vent_gain_hum: float = -0.4         # 通风对湿度的影响
+    vent_gain_co2: float = -0.5         # 通风对CO2的影响 (排出高浓度CO2)
+    fog_gain_temp: float = -0.05        # 起雾/加湿对温度的影响(蒸发降温)
+    fog_gain_hum: float = 0.5           # 起雾/加湿对湿度的影响
+    lighting_gain_temp: float = 0.05    # 补光灯开启附带微弱升温
+    lighting_gain_co2: float = -0.6     # 补光灯开启促进光合作用，极其强烈地消耗室内 CO2
+
+    # 多目标设定值
     target_temp: float = 25.0     # 目标温度 (°C)
+    target_hum: float = 70.0      # 目标湿度 (%)
+    target_co2: float = 800.0     # 目标CO2浓度 (ppm)
+
     dpc_lr: float = 0.2           # DPC优化器学习率
     dpc_iterations: int = 100     # DPC优化迭代次数
-    w_track: float = 20.0         # 跟踪误差权重
-    w_energy: float = 0.001       # 节能权重 (降低以给优化器更多自由度)
-    w_smooth: float = 0.1         # 平滑惩罚权重 (抑制动作跳变)
-    vent_suppress_margin: float = 2.0  # 通风抑制边界: temp < target+2°C 时禁止通风
+    
+    # 追踪误差权重 (Temperature, Humidity, CO2) - 加大湿度和CO2权重逼迫优化器牺牲温度开通风
+    w_track_temp: float = 20.0
+    w_track_hum: float = 12.0
+    w_track_co2: float = 8.0
+    
+    w_energy: float = 0.001       # 节能权重
+    w_smooth: float = 0.1         # 平滑惩罚权重
+    vent_suppress_margin: float = -100.0  # (已废除) 通风抑制边界，设为极负值永不触发
 
     # ======================== MDP参数 ========================
     mdp_vent_threshold: float = 28.0  # MDP 开通风阈值
@@ -111,8 +135,8 @@ class Config:
     pso_n_particles: int = 30         # 粒子数量
     pso_n_generations: int = 50       # 迭代代数
     pso_w_inertia: float = 0.7        # 惯性权重
-    pso_c1: float = 1.5               # 认知因子 (向个体最优靠拢)
-    pso_c2: float = 1.5               # 社会因子 (向全局最优靠拢)
+    pso_c1: float = 1.5               # 认知因子
+    pso_c2: float = 1.5               # 社会因子
 
     # ======================== PWM驱动参数 ========================
     pwm_cycle: int = 10       # PWM周期 (分钟)
@@ -124,19 +148,20 @@ class Config:
     sim_start_idx: int = 0    # 仿真起始索引
 
     # ======================== 动态增益参数 ========================
-    gain_sigma: float = 0.1       # 高斯核宽度 (动态增益计算)
+    gain_sigma: float = 0.1       # 高斯核宽度
     gain_min: float = 0.2         # 最小增益因子
     gain_max: float = 1.0         # 最大增益因子
 
     # ======================== 比例兜底参数 ========================
-    safety_tier1_error: float = 3.0    # 一级兜底: error >= 3°C
-    safety_tier1_min: float = 0.98     # 一级兜底: 最低加热功率
-    safety_tier2_error: float = 1.0    # 二级兜底: error >= 1°C
-    safety_tier2_min: float = 0.90     # 二级兜底: 最低加热功率
-    safety_tier3_error: float = 0.3    # 三级兜底: error >= 0.3°C
-    safety_tier3_min: float = 0.80     # 三级兜底: 最低加热功率
-    safety_tier4_min: float = 0.60     # 四级兜底: error > 0, 最低加热功率
+    # 仍主要以温度作为关键安全指标
+    safety_tier1_error: float = 3.0
+    safety_tier1_min: float = 0.98
+    safety_tier2_error: float = 1.0
+    safety_tier2_min: float = 0.90
+    safety_tier3_error: float = 0.3
+    safety_tier3_min: float = 0.80
+    safety_tier4_min: float = 0.60
 
     # ======================== 积分控制参数 ========================
-    integral_decay: float = 0.95       # 积分衰减因子
-    integral_clip: float = 20.0        # 积分防饱和上限
+    integral_decay: float = 0.95
+    integral_clip: float = 20.0

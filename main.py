@@ -11,6 +11,7 @@ main.py
 import warnings
 import numpy as np
 import torch
+import sys
 
 from config import Config
 from data_processing.processor import DataProcessor
@@ -65,6 +66,7 @@ def main():
     model = SegmentedHybridModel(
         input_dim=len(processor.feature_order),
         future_dim=len(processor.future_indices),
+        target_dim=3,
         forecast_horizon=cfg.horizon,
         hidden_dim=cfg.hidden_dim
     ).to(device)
@@ -75,13 +77,13 @@ def main():
     # 3. 决策模型 (共享同一个 DecisionControlModel)
     print("\n---> 初始化决策模型...")
     decision_model = DecisionControlModel(model, config=cfg)
-    print(f"    物理引导梯度层 (Heater Gain={cfg.heater_gain}, Vent Gain={cfg.vent_gain})")
+    print(f"    多变量物理引导梯度层已挂载")
 
     # 4. 控制器初始化
     print("\n---> 初始化 DPC 控制器 (梯度优化)...")
     print(f"    lr={cfg.dpc_lr}, iterations={cfg.dpc_iterations}")
     dpc = DPCController(
-        decision_model, processor.scaler, processor.target_idx,
+        decision_model, processor.scaler, processor.target_indices,
         processor.future_indices, config=cfg
     )
 
@@ -89,7 +91,7 @@ def main():
     print(f"    粒子数={cfg.pso_n_particles}, 代数={cfg.pso_n_generations}, "
           f"惯性={cfg.pso_w_inertia}, c1={cfg.pso_c1}, c2={cfg.pso_c2}")
     pso = PSOController(
-        decision_model, processor.scaler, processor.target_idx,
+        decision_model, processor.scaler, processor.target_indices,
         processor.future_indices, config=cfg
     )
 
@@ -113,9 +115,24 @@ def main():
 
     # 6. 仿真 (DPC vs PSO)
     print("\n---> 开始对比仿真 (DPC vs PSO + PWM)...")
+    
+    # [硬件加速] 使用 PyTorch 2.x 编译优化决策层，提升前向传播速度
+    # 注意: Windows 原生暂不完全支持 Triton 后端，因此在 Windows 下跳过 torch.compile
+    if hasattr(torch, 'compile') and sys.platform != 'win32':
+        print("    [硬件加速] 正在编译模型计算图 (torch.compile)...")
+        try:
+            decision_model = torch.compile(decision_model)
+            # 将编译后的模型重新挂载回控制器
+            dpc.model = decision_model
+            pso.model = decision_model
+        except Exception as e:
+            print(f"    [警告] torch.compile 失败，回退到急切模式: {e}")
+    else:
+        print("    [硬件加速] 当前平台为 Windows 或不支持 compile，跳过计算图编译。")
+
     sim = Simulator(
         dpc, pso, PhysicsGreenhouseEnv,
-        processor.feature_order, processor.scaler, processor.target_idx,
+        processor.feature_order, processor.scaler, processor.target_indices,
         config=cfg, device=device,
         pwm_sim_dpc=pwm_sim_dpc, pwm_sim_pso=pwm_sim_pso
     )
