@@ -131,12 +131,16 @@ class Config:
     # ======================== MDP参数 ========================
     mdp_vent_threshold: float = 28.0  # MDP 开通风阈值
 
-    # ======================== PSO控制器参数 ========================
-    pso_n_particles: int = 30         # 粒子数量
-    pso_n_generations: int = 50       # 迭代代数
-    pso_w_inertia: float = 0.7        # 惯性权重
-    pso_c1: float = 1.5               # 认知因子
-    pso_c2: float = 1.5               # 社会因子
+    # ======================== SAC控制器参数 ========================
+    sac_hidden_dim: int = 256
+    sac_batch_size: int = 256
+    sac_gamma: float = 0.99
+    sac_tau: float = 0.005
+    sac_lr: float = 3e-4
+    sac_alpha: float = 0.2     # 熵系数
+    sac_target_update_interval: int = 1
+    sac_train_steps: int = 50000  # 离线环境交互训练总步数
+    sac_replay_size: int = 100000
 
     # ======================== PWM驱动参数 ========================
     pwm_cycle: int = 10       # PWM周期 (分钟)

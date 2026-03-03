@@ -18,7 +18,10 @@ from data_processing.processor import DataProcessor
 from models.segmented_hybrid import SegmentedHybridModel
 from models.decision_model import DecisionControlModel
 from controllers.dpc_controller import DPCController
-from controllers.pso_controller import PSOController
+from controllers.sac_controller import SACController
+from controllers.sac.sac_agent import SAC
+from controllers.sac.replay_buffer import ReplayBuffer
+from environment.gym_wrapper import GreenhouseGymEnv
 from controllers.pwm_driver import PWMDriver, PWMSimulator
 from environment.physics_env import PhysicsGreenhouseEnv
 from training.trainer import Trainer
@@ -42,7 +45,7 @@ def setup_seed(seed):
 def main():
     print("=" * 60)
     print("--- 智能温室控制系统 ---")
-    print("--- DPC (可微规划) vs PSO (粒子群优化) ---")
+    print("--- DPC (可微规划) vs SAC (柔性演员评判家) ---")
     print("=" * 60)
 
     # 0. 配置
@@ -87,15 +90,60 @@ def main():
         processor.future_indices, config=cfg
     )
 
-    print(f"---> 初始化 PSO 控制器 (粒子群优化)...")
-    print(f"    粒子数={cfg.pso_n_particles}, 代数={cfg.pso_n_generations}, "
-          f"惯性={cfg.pso_w_inertia}, c1={cfg.pso_c1}, c2={cfg.pso_c2}")
-    pso = PSOController(
-        decision_model, processor.scaler, processor.target_indices,
-        processor.future_indices, config=cfg
+    # 5. ======================== SAC 离线训练 ========================
+    print("\n---> 初始化 SAC 强化学习环境与代理...")
+    print(f"    训练步数={cfg.sac_train_steps}, Batch={cfg.sac_batch_size}, LR={cfg.sac_lr}")
+    
+    gym_env = GreenhouseGymEnv( PhysicsGreenhouseEnv(np.zeros(3), config=cfg), config=cfg, 
+                                scaler=processor.scaler, target_indices=processor.target_indices )
+    
+    sac_agent = SAC(gym_env.observation_space.shape[0], gym_env.action_space, cfg, device)
+    memory = ReplayBuffer(cfg.sac_replay_size, cfg.seed)
+    
+    # 训练循环
+    print("    [SAC] 开始离线训练...")
+    updates = 0
+    episodes = 0
+    total_numsteps = 0
+    
+    while total_numsteps < cfg.sac_train_steps:
+        episode_reward = 0
+        episode_steps = 0
+        done = False
+        state, _ = gym_env.reset(seed=cfg.seed + episodes)
+        
+        while not done:
+            if cfg.sac_train_steps > total_numsteps:
+                action = sac_agent.select_action(state)
+            else:
+                break
+                
+            next_state, reward, terminated, truncated, _ = gym_env.step(action)
+            episode_steps += 1
+            total_numsteps += 1
+            episode_reward += reward
+            done = terminated or truncated
+            
+            mask = 1 if episode_steps == gym_env.max_steps else float(not done)
+            memory.push(state, action, reward, next_state, mask)
+            state = next_state
+            
+            # 满足批次大小开始更新参数
+            if len(memory) > cfg.sac_batch_size:
+                sac_agent.update_parameters(memory, cfg.sac_batch_size, updates)
+                updates += 1
+        
+        episodes += 1
+        if episodes % 20 == 0 or total_numsteps >= cfg.sac_train_steps:
+            print(f"        Episode: {episodes}, 交互总步数: {total_numsteps}, Ep. Reward: {episode_reward:.2f}")
+
+    print(f"---> 离线训练完成，初始化 SAC 控制器...")
+    sac_controller = SACController(
+        sac_agent, processor.scaler, processor.target_indices,
+        processor.future_indices, feature_order=processor.feature_order, config=cfg
     )
 
-    # 5. PWM 驱动器 (DPC 和 PSO 各自独立的 PWM 实例)
+    # 6. PWM 驱动器 (DPC 和 SAC 各自独立的 PWM 实例)
     print(f"\n---> 初始化 PWM 驱动器...")
     print(f"    周期={cfg.pwm_cycle}min, 最小吸合={cfg.pwm_min_on}min, 最小关断={cfg.pwm_min_off}min")
 
@@ -106,15 +154,15 @@ def main():
     )
     pwm_sim_dpc = PWMSimulator(pwm_driver_dpc)
 
-    pwm_driver_pso = PWMDriver(
+    pwm_driver_sac = PWMDriver(
         cycle_minutes=cfg.pwm_cycle,
         min_on_minutes=cfg.pwm_min_on,
         min_off_minutes=cfg.pwm_min_off
     )
-    pwm_sim_pso = PWMSimulator(pwm_driver_pso)
+    pwm_sim_sac = PWMSimulator(pwm_driver_sac)
 
-    # 6. 仿真 (DPC vs PSO)
-    print("\n---> 开始对比仿真 (DPC vs PSO + PWM)...")
+    # 7. 仿真 (DPC vs SAC)
+    print("\n---> 开始对比仿真 (DPC vs SAC + PWM)...")
     
     # [硬件加速] 使用 PyTorch 2.x 编译优化决策层，提升前向传播速度
     # 注意: Windows 原生暂不完全支持 Triton 后端，因此在 Windows 下跳过 torch.compile
@@ -122,23 +170,22 @@ def main():
         print("    [硬件加速] 正在编译模型计算图 (torch.compile)...")
         try:
             decision_model = torch.compile(decision_model)
-            # 将编译后的模型重新挂载回控制器
+            # 将编译后的模型重新挂载回控制器 （SAC由于无模型，不用挂载决策模型）
             dpc.model = decision_model
-            pso.model = decision_model
         except Exception as e:
             print(f"    [警告] torch.compile 失败，回退到急切模式: {e}")
     else:
         print("    [硬件加速] 当前平台为 Windows 或不支持 compile，跳过计算图编译。")
 
     sim = Simulator(
-        dpc, pso, PhysicsGreenhouseEnv,
+        dpc, sac_controller, PhysicsGreenhouseEnv,
         processor.feature_order, processor.scaler, processor.target_indices,
         config=cfg, device=device,
-        pwm_sim_dpc=pwm_sim_dpc, pwm_sim_pso=pwm_sim_pso
+        pwm_sim_dpc=pwm_sim_dpc, pwm_sim_sac=pwm_sim_sac
     )
     result = sim.run(datasets['X_test_p'], datasets['X_test_f'], config=cfg)
 
-    # 7. 可视化
+    # 8. 可视化
     print("\n---> 绘制结果...")
     viz = Visualizer(config=cfg)
     viz.plot_comparison(result)

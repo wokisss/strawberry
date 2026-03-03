@@ -2,9 +2,9 @@
 """
 simulation/simulator.py
 -------------------------
-DPC vs PSO 滚动仿真主循环
+DPC vs SAC 滚动仿真主循环
 
-在物理引擎驱动下对比 DPC 和 PSO 控制器的性能。
+在物理引擎驱动下对比 DPC 和 SAC 控制器的性能。
 支持 Sim-to-Real PWM 映射：将连续输出离散化为继电器 ON/OFF。
 """
 
@@ -19,13 +19,13 @@ from typing import List, Optional
 class SimResult:
     """仿真结果容器"""
     history_dpc: List[np.ndarray] = field(default_factory=list) # [Temp, Hum, CO2]
-    history_pso: List[np.ndarray] = field(default_factory=list) # [Temp, Hum, CO2]
+    history_sac: List[np.ndarray] = field(default_factory=list) # [Temp, Hum, CO2]
     actions_dpc: List[list] = field(default_factory=list)       # DPC 连续输出 [0-1]
-    actions_pso: List[list] = field(default_factory=list)       # PSO 连续输出 [0-1]
+    actions_sac: List[list] = field(default_factory=list)       # SAC 连续输出 [0-1]
     pwm_actions_dpc: List[list] = field(default_factory=list)   # DPC PWM 离散化
-    pwm_actions_pso: List[list] = field(default_factory=list)   # PSO PWM 离散化
+    pwm_actions_sac: List[list] = field(default_factory=list)   # SAC PWM 离散化
     time_dpc: List[float] = field(default_factory=list)         # DPC 每步耗时 (ms)
-    time_pso: List[float] = field(default_factory=list)         # PSO 每步耗时 (ms)
+    time_sac: List[float] = field(default_factory=list)         # SAC 每步耗时 (ms)
     
     # 目标轨迹 (3维)
     targets: List[np.ndarray] = field(default_factory=list)
@@ -39,11 +39,11 @@ class SimResult:
 
 class Simulator:
     """
-    仿真主循环: DPC vs PSO
+    仿真主循环: DPC vs SAC
 
     Args:
         dpc: DPCController
-        pso: PSOController
+        sac: SACController
         env_class: 物理环境类 (PhysicsGreenhouseEnv)
         feature_order: 特征列名列表
         scaler: MinMaxScaler
@@ -51,20 +51,20 @@ class Simulator:
         config: Config 对象
         device: torch 设备
         pwm_sim_dpc: DPC 的 PWMSimulator 实例 (可选)
-        pwm_sim_pso: PSO 的 PWMSimulator 实例 (可选)
+        pwm_sim_sac: SAC 的 PWMSimulator 实例 (可选)
     """
 
-    def __init__(self, dpc, pso, env_class, feature_order, scaler, target_indices,
-                 config=None, device=None, pwm_sim_dpc=None, pwm_sim_pso=None):
+    def __init__(self, dpc, sac, env_class, feature_order, scaler, target_indices,
+                 config=None, device=None, pwm_sim_dpc=None, pwm_sim_sac=None):
         self.dpc = dpc
-        self.pso = pso
+        self.sac = sac
         self.env_class = env_class
         self.feature_order = feature_order
         self.scaler = scaler
         self.target_indices = target_indices
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.pwm_sim_dpc = pwm_sim_dpc
-        self.pwm_sim_pso = pwm_sim_pso
+        self.pwm_sim_sac = pwm_sim_sac
 
         if config is not None:
             self._sim_steps = config.sim_steps
@@ -194,7 +194,7 @@ class Simulator:
 
         # 初始状态 (转化为 Tensor 常驻显存，加速后续循环)
         current_state_dpc = torch.tensor(X_test_p[start_idx:start_idx + 1], dtype=torch.float32, device=self.device)
-        current_state_pso = torch.tensor(X_test_p[start_idx:start_idx + 1], dtype=torch.float32, device=self.device)
+        current_state_sac = torch.tensor(X_test_p[start_idx:start_idx + 1], dtype=torch.float32, device=self.device)
         
         # 提前把 Future 序列批量放进显存
         future_base_seq_tensor = torch.tensor(
@@ -228,16 +228,16 @@ class Simulator:
         # 创建支持 GPU 的物理环境
         init_state_tensor = torch.tensor(init_state_np, dtype=torch.float32, device=self.device)
         env_dpc = self.env_class(init_state_tensor, config)
-        env_pso = self.env_class(init_state_tensor, config)
+        env_sac = self.env_class(init_state_tensor, config)
 
         # 重置 PWM
         if self.pwm_sim_dpc is not None:
             self.pwm_sim_dpc.reset()
-        if self.pwm_sim_pso is not None:
-            self.pwm_sim_pso.reset()
+        if self.pwm_sim_sac is not None:
+            self.pwm_sim_sac.reset()
 
         pwm_label = " + PWM离散化" if pwm_on else ""
-        print(f"---> 正在进行 {sim_steps} 步滚动仿真 (DPC vs PSO{pwm_label})...")
+        print(f"---> 正在进行 {sim_steps} 步滚动仿真 (DPC vs SAC{pwm_label})...")
 
         for t in range(sim_steps):
             current_future_base = future_base_seq_tensor[t].unsqueeze(0)
@@ -257,20 +257,20 @@ class Simulator:
             if pwm_dpc is not None:
                 result.pwm_actions_dpc.append(pwm_dpc)
 
-            # ============ PSO 控制器 ============
-            curr_pso_temp = env_pso.current_temp.item() if isinstance(env_pso.current_temp, torch.Tensor) else env_pso.current_temp
+            # ============ SAC 控制器 ============
+            curr_sac_temp = env_sac.current_temp.item() if isinstance(env_sac.current_temp, torch.Tensor) else env_sac.current_temp
 
             t0 = time.time()
-            opt_action_pso, _ = self.pso.get_optimal_action(
-                current_state_pso, current_future_base, current_temp=curr_pso_temp
+            opt_action_sac, _ = self.sac.get_optimal_action(
+                current_state_sac, current_future_base, current_temp=curr_sac_temp
             )
-            result.time_pso.append((time.time() - t0) * 1000)
-            result.actions_pso.append(opt_action_pso)
+            result.time_sac.append((time.time() - t0) * 1000)
+            result.actions_sac.append(opt_action_sac)
 
-            # PSO PWM
-            actual_pso, pwm_pso = self._apply_pwm(self.pwm_sim_pso, opt_action_pso)
-            if pwm_pso is not None:
-                result.pwm_actions_pso.append(pwm_pso)
+            # SAC PWM
+            actual_sac, pwm_sac = self._apply_pwm(self.pwm_sim_sac, opt_action_sac)
+            if pwm_sac is not None:
+                result.pwm_actions_sac.append(pwm_sac)
 
             # ============ 环境推演 ============
             with torch.no_grad():
@@ -281,18 +281,18 @@ class Simulator:
                 result.history_dpc.append(next_state_dpc)
                 self.dpc.update_integral(next_state_dpc[0]) # 仅用温度作为主积分项
 
-                # PSO 环境
-                next_state_pso, current_state_pso = self._step_env(
-                    env_pso, actual_pso, current_state_pso, t, start_idx, X_test_p
+                # SAC 环境
+                next_state_sac, current_state_sac = self._step_env(
+                    env_sac, actual_sac, current_state_sac, t, start_idx, X_test_p
                 )
-                result.history_pso.append(next_state_pso)
-                self.pso.update_integral(next_state_pso[0])
+                result.history_sac.append(next_state_sac)
+                self.sac.update_integral(next_state_sac[0])
 
             # 进度显示
             if (t + 1) % 50 == 0:
                 print(f"    步 {t+1}/{sim_steps} | "
                       f"DPC_T={next_state_dpc[0]:.1f}°C (avg {np.mean(result.time_dpc[-50:]):.0f}ms) | "
-                      f"PSO_T={next_state_pso[0]:.1f}°C (avg {np.mean(result.time_pso[-50:]):.0f}ms)")
+                      f"SAC_T={next_state_sac[0]:.1f}°C (avg {np.mean(result.time_sac[-50:]):.0f}ms)")
 
         print("---> 仿真完成。")
         return result
