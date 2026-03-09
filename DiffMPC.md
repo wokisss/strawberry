@@ -18,8 +18,8 @@ DiffMPC 是一个基于**可微预测控制 (DPC, Differentiable Predictive Cont
    - 开启**补光灯 (Lighting)** 除了提供热量，其诱发的作物**光合作用**能作为消耗室内过剩 CO2 的绝佳手段。
    DPC 控制器通过全局梯度能够自主学会在开启大通风排废气的同时，同步开大加热器和补光灯进行精确的温度对冲补偿，展现出极其高级的“联合妥协与博弈”策略。
 
-3. **Neural ODE + 混合残差预测模型**
-   使用基于神经常微分方程 (Neural ODE) 提取平滑、符合物理规律的连续天气变化基准线，结合深度残差 MLP 网络拟合高频扰动和非线性特性。
+3. **基于 Transformer 的全局前瞻预测大脑**
+   采用最新的大视界 Transformer Encoder-Decoder 架构彻底替换了原有的短视界 RNN/MLP 结构。利用 Self-Attention 和 Cross-Attention 机制，模型能够实现对大惯性环境极长延时（数十步开外）的非线性物理反馈进行精准的无衰减认知，极大提升了梯度回传的纵深与稳定性。
 
 4. **100% 纯 PyTorch / GPU 硬件级极限加速**
    彻底重构底层物理沙盒和粒子群运算。所有算法模块（包括物理仿真反馈环境本身）全部实现在 PyTorch Tensor 计算图下进行。全程无 CPU-GPU 之间的数据 Copy 损耗，极大地压榨了 GPU（如 RTX 5070 Ti）的算力峰值。
@@ -42,7 +42,7 @@ c:\repositories\strawberry\
 │   └── physics_env.py          # 核心离线温室环境物理算子：建模气流热力学变化、湿度蒸发冷却与光合作用降 CO2 动力学
 │
 ├── models/                     # 🧠 混合动力学模型与物理引导抽象层
-│   ├── segmented_hybrid.py     # Neural ODE (神经常微分) + Residual MLP (深度残差) 联合环境多变量状态时序预测大脑
+│   ├── transformer_hybrid.py   # 基于 Transformer 时序 Encoder-Decoder 结合多物理领域专家 (MoE) 的全局前瞻状态预测大脑
 │   └── decision_model.py       # PGG (Physics-Guided Gradients) 物理知识嵌入层：构建动作张量向下游状态投影的非线性可导计算图
 │
 ├── controllers/                # 🎮 决策优化与工业网关层

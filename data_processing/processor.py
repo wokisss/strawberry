@@ -107,10 +107,28 @@ class DataProcessor:
             'WS2M': cfg.outdoor_wind_col,
         })
 
-        # 重采样到分钟级
+        # 物理启发式重采样与插值 (Physical-informed Interpolation)
         weather_cols = cfg.outdoor_cols
-        df_weather = df_weather[weather_cols]
-        df_weather = df_weather.resample('1min').interpolate(method='linear').ffill().bfill()
+        df_weather = df_weather[weather_cols].resample('1min').asfreq()
+        
+        try:
+            # 1. 温湿度使用 Cubic (三次样条) 插值，保证平滑过度
+            df_weather[cfg.outdoor_temp_col] = df_weather[cfg.outdoor_temp_col].interpolate(method='cubic').ffill().bfill()
+            df_weather[cfg.outdoor_hum_col] = df_weather[cfg.outdoor_hum_col].interpolate(method='cubic').ffill().bfill()
+            
+            # 2. 短波辐射使用 PCHIP (保形分段三次插值)，防止强拟合导致日出日落出现负值
+            df_weather[cfg.outdoor_solar_col] = df_weather[cfg.outdoor_solar_col].interpolate(method='pchip').clip(lower=0.0).ffill().bfill()
+            
+            # 3. 风速使用 PCHIP 提取基础风流，然后注入高斯噪声模拟阵风突变
+            base_wind = df_weather[cfg.outdoor_wind_col].interpolate(method='pchip').clip(lower=0.0).ffill().bfill()
+            gust_noise = np.random.normal(0, 0.4, size=len(base_wind)) # STD=0.4m/s 的阵风
+            df_weather[cfg.outdoor_wind_col] = np.clip(base_wind + gust_noise, a_min=0.0, a_max=None)
+            print("    [Info] 成功启用高阶物理气象插值 (Cubic/PCHIP + 阵风注入)")
+            
+        except ImportError:
+            # 若未安装 scipy 则回退到原始无脑线性插值
+            print("    [Warning] 缺少 scipy 库，回退到普通线性插值。建议 pip install scipy")
+            df_weather = df_weather.interpolate(method='linear').ffill().bfill()
 
         # 合并
         df_weather = df_weather.reindex(df.index, method='ffill')

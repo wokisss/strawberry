@@ -15,7 +15,7 @@ import sys
 
 from config import Config
 from data_processing.processor import DataProcessor
-from models.segmented_hybrid import SegmentedHybridModel
+from models.transformer_hybrid import TransformerHybridModel
 from models.decision_model import DecisionControlModel
 from controllers.dpc_controller import DPCController
 from controllers.sac_controller import SACController
@@ -65,13 +65,17 @@ def main():
     datasets = processor.prepare_datasets(data_scaled)
 
     # 2. 模型初始化 + 训练
-    print("\n---> 初始化混合预测模型...")
-    model = SegmentedHybridModel(
+    print("\n---> 初始化 Transformer 混合预测模型...")
+    model = TransformerHybridModel(
         input_dim=len(processor.feature_order),
         future_dim=len(processor.future_indices),
         target_dim=3,
         forecast_horizon=cfg.horizon,
-        hidden_dim=cfg.hidden_dim
+        d_model=cfg.transformer_d_model,
+        nhead=cfg.transformer_nhead,
+        num_layers=cfg.transformer_num_layers,
+        dim_feedforward=cfg.transformer_dim_feedforward,
+        dropout=cfg.transformer_dropout
     ).to(device)
 
     trainer = Trainer(model, config=cfg, device=device)

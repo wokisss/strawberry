@@ -99,6 +99,13 @@ class Config:
     learning_rate: float = 0.001
     lambda_trend: float = 0.3     # 趋势惩罚权重
 
+    # ======================== Transformer 模型参数 ========================
+    transformer_d_model: int = 64
+    transformer_nhead: int = 4
+    transformer_num_layers: int = 4
+    transformer_dim_feedforward: int = 128
+    transformer_dropout: float = 0.1
+
     # ======================== DPC控制器参数 ========================
     # 多变量物理增益
     heater_gain_temp: float = 0.15      # 加热对温度的影响
