@@ -87,24 +87,29 @@ class TransformerHybridModel(nn.Module):
         )
         self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
 
-        # --- 3. 专家输出头 (Expert Decoders) ---
-        # Decoder 吐出的是 (batch, horizon, d_model) 的表征
-        # 需要展平用于最终一次性预测全排序列
+        # --- 3. 变量解耦预测头 (Decoupled Variable Experts) ---
+        # Decoder 吐出的是 (batch, horizon, d_model) 的隐式动力学特征
+        # 展平以便通过全连接网络一次性预测未来整段曲线
         feature_size = d_model * forecast_horizon
-        out_features = forecast_horizon * target_dim
+        out_features = forecast_horizon * 1 # 每个头只负责 1 个变量的预测轨迹
 
-        # 专家 A: 加热模式 (重点拟合升温、降湿曲线)
-        self.fc_heat = nn.Sequential(
-            nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features)
-        )
-        # 专家 B: 通风模式 (重点拟合快降温、快降湿、CO2交换曲线)
-        self.fc_vent = nn.Sequential(
-            nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features)
-        )
-        # 专家 C: 自然模式 (无强干预时的缓慢大周期波动曲线)
-        self.fc_natural = nn.Sequential(
-            nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features)
-        )
+        # [解耦分支 A: Temperature] 
+        # 温度对高强度的 Heater 和 剧烈的 Ventilation 有中频热力学响应
+        self.temp_expert_heat = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
+        self.temp_expert_vent = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
+        self.temp_expert_nat  = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
+
+        # [解耦分支 B: Humidity] 
+        # 湿度对 Ventilation 有极高频的闪崩级响应，对 Heater 有迟滞蒸发响应
+        self.hum_expert_heat = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
+        self.hum_expert_vent = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
+        self.hum_expert_nat  = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
+
+        # [解耦分支 C: CO2] 
+        # 二氧化碳主要对 Ventilation 和 Lighting (光合作用) 有极低频的累积消耗响应
+        self.co2_expert_light = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
+        self.co2_expert_vent  = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
+        self.co2_expert_nat   = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
 
     def forward(self, x_past, x_future):
         """
@@ -138,26 +143,43 @@ class TransformerHybridModel(nn.Module):
         # (B, Horizon, d_model) -> (B, Horizon * d_model)
         combined_features = dec_out.reshape(dec_out.size(0), -1)
 
-        # ==================== B. MoE 专家门控预测 ====================
-        # 3. 独立并行的三个物理专家进行联合预演
-        pred_heat_flat = self.fc_heat(combined_features)
-        pred_vent_flat = self.fc_vent(combined_features)
-        pred_natural_flat = self.fc_natural(combined_features)
-
-        # 4. 根据实际未来动作的强度，软聚类(Soft-Gating)各专家的预测
-        # 采用 x_future 的前两维（假设永远是 Heater 和 Ventilation）
-        heater_signal = x_future[:, :, 0].mean(dim=1, keepdim=True)
-        vent_signal = x_future[:, :, 1].mean(dim=1, keepdim=True)
-
-        w_heat = heater_signal
-        w_vent = vent_signal
-        # 余下的权重分配给自然演化模式
-        w_natural = torch.clamp(1.0 - w_heat - w_vent, min=0.0)
-
-        # 加权融合
-        final_pred_flat = (w_heat * pred_heat_flat) + (w_vent * pred_vent_flat) + (w_natural * pred_natural_flat)
+        # ==================== B. 解耦级 MoE 专家门控预测 ====================
+        # 提取各个控制通道在整个 Horizon 内的均值强度作为门控软指标 (Soft-Gating)
+        # x_future = ['Heater', 'Ventilation', 'Fog', 'Lighting', ...]
+        w_heat  = x_future[:, :, 0].mean(dim=1, keepdim=True)
+        w_vent  = x_future[:, :, 1].mean(dim=1, keepdim=True)
+        w_light = x_future[:, :, 3].mean(dim=1, keepdim=True)
         
-        # (B, Horizon * Target) -> (B, Horizon, Target)
-        final_pred = final_pred_flat.view(-1, self.forecast_horizon, self.target_dim)
+        # 剥离互相覆盖的惩罚，保证自然演化态的基底
+        w_nat_temp = torch.clamp(1.0 - w_heat - w_vent, min=0.0)
+        w_nat_hum  = torch.clamp(1.0 - w_heat - w_vent, min=0.0)
+        w_nat_co2  = torch.clamp(1.0 - w_light - w_vent, min=0.0)
+
+        # 1. Temperature 解耦流 (中频热响应)
+        pred_t_heat = self.temp_expert_heat(combined_features)
+        pred_t_vent = self.temp_expert_vent(combined_features)
+        pred_t_nat  = self.temp_expert_nat(combined_features)
+        pred_temp   = (w_heat * pred_t_heat) + (w_vent * pred_t_vent) + (w_nat_temp * pred_t_nat)
+        
+        # 2. Humidity 解耦流 (高频水汽响应)
+        pred_h_heat = self.hum_expert_heat(combined_features)
+        pred_h_vent = self.hum_expert_vent(combined_features)
+        pred_h_nat  = self.hum_expert_nat(combined_features)
+        pred_hum    = (w_heat * pred_h_heat) + (w_vent * pred_h_vent) + (w_nat_hum * pred_h_nat)
+        
+        # 3. CO2 解耦流 (极低频光合/呼吸响应)
+        pred_c_light = self.co2_expert_light(combined_features)
+        pred_c_vent  = self.co2_expert_vent(combined_features)
+        pred_c_nat   = self.co2_expert_nat(combined_features)
+        pred_co2     = (w_light * pred_c_light) + (w_vent * pred_c_vent) + (w_nat_co2 * pred_c_nat)
+
+        # ==================== C. 流重组 ====================
+        # 将三条解耦流在特征维度重新拼接成 (B, horizon * 3) -> 变身为 (B, Horizon, 3)
+        # 张量重排保证顺序对应: [Temp, Hum, CO2]
+        pred_temp = pred_temp.view(-1, self.forecast_horizon, 1)
+        pred_hum  = pred_hum.view(-1, self.forecast_horizon, 1)
+        pred_co2  = pred_co2.view(-1, self.forecast_horizon, 1)
+
+        final_pred = torch.cat([pred_temp, pred_hum, pred_co2], dim=2)
         
         return final_pred

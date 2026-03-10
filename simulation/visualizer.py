@@ -30,10 +30,14 @@ class Visualizer:
     def __init__(self, config=None):
         if config is not None:
             self._results_dir = config.results_dir
+            self._results_dir_control   = getattr(config, 'results_dir_control',   'results/06_dpc_vs_sac')
+            self._results_dir_predictor = getattr(config, 'results_dir_predictor', 'results/07_predictor_diagnostic')
             self._target_temp = config.target_temp
             self._pwm_cycle = config.pwm_cycle
         else:
             self._results_dir = 'results'
+            self._results_dir_control   = 'results/06_dpc_vs_sac'
+            self._results_dir_predictor = 'results/07_predictor_diagnostic'
             self._target_temp = 25.0
             self._pwm_cycle = 10
 
@@ -168,10 +172,65 @@ class Visualizer:
                 ax.axvspan(t, t + 1, color=color, alpha=alpha, linewidth=0)
 
     def save_figure(self, fig):
-        """保存图片"""
-        os.makedirs(self._results_dir, exist_ok=True)
+        """保存控制对比图 → results/06_dpc_vs_sac/"""
+        os.makedirs(self._results_dir_control, exist_ok=True)
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        save_path = os.path.join(self._results_dir, f"dpc_vs_sac_{timestamp}.png")
+        save_path = os.path.join(self._results_dir_control, f"dpc_vs_sac_{timestamp}.png")
         fig.savefig(save_path, dpi=150)
         print(f"---> 结果图已保存至: {os.path.abspath(save_path)}")
+        return save_path
+
+    def plot_predictor_diagnostics(self, metrics, save=True):
+        """
+        绘制 Transformer 预测大脑双模式诊断大图
+        
+        布局: 2 列 × 3 行
+          左列 Panel A: Teacher Forcing 单步评估 (公平泛化指标)
+          右列 Panel B: 自回归滚动压力测试 (误差累积可视化)
+        """
+        steps = metrics['plot_steps']
+        time_axis = range(steps)
+        
+        titles_var = ["Temperature (°C)", "Humidity (%)", "CO₂ (ppm)"]
+        colors_pred = ['#E53935', '#1E88E5', '#43A047']
+        
+        fig, axes = plt.subplots(3, 2, figsize=(20, 14), sharex=True)
+        fig.suptitle("Transformer Predictor Diagnostic Panel — Dual-Mode Evaluation", fontsize=18, y=0.97)
+        
+        # 列标题
+        axes[0, 0].set_title("Panel A: Teacher Forcing (Fair Evaluation)", fontsize=14, fontweight='bold', pad=12)
+        axes[0, 1].set_title("Panel B: Autoregressive Rollout (Stress Test)", fontsize=14, fontweight='bold', pad=12)
+        
+        for i in range(3):
+            # ==== Panel A (左列): Teacher Forcing ====
+            ax_a = axes[i, 0]
+            ax_a.plot(time_axis, metrics['plot_true_tf'][:, i], color='#333333', linestyle='--', linewidth=1.5, label='Ground Truth')
+            ax_a.plot(time_axis, metrics['plot_pred_tf'][:, i], color=colors_pred[i], linewidth=2.0, alpha=0.85,
+                      label=f'Predicted (R²={metrics["r2_tf"][i]:.3f}, MAE={metrics["mae_tf"][i]:.2f})')
+            ax_a.set_ylabel(titles_var[i], fontsize=11)
+            ax_a.legend(loc='upper right', fontsize=9)
+            ax_a.grid(True, alpha=0.3)
+            
+            # ==== Panel B (右列): Autoregressive ====
+            ax_b = axes[i, 1]
+            ax_b.plot(time_axis, metrics['plot_true_ar'][:, i], color='#333333', linestyle='--', linewidth=1.5, label='Ground Truth')
+            ax_b.plot(time_axis, metrics['plot_pred_ar'][:, i], color=colors_pred[i], linewidth=2.0, alpha=0.85,
+                      label=f'Predicted (R²={metrics["r2_ar"][i]:.3f}, MAE={metrics["mae_ar"][i]:.2f})')
+            ax_b.set_ylabel(titles_var[i], fontsize=11)
+            ax_b.legend(loc='upper right', fontsize=9)
+            ax_b.grid(True, alpha=0.3)
+        
+        axes[2, 0].set_xlabel("Time Steps (minutes)", fontsize=11)
+        axes[2, 1].set_xlabel("Time Steps (minutes)", fontsize=11)
+        
+        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        
+        save_path = None
+        if save:
+            os.makedirs(self._results_dir_predictor, exist_ok=True)
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            save_path = os.path.join(self._results_dir_predictor, f"predictor_diagnostic_{timestamp}.png")
+            fig.savefig(save_path, dpi=150)
+            print(f"---> 预测诊断大图已保存至: {os.path.abspath(save_path)}")
+            
         return save_path

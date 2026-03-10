@@ -27,6 +27,7 @@ from environment.physics_env import PhysicsGreenhouseEnv
 from training.trainer import Trainer
 from simulation.simulator import Simulator
 from simulation.visualizer import Visualizer
+from simulation.evaluator import PredictorEvaluator
 
 # 忽略 sklearn UserWarning
 warnings.filterwarnings("ignore", category=UserWarning, module='sklearn')
@@ -80,6 +81,18 @@ def main():
 
     trainer = Trainer(model, config=cfg, device=device)
     trainer.train(datasets['X_train_p'], datasets['X_train_f'], datasets['y_train'])
+
+    # 2.5 预测大脑评估与诊断
+    print("\n---> 运行预测大脑 (Transformer) 离线诊断...")
+    evaluator = PredictorEvaluator(
+        model, processor.scaler, processor.target_indices, processor.feature_order, cfg, device=device
+    )
+    # 使用测试集来诊断模型真实的泛化性能
+    val_metrics = evaluator.evaluate(datasets['X_test_p'], datasets['X_test_f'], datasets['y_test'])
+    
+    # 画出诊断图
+    temp_viz = Visualizer(config=cfg)
+    diag_save_path = temp_viz.plot_predictor_diagnostics(val_metrics, save=True)
 
     # 3. 决策模型 (共享同一个 DecisionControlModel)
     print("\n---> 初始化决策模型...")

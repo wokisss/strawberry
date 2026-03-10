@@ -55,11 +55,21 @@ c:\repositories\strawberry\
 │   ├── simulator.py            # Rolling Horizon (滚动优化) 调度主干。维护 Online 环境步进，与 DPC 预测进行环境偏差剥离运算
 │   └── visualizer.py           # Multi-plots 特化可视化面板：挂载生成温度/湿度/CO2 贴合度、MAE指标卡以及 4D 高清执行器动作分步推演 5 联图
 │
-├── data/                       # � 本地原始源数据池
+├── data/                       #  本地原始源数据池
 │   └── (原始 Strawberry 环境时序 CSV、历史气象数据集集市)
 │
-└── results/                    # 🎯 离线分析输出物大厅
-    └── (历次 DPC 运行生成的 dpc_vs_pso_{timestamp}.png 对比结论回溯资料存档库)
+└── results/                    # 🎯 分析输出归档库 (按演化阶段分层管理)
+    ├── 01_early_exploration/   # 1月初期探索：MPC 仿真 & baseline 修复迭代
+    │   ├── mpc_simulation_jan14/
+    │   ├── mpc_simulation_jan20_21/
+    │   └── baseline_fix_jan14/
+    ├── 02_mpc_vs_mdp/          # MPC 与 MDP (马尔可夫决策控制) 对比
+    ├── 03_mpc_baseline_optimized/ # 1月28日-2月 MPC 优化版本高频迭代存档
+    ├── 04_mpc_pwm_refactored/  # PWM 离散化网关 & 代码重构版本
+    ├── 05_dpc_vs_pso/          # DPC 可微控制器 vs PSO 粒子群 对比 (多变量升级)
+    ├── 06_dpc_vs_sac/          # 🔥 DPC vs SAC 强化学习对比 (当前主线, 代码自动输出至此)
+    ├── 07_predictor_diagnostic/ # 🔍 Transformer 预测大脑诊断图 (代码自动输出至此)
+    └── 08_misc_figures/        # Figure_X、training_curve、diagnostic_output 等杂项
 ```
 
 ---

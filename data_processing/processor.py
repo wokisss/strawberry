@@ -50,7 +50,7 @@ class DataProcessor:
 
         df = pd.read_csv(
             cfg.dataset_path, encoding='latin1', sep=';', decimal=',',
-            parse_dates=['Timestamp'], dayfirst=True, index_col='Timestamp'
+            parse_dates=['Timestamp'], dayfirst=True, index_col='Timestamp', engine='python'
         )
 
         # 清洗列名
@@ -179,8 +179,12 @@ class DataProcessor:
         print(f"    天气/光照: {[feature_order[i] for i in solar_indices + weather_indices]}")
         print(f"    时间编码: {[feature_order[i] for i in time_indices]}")
 
-        # 归一化
-        data_scaled = self.scaler.fit_transform(df)
+        # 归一化 [修正: 仅在训练行上 fit，避免测试集极值污染归一化边界]
+        # train_end_row 对应 80% 的原始行数，与 prepare_datasets 的划分口径一致
+        train_end_row = int(len(df) * cfg.train_ratio)
+        self.scaler.fit(df.iloc[:train_end_row])   # ✅ 只让训练集决定 min/max
+        data_scaled = self.scaler.transform(df)    # ✅ 全量 transform（含测试集）
+        print(f"    [Scaler] 仅在前 {train_end_row} 行（训练集）上 fit，共 {len(df)} 行全量 transform")
         return data_scaled
 
     @staticmethod
@@ -200,7 +204,7 @@ class DataProcessor:
 
     def prepare_datasets(self, data_scaled):
         """
-        划分训练/测试集
+        划分训练/测试集，严格隔断信息泄露（Data Leakage）
 
         Args:
             data_scaled: 归一化后的数据矩阵
@@ -214,11 +218,23 @@ class DataProcessor:
         )
 
         train_size = int(len(X_past) * cfg.train_ratio)
+        
+        # [核心修复]: 强制加入信息隔离带 (Gap = seq_len + horizon)
+        # 抛弃重叠区间的样本，确保测试集开头的历史 (past) 
+        # 绝对不包含任何训练集末尾的未来目标 (target) 信息！
+        gap = cfg.seq_len + cfg.horizon
+        test_start = train_size + gap
+        
+        if test_start >= len(X_past):
+            # 防御：防数据集过短
+            print(f"    [警告] 数据集过短，隔离带 {gap} 超出边界。缩小为 train_ratio 控制。")
+            test_start = train_size
+
         return {
             'X_train_p': X_past[:train_size],
             'X_train_f': X_future[:train_size],
             'y_train': y[:train_size],
-            'X_test_p': X_past[train_size:],
-            'X_test_f': X_future[train_size:],
-            'y_test': y[train_size:],
+            'X_test_p': X_past[test_start:],
+            'X_test_f': X_future[test_start:],
+            'y_test': y[test_start:],
         }

@@ -21,9 +21,11 @@ class Config:
     # ======================== 数据路径 ========================
     dataset_path: str = 'Strawberry Greenhouse Environmental Control Dataset(version2).csv'
     weather_path: str = 'POWER_Point_Hourly_20250517_20250618_048d33N_025d93E_LST.csv'
-    results_dir: str = 'results'
+    results_dir: str = 'results'                                    # 根输出目录 (保留兼容)
+    results_dir_control: str = 'results/06_dpc_vs_sac'             # DPC vs SAC 控制对比图
+    results_dir_predictor: str = 'results/07_predictor_diagnostic' # Transformer 预测诊断图
     model_save_path: str = 'best_model_A2.pth'
-    cf_cache_path: str = 'data/cf_cache_baseline_h15_weather.npz'
+    cf_cache_path: str = 'data/cf_cache_baseline_h20_weather.npz'
 
     # ======================== 数据特征 ========================
     # 多目标控制：温度、湿度、CO2
@@ -65,7 +67,7 @@ class Config:
 
     # ======================== 序列参数 ========================
     seq_len: int = 60       # 历史窗口长度 (分钟)
-    horizon: int = 10       # 预测窗口长度 (分钟)
+    horizon: int = 20       # 预测窗口长度 (分钟) [已调整: 10→20, 强迫模型学习更长程依赖]
     train_ratio: float = 0.8
 
     # ======================== 物理环境参数 ========================
@@ -95,9 +97,9 @@ class Config:
     # ======================== 模型参数 ========================
     hidden_dim: int = 32
     batch_size: int = 256
-    num_epochs: int = 30
+    num_epochs: int = 50          # [已调整: 30→50, 适应更大 horizon 的训练量]
     learning_rate: float = 0.001
-    lambda_trend: float = 0.3     # 趋势惩罚权重
+    lambda_trend: float = 0.05    # 趋势惩罚权重 [已调整: 0.3→0.05, 减少平滑偏差恢复高频预测能力]
 
     # ======================== Transformer 模型参数 ========================
     transformer_d_model: int = 64
