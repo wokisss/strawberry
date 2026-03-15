@@ -10,7 +10,78 @@ data_processing/processor.py
 import os
 import numpy as np
 import pandas as pd
+import torch
+import torch.nn as nn
 from sklearn.preprocessing import MinMaxScaler
+
+
+# ======================== ODE 导数特征提取器 ========================
+class _ODEF(nn.Module):
+    """Neural ODE 动力函数: 学习数据的时间变化率"""
+    def __init__(self, input_dim, hidden_dim=64):
+        super(_ODEF, self).__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim + 1, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.Softplus(),
+            nn.Linear(hidden_dim, input_dim)
+        )
+
+    def forward(self, t, y):
+        t_vec = torch.ones_like(y[..., :1]) * t
+        return self.net(torch.cat([y, t_vec], dim=-1))
+
+
+def _generate_ode_derivatives(df, target_cols, train_epochs=300):
+    """
+    使用 Neural ODE 为指定列计算物理变化率特征
+    
+    不改变原始数据的值，而是新增 *_Deriv 列表示每分钟的变化率。
+    """
+    print(f"---> [ODE] 正在计算物理导数特征: {target_cols}...")
+    
+    df_clean = df[target_cols].dropna()
+    scaler_ode = MinMaxScaler()
+    data_np = scaler_ode.fit_transform(df_clean.values)
+    
+    timestamps = (df_clean.index - df_clean.index[0]).total_seconds() / 3600.0
+    t_tensor = torch.FloatTensor(timestamps.values if hasattr(timestamps, 'values') else timestamps).reshape(-1, 1)
+    y_tensor = torch.FloatTensor(data_np)
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    t_tensor, y_tensor = t_tensor.to(device), y_tensor.to(device)
+    
+    ode_func = _ODEF(input_dim=len(target_cols)).to(device)
+    optimizer = torch.optim.Adam(ode_func.parameters(), lr=0.02)
+    
+    ode_func.train()
+    for _ in range(train_epochs):
+        optimizer.zero_grad()
+        dy_dt_target = (y_tensor[1:] - y_tensor[:-1]) / (t_tensor[1:] - t_tensor[:-1])
+        t_mid = (t_tensor[1:] + t_tensor[:-1]) / 2
+        y_mid = (y_tensor[1:] + y_tensor[:-1]) / 2
+        loss = torch.mean((ode_func(t_mid, y_mid) - dy_dt_target) ** 2)
+        loss.backward()
+        optimizer.step()
+    
+    ode_func.eval()
+    full_index = pd.date_range(start=df_clean.index[0], end=df_clean.index[-1], freq='1min')
+    df_linear_temp = df[target_cols].reindex(full_index).interpolate(method='linear').ffill().bfill()
+    y_interp_tensor = torch.FloatTensor(scaler_ode.transform(df_linear_temp.values)).to(device)
+    t_full = torch.FloatTensor(
+        (full_index - df_clean.index[0]).total_seconds().values / 3600.0
+    ).reshape(-1, 1).to(device)
+    
+    with torch.no_grad():
+        derivs = ode_func(t_full, y_interp_tensor).cpu().numpy()
+    
+    derivs_restored = derivs / (scaler_ode.scale_ + 1e-8)
+    new_cols = [f"{c}_Deriv" for c in target_cols]
+    df_derivs = pd.DataFrame(derivs_restored, index=full_index, columns=new_cols)
+    
+    print(f"    [ODE] 成功生成 {len(new_cols)} 个导数特征: {new_cols}")
+    return df_derivs
 
 
 class DataProcessor:
@@ -147,6 +218,53 @@ class DataProcessor:
         print("---> 添加时间编码特征: Hour_Sin, Hour_Cos")
         return df
 
+    def add_energy_features(self, df):
+        """
+        [新增] 添加能量累积特征
+        
+        计算各物理控制量过去60分钟的滚动累积值。
+        让模型理解"加热器已连续开了多久"这类时序惯性信息。
+        """
+        cfg = self.cfg
+        energy_window = 60  # 60分钟滚动窗口
+
+        # 只对实际存在的控制列计算
+        control_cols_available = [c for c in cfg.control_cols if c in df.columns]
+        
+        if control_cols_available:
+            new_cols = []
+            for col in control_cols_available:
+                new_col = f'{col}_Energy_60m'
+                df[new_col] = df[col].rolling(window=energy_window, min_periods=1).sum()
+                new_cols.append(new_col)
+            df.fillna(0, inplace=True)
+            print(f"---> [能量特征] 已添加 {len(new_cols)} 个累积特征: {new_cols}")
+        
+        return df
+
+    def add_ode_derivatives(self, df):
+        """
+        [新增] 使用 Neural ODE 计算户外气象列的物理变化率特征
+        
+        为 Outdoor_Temp、Outdoor_Solar 添加 *_Deriv 列，
+        帮助模型理解"温度正在上升还是下降"这类动态趋势信息。
+        """
+        ode_target_cols = ['Outdoor_Temp', 'Outdoor_Solar']
+        ode_target_cols = [c for c in ode_target_cols if c in df.columns]
+        
+        if not ode_target_cols:
+            print("---> [ODE] 未找到气象列，跳过导数特征")
+            return df
+        
+        try:
+            df_derivs = _generate_ode_derivatives(df, ode_target_cols)
+            df = pd.concat([df, df_derivs], axis=1)
+            df = df.ffill().bfill()
+        except Exception as e:
+            print(f"---> [ODE] 导数特征生成失败，跳过: {e}")
+        
+        return df
+
     def prepare_features(self, df):
         """
         特征排序 + 归一化 + 计算 future_indices
@@ -159,8 +277,12 @@ class DataProcessor:
         """
         cfg = self.cfg
 
-        # 构建特征顺序
+        # 构建特征顺序 (自动加入能量累积特征)
         feature_order = list(cfg.feature_order_base) + list(cfg.outdoor_cols)
+        # 自动检测并加入 Energy_60m 累积特征 和 ODE 导数特征
+        energy_cols = [c for c in df.columns if c.endswith('_Energy_60m')]
+        deriv_cols = [c for c in df.columns if c.endswith('_Deriv')]
+        feature_order = feature_order + energy_cols + deriv_cols
         feature_order = [f for f in feature_order if f in df.columns]
         self.feature_order = feature_order
 

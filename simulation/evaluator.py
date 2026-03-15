@@ -4,9 +4,10 @@ simulation/evaluator.py
 -------------------------
 预测大脑 (Transformer) 独立离线诊断模块
 
-双模式评估:
-  - Panel A (Teacher Forcing): 每步都给真实历史，只预测下一步 → 公平的泛化 R²
-  - Panel B (Autoregressive):  切断真实目标，模型自回归盲推 150 步 → 压力测试
+Direct Multi-Step 评估:
+  模型一次前传输出 horizon=120 步的全部预测值，
+  直接与真实值对比，不做自回归循环，不存在误差累积。
+  与旧版 baseline 完全等价的评估方式。
 """
 
 import numpy as np
@@ -43,113 +44,99 @@ class PredictorEvaluator:
 
     def evaluate(self, X_p, X_f, y_true):
         """
-        双模式综合评估。
+        Direct Multi-Step 评估。
+
+        模型一次前传输出 horizon 步预测 → 直接与真实值对比。
+        不做自回归循环，不存在误差累积。
+
+        评估指标:
+          1. 全 horizon R²/MAE: 对 120 步全部时间点计算
+          2. 终值 R²/MAE:      只对第 120 步（最远点）计算
+          3. 可视化:            随机抽取样本的完整 120 步预测轨迹
 
         Returns:
-            dict: 包含两种模式的指标和轨迹数据
+            dict: 包含指标和轨迹数据
         """
         self.model.eval()
-        
-        plot_steps = min(150, len(X_p))
-        start_idx = len(X_p) // 2 - plot_steps // 2 if len(X_p) > plot_steps else 0
+        horizon = self.config.horizon
         
         # ============================================================
-        # Panel A: Teacher Forcing 单步滑动评估 (公平泛化指标)
-        # 每步都用真实历史，只取 horizon 第 0 步预测
+        # 批量前传推理 (一次性输出 horizon 步)
         # ============================================================
-        y_true_real_norm_a = y_true[start_idx : start_idx + plot_steps, 0, :]
-        y_true_real_a = self._inverse_transform_targets(y_true_real_norm_a)
-        
-        y_preds_norm_a = []
+        batch_size = 128
+        all_preds = []
+        all_trues = []
         
         with torch.no_grad():
-            # 批量推理提速: 一次性送入所有样本
-            batch_size = 256
-            for batch_start in range(0, plot_steps, batch_size):
-                batch_end = min(batch_start + batch_size, plot_steps)
-                idx_range = range(start_idx + batch_start, start_idx + batch_end)
+            for batch_start in range(0, len(X_p), batch_size):
+                batch_end = min(batch_start + batch_size, len(X_p))
                 
-                bx_p = torch.tensor(X_p[list(idx_range)], dtype=torch.float32, device=self.device)
-                bx_f = torch.tensor(X_f[list(idx_range)], dtype=torch.float32, device=self.device)
+                bx_p = torch.tensor(X_p[batch_start:batch_end], dtype=torch.float32, device=self.device)
+                bx_f = torch.tensor(X_f[batch_start:batch_end], dtype=torch.float32, device=self.device)
                 
                 pred = self.model(bx_p, bx_f)  # (batch, horizon, 3)
-                # 取 horizon 第 0 步
-                step_preds = pred[:, 0, :].cpu().numpy()
-                y_preds_norm_a.append(step_preds)
+                all_preds.append(pred.cpu().numpy())
+                all_trues.append(y_true[batch_start:batch_end])
         
-        y_preds_norm_a = np.concatenate(y_preds_norm_a, axis=0)
-        y_pred_real_a = self._inverse_transform_targets(y_preds_norm_a)
+        all_preds = np.concatenate(all_preds, axis=0)  # (N, horizon, 3)
+        all_trues = np.concatenate(all_trues, axis=0)   # (N, horizon, 3)
         
-        # Panel A 指标
-        r2_a = [r2_score(y_true_real_a[:, i], y_pred_real_a[:, i]) for i in range(3)]
-        mae_a = [mean_absolute_error(y_true_real_a[:, i], y_pred_real_a[:, i]) for i in range(3)]
-        
-        # ============================================================
-        # Panel B: 自回归滚动评估 (压力测试)
-        # 给定初始历史，切断真实目标，模型用自己的预测拼接历史
-        # ============================================================
-        y_true_real_norm_b = y_true[start_idx : start_idx + plot_steps, 0, :]
-        y_true_real_b = self._inverse_transform_targets(y_true_real_norm_b)
-        
-        current_past_seq = X_p[start_idx].copy()
-        y_preds_norm_b = []
-        
-        with torch.no_grad():
-            for t in range(plot_steps):
-                curr_future = X_f[start_idx + t]
-                
-                bx_p = torch.tensor(current_past_seq, dtype=torch.float32, device=self.device).unsqueeze(0)
-                bx_f = torch.tensor(curr_future, dtype=torch.float32, device=self.device).unsqueeze(0)
-                
-                pred = self.model(bx_p, bx_f)
-                step_pred_norm = pred[0, 0, :].cpu().numpy()
-                y_preds_norm_b.append(step_pred_norm)
-                
-                # 自回归拼接: 抛弃最老一步，用模型预测替换目标维度
-                new_step = np.zeros(current_past_seq.shape[1])
-                if start_idx + t + 1 < len(X_p):
-                    real_next_features = X_p[start_idx + t + 1][-1, :].copy()
-                else:
-                    real_next_features = current_past_seq[-1, :].copy()
-                    
-                for i, idx in enumerate(self.target_indices):
-                    real_next_features[idx] = step_pred_norm[i]
-                    
-                current_past_seq = np.vstack([current_past_seq[1:, :], real_next_features])
-        
-        y_preds_norm_b = np.array(y_preds_norm_b)
-        y_pred_real_b = self._inverse_transform_targets(y_preds_norm_b)
-        
-        # Panel B 指标
-        r2_b = [r2_score(y_true_real_b[:, i], y_pred_real_b[:, i]) for i in range(3)]
-        mae_b = [mean_absolute_error(y_true_real_b[:, i], y_pred_real_b[:, i]) for i in range(3)]
+        # 反归一化
+        all_preds_real = self._inverse_transform_targets(all_preds)
+        all_trues_real = self._inverse_transform_targets(all_trues)
         
         # ============================================================
-        # 打印对比
+        # 指标 1: 全 horizon 平均 R²/MAE
+        # 将 (N, horizon, 3) 展平为 (N*horizon, 3)
+        # ============================================================
+        N = all_preds_real.shape[0]
+        preds_flat = all_preds_real.reshape(-1, 3)
+        trues_flat = all_trues_real.reshape(-1, 3)
+        
+        r2_full = [r2_score(trues_flat[:, i], preds_flat[:, i]) for i in range(3)]
+        mae_full = [mean_absolute_error(trues_flat[:, i], preds_flat[:, i]) for i in range(3)]
+        
+        # ============================================================
+        # 指标 2: 终值 R²/MAE (只看最后一步 t=horizon-1)
+        # ============================================================
+        preds_final = all_preds_real[:, -1, :]  # (N, 3)
+        trues_final = all_trues_real[:, -1, :]  # (N, 3)
+        
+        r2_final = [r2_score(trues_final[:, i], preds_final[:, i]) for i in range(3)]
+        mae_final = [mean_absolute_error(trues_final[:, i], preds_final[:, i]) for i in range(3)]
+        
+        # ============================================================
+        # 可视化数据: 从测试集中间抽取一个样本，展示完整 horizon 步轨迹
+        # ============================================================
+        plot_idx = len(X_p) // 2
+        plot_pred = all_preds_real[plot_idx]  # (horizon, 3)
+        plot_true = all_trues_real[plot_idx]  # (horizon, 3)
+        
+        # ============================================================
+        # 打印诊断
         # ============================================================
         labels = ['🌡️ Temperature', '💧 Humidity   ', '☁️ CO2        ']
         units  = ['°C', '%', 'ppm']
         
-        print("\n" + "=" * 65)
-        print("💡 [诊断] Transformer 预测大脑 — 双模式评估")
-        print("-" * 65)
-        print(f"  {'变量':<16} | {'Panel A (TF) R²':>14} {'MAE':>8} | {'Panel B (AR) R²':>14} {'MAE':>8}")
-        print("-" * 65)
+        print("\n" + "=" * 75)
+        print(f"💡 [诊断] Transformer 预测大脑 — Direct Multi-Step 评估 (horizon={horizon})")
+        print("-" * 75)
+        print(f"  {'变量':<16} | {'全程 R²':>10} {'MAE':>8} | {'终值(t={}) R²'.format(horizon):>14} {'MAE':>8}")
+        print("-" * 75)
         for i in range(3):
-            print(f"  {labels[i]} | {r2_a[i]:>14.4f} {mae_a[i]:>7.2f}{units[i]} | {r2_b[i]:>14.4f} {mae_b[i]:>7.2f}{units[i]}")
-        print("=" * 65 + "\n")
+            print(f"  {labels[i]} | {r2_full[i]:>10.4f} {mae_full[i]:>7.2f}{units[i]} | {r2_final[i]:>14.4f} {mae_final[i]:>7.2f}{units[i]}")
+        print("=" * 75)
+        print(f"  测试样本数: {N}, 每样本预测 {horizon} 步, 共 {N*horizon} 个预测点\n")
 
         return {
-            # Panel A: Teacher Forcing
-            'r2_tf': r2_a,
-            'mae_tf': mae_a,
-            'plot_true_tf': y_true_real_a,
-            'plot_pred_tf': y_pred_real_a,
-            # Panel B: Autoregressive
-            'r2_ar': r2_b,
-            'mae_ar': mae_b,
-            'plot_true_ar': y_true_real_b,
-            'plot_pred_ar': y_pred_real_b,
-            # 共享
-            'plot_steps': plot_steps,
+            # 全 horizon 指标
+            'r2_full': r2_full,
+            'mae_full': mae_full,
+            # 终值指标
+            'r2_final': r2_final,
+            'mae_final': mae_final,
+            # 可视化数据 (单样本完整轨迹)
+            'plot_true_ar': plot_true,    # (horizon, 3) - 键名保持兼容 visualizer
+            'plot_pred_ar': plot_pred,    # (horizon, 3)
+            'plot_steps': horizon,
         }

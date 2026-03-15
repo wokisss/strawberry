@@ -62,6 +62,8 @@ def main():
     df = processor.load_and_preprocess()
     df = processor.merge_weather(df)
     df = processor.add_time_encoding(df)
+    df = processor.add_energy_features(df)
+    df = processor.add_ode_derivatives(df)
     data_scaled = processor.prepare_features(df)
     datasets = processor.prepare_datasets(data_scaled)
 
@@ -77,7 +79,11 @@ def main():
         num_layers=cfg.transformer_num_layers,
         dim_feedforward=cfg.transformer_dim_feedforward,
         dropout=cfg.transformer_dropout
-    ).to(device)
+    )
+    
+    # 注入 target_indices 以便模型内使用残差锚定(Residual Anchoring)
+    model.target_indices = processor.target_indices
+    model = model.to(device)
 
     trainer = Trainer(model, config=cfg, device=device)
     trainer.train(datasets['X_train_p'], datasets['X_train_f'], datasets['y_train'])

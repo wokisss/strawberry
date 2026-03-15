@@ -33,7 +33,8 @@ class DPCController:
 
         # 从 config 或参数读取
         if config is not None:
-            self.horizon = config.horizon
+            self.horizon = getattr(config, 'dpc_horizon', horizon) # 控制 horizon (20)
+            self.pred_horizon = config.horizon # 预测模型输出长度 (120)
             self.target_temp = config.target_temp
             self.target_hum = config.target_hum
             self.target_co2 = config.target_co2
@@ -59,6 +60,7 @@ class DPCController:
             self._vent_suppress_margin = getattr(config, 'vent_suppress_margin', 2.0)
         else:
             self.horizon = horizon
+            self.pred_horizon = 120
             self.target_temp = target_temp
             self._lr = 0.2
             self._iterations = 100
@@ -152,17 +154,29 @@ class DPCController:
                 # 时域扩展 (Constant Action Assumption)
                 u_expanded = u_soft.repeat(1, self.horizon, 1)
 
-                # 拼接: 优化动作 + 固定天气
-                f_weather = current_future_base[:, :, 4:]
-                x_future_optim = torch.cat([u_expanded, f_weather], dim=2)
+                # ==========================================================
+                # 解耦: 动作张量长度为 dpc_horizon(20)，但模型前传需要 120 步 future_base
+                # 策略: 真实天气提供 120 步，控制动作前 20 步优化，后 100 步用边缘填充
+                # ==========================================================
+                f_weather = current_future_base[:, :, 4:]  # (1, 120, N_weather)
+                
+                # 动作填充: [0:20] = u_expanded, [20:120] 用最后一步的动作填充 (或全0)
+                u_padding = u_expanded[:, -1:, :].repeat(1, self.pred_horizon - self.horizon, 1)
+                u_full = torch.cat([u_expanded, u_padding], dim=1) # (1, 120, 4)
+                
+                # 拼接: 控制动作(120) + 固定天气(120)
+                x_future_optim = torch.cat([u_full, f_weather], dim=2)
 
-                # 前向预测 (B, horizon, 3)
-                pred_norm = self.model(
+                # 前向预测 (B, 120, 3)
+                pred_norm_full = self.model(
                     current_past_tensor, x_future_optim,
                     target_temp_norm=self.target_temp_norm
                 )
+                
+                # 截断: 控制器只关心前 dpc_horizon 步的跟踪误差
+                pred_norm = pred_norm_full[:, :self.horizon, :] # (B, 20, 3)
 
-                # Loss (多目标追踪)
+                # Loss (多目标追踪只计算前 dpc_horizon 步)
                 track_error_sq = (pred_norm - self.target_norms) ** 2
                 loss_temp = torch.mean(track_error_sq[:, :, 0])
                 loss_hum = torch.mean(track_error_sq[:, :, 1])

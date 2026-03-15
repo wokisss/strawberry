@@ -4,9 +4,9 @@ models/transformer_hybrid.py
 -----------------------------
 Transformer-MoE 混合专家预测模型
 
-使用 Transformer Encoder-Decoder 架构代替原有的 CNN-BiGRU，
-解决温室物理系统长距离时滞（大惯性）序列建模的问题。
-保留了经典的三头物理专家门控融合机制 (MoE)。
+核心改进:
+  1. MoE 门控改为 Softmax 归一化 (权重之和恒等于1)
+  2. 专家头改为逐步输出 (避免展平导致参数爆炸)
 """
 
 import math
@@ -14,10 +14,7 @@ import torch
 import torch.nn as nn
 
 class PositionalEncoding(nn.Module):
-    """
-    经典的 Transformer 位置编码
-    (基于正余弦函数)
-    """
+    """经典 Transformer 位置编码 (正余弦函数)"""
     def __init__(self, d_model, max_len=5000):
         super(PositionalEncoding, self).__init__()
         pe = torch.zeros(max_len, d_model)
@@ -28,19 +25,19 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pe', pe.unsqueeze(0))  # (1, max_len, d_model)
 
     def forward(self, x):
-        """
-        x: (batch, seq_len, d_model)
-        """
         return x + self.pe[:, :x.size(1), :]
 
 class TransformerHybridModel(nn.Module):
     """
-    基于 Transformer 的三头门控专家模型
+    基于 Transformer 的变量解耦 MoE 预测模型
 
     架构:
-        - Past Encoder: Transformer Encoder (提取历史物理状态的全局/跨距离依赖)
+        - Past Encoder:  Transformer Encoder (历史物理状态的全局依赖)
         - Future Decoder: Transformer Decoder (Cross-Attention 融合未来干预序列)
-        - MoE Heads: 3 个物理专家输出头 (加热/通风/自然) + 按动作强度融合
+        - MoE Heads:     逐步输出 + Softmax 门控归一化
+
+    [修正1] MoE 门控: clamp → Softmax, 确保权重之和始终为1
+    [修正2] 专家头:   展平+大MLP → 逐步输出(d_model→1), 参数量不随 horizon 爆炸
     """
     def __init__(
         self, 
@@ -59,57 +56,58 @@ class TransformerHybridModel(nn.Module):
         self.forecast_horizon = forecast_horizon
         self.d_model = d_model
 
-        # --- 1. Embedding 层 ---
-        # 历史特征的值映射
-        self.past_val_embedding = nn.Linear(input_dim, d_model)
-        # 未来特征的值映射
-        self.future_val_embedding = nn.Linear(future_dim, d_model)
+        # --- 1. Embedding 层 (引入 Patch Tokenization) ---
+        # 传统 Point-wise Tokenization:
+        # self.past_val_embedding = nn.Linear(input_dim, d_model)
+        # self.future_val_embedding = nn.Linear(future_dim, d_model)
         
-        # 统一的位置编码
+        # PatchTST-style Tokenization: 使用 Conv1d 将相邻时间点聚合成一个 Token
+        patch_len = 5    # 每个 Patch 的时间长度 (感受野)
+        stride = 1       # 步长为 1 保持序列长度不变，方便后续一维逐时间点对应
+        
+        # 利用 1D 卷积实现 Patch 分块，(in_channels, out_channels, kernel_size, stride, padding)
+        # padding="same" 需要步长为1，确保输出序列长度与输入相同
+        self.past_val_embedding = nn.Conv1d(in_channels=input_dim, out_channels=d_model, 
+                                            kernel_size=patch_len, stride=stride, padding=patch_len//2)
+        
+        self.future_val_embedding = nn.Conv1d(in_channels=future_dim, out_channels=d_model, 
+                                              kernel_size=patch_len, stride=stride, padding=patch_len//2)
+
         self.pos_encoder = PositionalEncoding(d_model)
 
         # --- 2. Transformer 核心层 ---
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model=d_model, 
-            nhead=nhead, 
+            d_model=d_model, nhead=nhead, 
             dim_feedforward=dim_feedforward, 
-            dropout=dropout, 
-            batch_first=True
+            dropout=dropout, batch_first=True
         )
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
 
         decoder_layer = nn.TransformerDecoderLayer(
-            d_model=d_model, 
-            nhead=nhead, 
+            d_model=d_model, nhead=nhead, 
             dim_feedforward=dim_feedforward, 
-            dropout=dropout, 
-            batch_first=True
+            dropout=dropout, batch_first=True
         )
         self.transformer_decoder = nn.TransformerDecoder(decoder_layer, num_layers=num_layers)
 
-        # --- 3. 变量解耦预测头 (Decoupled Variable Experts) ---
-        # Decoder 吐出的是 (batch, horizon, d_model) 的隐式动力学特征
-        # 展平以便通过全连接网络一次性预测未来整段曲线
-        feature_size = d_model * forecast_horizon
-        out_features = forecast_horizon * 1 # 每个头只负责 1 个变量的预测轨迹
+        # --- 3. 变量解耦逐步输出头 (Per-Step Output) ---
+        # [修正] 每个专家头: d_model → 1 (逐时间步输出)
+        # 参数量 = O(d_model) 而非 O(d_model * horizon), 不随 horizon 爆炸
+        
+        # [Temperature] 3 个工况专家
+        self.temp_expert_heat = nn.Sequential(nn.Linear(d_model, 64), nn.ReLU(), nn.Linear(64, 1))
+        self.temp_expert_vent = nn.Sequential(nn.Linear(d_model, 64), nn.ReLU(), nn.Linear(64, 1))
+        self.temp_expert_nat  = nn.Sequential(nn.Linear(d_model, 64), nn.ReLU(), nn.Linear(64, 1))
 
-        # [解耦分支 A: Temperature] 
-        # 温度对高强度的 Heater 和 剧烈的 Ventilation 有中频热力学响应
-        self.temp_expert_heat = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
-        self.temp_expert_vent = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
-        self.temp_expert_nat  = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
+        # [Humidity] 3 个工况专家
+        self.hum_expert_heat = nn.Sequential(nn.Linear(d_model, 64), nn.ReLU(), nn.Linear(64, 1))
+        self.hum_expert_vent = nn.Sequential(nn.Linear(d_model, 64), nn.ReLU(), nn.Linear(64, 1))
+        self.hum_expert_nat  = nn.Sequential(nn.Linear(d_model, 64), nn.ReLU(), nn.Linear(64, 1))
 
-        # [解耦分支 B: Humidity] 
-        # 湿度对 Ventilation 有极高频的闪崩级响应，对 Heater 有迟滞蒸发响应
-        self.hum_expert_heat = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
-        self.hum_expert_vent = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
-        self.hum_expert_nat  = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
-
-        # [解耦分支 C: CO2] 
-        # 二氧化碳主要对 Ventilation 和 Lighting (光合作用) 有极低频的累积消耗响应
-        self.co2_expert_light = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
-        self.co2_expert_vent  = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
-        self.co2_expert_nat   = nn.Sequential(nn.Linear(feature_size, 128), nn.ReLU(), nn.Linear(128, out_features))
+        # [CO2] 3 个工况专家
+        self.co2_expert_light = nn.Sequential(nn.Linear(d_model, 64), nn.ReLU(), nn.Linear(64, 1))
+        self.co2_expert_vent  = nn.Sequential(nn.Linear(d_model, 64), nn.ReLU(), nn.Linear(64, 1))
+        self.co2_expert_nat   = nn.Sequential(nn.Linear(d_model, 64), nn.ReLU(), nn.Linear(64, 1))
 
     def forward(self, x_past, x_future):
         """
@@ -118,68 +116,82 @@ class TransformerHybridModel(nn.Module):
             x_future: (batch, horizon, future_dim) — 未来控制/扰动序列
 
         Returns:
-            final_pred: (batch, horizon, target_dim) — 目标多变量预测序列
+            final_pred: (batch, horizon, target_dim) — 目标多变量预测
         """
         # ==================== A. Transformer 编码解码 ====================
-        # 1. 历史序列 Embedding & 编码
-        #    (B, Seq, In_Dim) -> (B, Seq, d_model)
-        enc_emb = self.past_val_embedding(x_past)
+        # x_past: (batch, seq_len, input_dim) -> Conv1d 需要 (batch, channels, seq_len)
+        x_past_t = x_past.transpose(1, 2)
+        enc_emb = self.past_val_embedding(x_past_t) # (batch, d_model, seq_len)
+        enc_emb = enc_emb.transpose(1, 2)           # 转回 (batch, seq_len, d_model)
         enc_emb = self.pos_encoder(enc_emb)
-        
-        # Memory 包含长距离过去的高阶非线性关联表征
-        # memory: (B, Seq, d_model)
         memory = self.transformer_encoder(enc_emb)
 
-        # 2. 未来序列 Embedding (作为 Query)
-        #    (B, Horizon, Fut_Dim) -> (B, Horizon, d_model)
-        dec_emb = self.future_val_embedding(x_future)
+        # x_future: (batch, horizon, future_dim) -> Conv1d 需要 (batch, channels, horizon)
+        x_future_t = x_future.transpose(1, 2)
+        dec_emb = self.未来_val_embedding = self.future_val_embedding(x_future_t) # (batch, d_model, horizon)
+        dec_emb = dec_emb.transpose(1, 2)             # 转回 (batch, horizon, d_model)
         dec_emb = self.pos_encoder(dec_emb)
-        
-        # 为了防止未来步泄露自身（因任务是非自回归一次性输出），
-        # 在标准的回归/预测里，这里可以不加 Casual Mask，因为输入是已知条件（动作预案）。
+        # dec_out: (B, Horizon, d_model) — 每个时间步都有独立的特征向量
         dec_out = self.transformer_decoder(tgt=dec_emb, memory=memory)
 
-        # 展平以便送入 MLP Expert 头
-        # (B, Horizon, d_model) -> (B, Horizon * d_model)
-        combined_features = dec_out.reshape(dec_out.size(0), -1)
-
-        # ==================== B. 解耦级 MoE 专家门控预测 ====================
-        # 提取各个控制通道在整个 Horizon 内的均值强度作为门控软指标 (Soft-Gating)
+        # ==================== B. Softmax 门控 MoE ====================
+        # 提取各控制通道的逐步信号强度 (不再取均值, 保留时间分辨率)
         # x_future = ['Heater', 'Ventilation', 'Fog', 'Lighting', ...]
-        w_heat  = x_future[:, :, 0].mean(dim=1, keepdim=True)
-        w_vent  = x_future[:, :, 1].mean(dim=1, keepdim=True)
-        w_light = x_future[:, :, 3].mean(dim=1, keepdim=True)
-        
-        # 剥离互相覆盖的惩罚，保证自然演化态的基底
-        w_nat_temp = torch.clamp(1.0 - w_heat - w_vent, min=0.0)
-        w_nat_hum  = torch.clamp(1.0 - w_heat - w_vent, min=0.0)
-        w_nat_co2  = torch.clamp(1.0 - w_light - w_vent, min=0.0)
+        heat_signal  = x_future[:, :, 0:1]   # (B, H, 1)
+        vent_signal  = x_future[:, :, 1:2]   # (B, H, 1)
+        light_signal = x_future[:, :, 3:4]   # (B, H, 1)
 
-        # 1. Temperature 解耦流 (中频热响应)
-        pred_t_heat = self.temp_expert_heat(combined_features)
-        pred_t_vent = self.temp_expert_vent(combined_features)
-        pred_t_nat  = self.temp_expert_nat(combined_features)
-        pred_temp   = (w_heat * pred_t_heat) + (w_vent * pred_t_vent) + (w_nat_temp * pred_t_nat)
-        
-        # 2. Humidity 解耦流 (高频水汽响应)
-        pred_h_heat = self.hum_expert_heat(combined_features)
-        pred_h_vent = self.hum_expert_vent(combined_features)
-        pred_h_nat  = self.hum_expert_nat(combined_features)
-        pred_hum    = (w_heat * pred_h_heat) + (w_vent * pred_h_vent) + (w_nat_hum * pred_h_nat)
-        
-        # 3. CO2 解耦流 (极低频光合/呼吸响应)
-        pred_c_light = self.co2_expert_light(combined_features)
-        pred_c_vent  = self.co2_expert_vent(combined_features)
-        pred_c_nat   = self.co2_expert_nat(combined_features)
-        pred_co2     = (w_light * pred_c_light) + (w_vent * pred_c_vent) + (w_nat_co2 * pred_c_nat)
+        # [修正] Softmax 归一化: 权重之和恒等于1, 消除幅度不一致问题
+        # Temperature 门控: heat / vent / natural
+        w_temp = torch.softmax(torch.cat([heat_signal, vent_signal, 
+                                          1.0 - heat_signal - vent_signal], dim=-1), dim=-1)
+        w_t_heat = w_temp[:, :, 0:1]   # (B, H, 1)
+        w_t_vent = w_temp[:, :, 1:2]
+        w_t_nat  = w_temp[:, :, 2:3]
 
-        # ==================== C. 流重组 ====================
-        # 将三条解耦流在特征维度重新拼接成 (B, horizon * 3) -> 变身为 (B, Horizon, 3)
-        # 张量重排保证顺序对应: [Temp, Hum, CO2]
-        pred_temp = pred_temp.view(-1, self.forecast_horizon, 1)
-        pred_hum  = pred_hum.view(-1, self.forecast_horizon, 1)
-        pred_co2  = pred_co2.view(-1, self.forecast_horizon, 1)
+        # Humidity 门控: heat / vent / natural
+        w_hum = torch.softmax(torch.cat([heat_signal, vent_signal,
+                                         1.0 - heat_signal - vent_signal], dim=-1), dim=-1)
+        w_h_heat = w_hum[:, :, 0:1]
+        w_h_vent = w_hum[:, :, 1:2]
+        w_h_nat  = w_hum[:, :, 2:3]
 
-        final_pred = torch.cat([pred_temp, pred_hum, pred_co2], dim=2)
-        
+        # CO2 门控: light / vent / natural
+        w_co2 = torch.softmax(torch.cat([light_signal, vent_signal,
+                                         1.0 - light_signal - vent_signal], dim=-1), dim=-1)
+        w_c_light = w_co2[:, :, 0:1]
+        w_c_vent  = w_co2[:, :, 1:2]
+        w_c_nat   = w_co2[:, :, 2:3]
+
+        # ==================== C. 逐步专家输出 ====================
+        # dec_out: (B, H, d_model) → 每个专家头在每个时间步独立输出 1 个值
+        # 1. Temperature
+        pred_temp = (w_t_heat * self.temp_expert_heat(dec_out) +
+                     w_t_vent * self.temp_expert_vent(dec_out) +
+                     w_t_nat  * self.temp_expert_nat(dec_out))     # (B, H, 1)
+
+        # 2. Humidity
+        pred_hum = (w_h_heat * self.hum_expert_heat(dec_out) +
+                    w_h_vent * self.hum_expert_vent(dec_out) +
+                    w_h_nat  * self.hum_expert_nat(dec_out))       # (B, H, 1)
+
+        # 3. CO2
+        pred_co2 = (w_c_light * self.co2_expert_light(dec_out) +
+                    w_c_vent  * self.co2_expert_vent(dec_out) +
+                    w_c_nat   * self.co2_expert_nat(dec_out))      # (B, H, 1)
+
+        # ==================== D. 流重组与残差锚定 (Residual Anchoring) ====================
+        # Transformer 输出的是未来 horizon 步相对于 "当前时刻" 的变化量 (Delta Y)
+        delta_pred = torch.cat([pred_temp, pred_hum, pred_co2], dim=2)  # (B, H, 3)
+
+        # 提取历史序列的最后一步 (t=0) 的真实状态作为绝对锚点
+        # 要求外部挂载 self.target_indices 属性，否则回退为不使用残差
+        if hasattr(self, 'target_indices') and self.target_indices is not None:
+            # x_past: (B, SeqLen, InputDim)
+            # 取最后一步 (B, InputDim) -> 筛选出 target 列 -> (B, 3) -> 扩展为 (B, 1, 3)
+            initial_state = x_past[:, -1:, self.target_indices] 
+            final_pred = initial_state + delta_pred
+        else:
+            final_pred = delta_pred
+
         return final_pred

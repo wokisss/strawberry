@@ -182,11 +182,10 @@ class Visualizer:
 
     def plot_predictor_diagnostics(self, metrics, save=True):
         """
-        绘制 Transformer 预测大脑双模式诊断大图
+        绘制 Transformer 预测大脑诊断图 (Direct Multi-Step 评估)
         
-        布局: 2 列 × 3 行
-          左列 Panel A: Teacher Forcing 单步评估 (公平泛化指标)
-          右列 Panel B: 自回归滚动压力测试 (误差累积可视化)
+        布局: 3 行 × 1 列 (温度 / 湿度 / CO₂)
+        展示模型一次性预测 horizon 步的完整轨迹
         """
         steps = metrics['plot_steps']
         time_axis = range(steps)
@@ -194,36 +193,24 @@ class Visualizer:
         titles_var = ["Temperature (°C)", "Humidity (%)", "CO₂ (ppm)"]
         colors_pred = ['#E53935', '#1E88E5', '#43A047']
         
-        fig, axes = plt.subplots(3, 2, figsize=(20, 14), sharex=True)
-        fig.suptitle("Transformer Predictor Diagnostic Panel — Dual-Mode Evaluation", fontsize=18, y=0.97)
-        
-        # 列标题
-        axes[0, 0].set_title("Panel A: Teacher Forcing (Fair Evaluation)", fontsize=14, fontweight='bold', pad=12)
-        axes[0, 1].set_title("Panel B: Autoregressive Rollout (Stress Test)", fontsize=14, fontweight='bold', pad=12)
+        fig, axes = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
+        fig.suptitle(f"Transformer Predictor — Direct Multi-Step Evaluation (Horizon={steps} steps)", 
+                     fontsize=16, y=0.96)
         
         for i in range(3):
-            # ==== Panel A (左列): Teacher Forcing ====
-            ax_a = axes[i, 0]
-            ax_a.plot(time_axis, metrics['plot_true_tf'][:, i], color='#333333', linestyle='--', linewidth=1.5, label='Ground Truth')
-            ax_a.plot(time_axis, metrics['plot_pred_tf'][:, i], color=colors_pred[i], linewidth=2.0, alpha=0.85,
-                      label=f'Predicted (R²={metrics["r2_tf"][i]:.3f}, MAE={metrics["mae_tf"][i]:.2f})')
-            ax_a.set_ylabel(titles_var[i], fontsize=11)
-            ax_a.legend(loc='upper right', fontsize=9)
-            ax_a.grid(True, alpha=0.3)
-            
-            # ==== Panel B (右列): Autoregressive ====
-            ax_b = axes[i, 1]
-            ax_b.plot(time_axis, metrics['plot_true_ar'][:, i], color='#333333', linestyle='--', linewidth=1.5, label='Ground Truth')
-            ax_b.plot(time_axis, metrics['plot_pred_ar'][:, i], color=colors_pred[i], linewidth=2.0, alpha=0.85,
-                      label=f'Predicted (R²={metrics["r2_ar"][i]:.3f}, MAE={metrics["mae_ar"][i]:.2f})')
-            ax_b.set_ylabel(titles_var[i], fontsize=11)
-            ax_b.legend(loc='upper right', fontsize=9)
-            ax_b.grid(True, alpha=0.3)
+            ax = axes[i]
+            ax.plot(time_axis, metrics['plot_true_ar'][:, i], color='#333333', 
+                    linestyle='--', linewidth=1.5, label='Ground Truth')
+            ax.plot(time_axis, metrics['plot_pred_ar'][:, i], color=colors_pred[i], 
+                    linewidth=2.0, alpha=0.85,
+                    label=f'Predicted (Full R²={metrics["r2_full"][i]:.3f}, Final R²={metrics["r2_final"][i]:.3f})')
+            ax.set_ylabel(titles_var[i], fontsize=12)
+            ax.set_title(titles_var[i], fontsize=13)
+            ax.legend(loc='upper right', fontsize=10)
+            ax.grid(True, alpha=0.3)
         
-        axes[2, 0].set_xlabel("Time Steps (minutes)", fontsize=11)
-        axes[2, 1].set_xlabel("Time Steps (minutes)", fontsize=11)
-        
-        plt.tight_layout(rect=[0, 0, 1, 0.95])
+        axes[2].set_xlabel("Time Steps (minutes)", fontsize=12)
+        plt.tight_layout(rect=[0, 0, 1, 0.94])
         
         save_path = None
         if save:

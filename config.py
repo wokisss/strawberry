@@ -66,8 +66,9 @@ class Config:
     indoor_solar_proxy: List[str] = field(default_factory=lambda: ['Illumination, lx'])
 
     # ======================== 序列参数 ========================
-    seq_len: int = 60       # 历史窗口长度 (分钟)
-    horizon: int = 20       # 预测窗口长度 (分钟) [已调整: 10→20, 强迫模型学习更长程依赖]
+    seq_len: int = 240      # 历史窗口长度 (分钟) [修正: 120→240, 4小时覆盖半天温度趋势]
+    horizon: int = 120      # 预测窗口长度 (分钟) [修正: 20→120, Direct Multi-Step 与旧版一致]
+    dpc_horizon: int = 20   # DPC 控制器使用的短 horizon (只读取预测的前20步做梯度优化)
     train_ratio: float = 0.8
 
     # ======================== 物理环境参数 ========================
@@ -97,9 +98,10 @@ class Config:
     # ======================== 模型参数 ========================
     hidden_dim: int = 32
     batch_size: int = 256
-    num_epochs: int = 50          # [已调整: 30→50, 适应更大 horizon 的训练量]
-    learning_rate: float = 0.001
-    lambda_trend: float = 0.05    # 趋势惩罚权重 [已调整: 0.3→0.05, 减少平滑偏差恢复高频预测能力]
+    num_epochs: int = 200         # [修正: 50→200, 给 Early Stopping 足够的上限空间]
+    learning_rate: float = 0.0001 # [修正: 0.001→0.0001, 与旧版一致，Transformer 参数量大需要小学习率]
+    lambda_trend: float = 0.3     # 趋势惩罚权重 [修正: 现已改为目标差分匹配，0.3 与旧版一致]
+    early_stop_patience: int = 15 # Early Stopping 耐心值, 验证集 loss 连续N轮不下降则停止
 
     # ======================== Transformer 模型参数 ========================
     transformer_d_model: int = 64
