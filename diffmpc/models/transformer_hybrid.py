@@ -78,6 +78,10 @@ class TransformerHybridModel(nn.Module):
         self.future_val_embedding = nn.Conv1d(in_channels=future_dim, out_channels=d_model, 
                                               kernel_size=self.patch_len, stride=stride, padding=0)
 
+        # 引入 GRU (快车道: 物理脉冲动态捕获层)
+        self.gru_past = nn.GRU(input_size=d_model, hidden_size=d_model, num_layers=1, batch_first=True)
+        self.gru_future = nn.GRU(input_size=d_model, hidden_size=d_model, num_layers=1, batch_first=True)
+
         self.pos_encoder = PositionalEncoding(d_model)
 
         # --- 2. Transformer 核心层 ---
@@ -114,6 +118,14 @@ class TransformerHybridModel(nn.Module):
         self.co2_expert_vent  = nn.Sequential(nn.Linear(d_model, 64), nn.ReLU(), nn.Linear(64, 1))
         self.co2_expert_nat   = nn.Sequential(nn.Linear(d_model, 64), nn.ReLU(), nn.Linear(64, 1))
 
+        # --- 4. 带有物理物理惯性的门控网络 (Inertial MoE Gating) ---
+        # 门控上下文 = dec_out/rnn_future_out (时序历史遗留, d_model) + 原始控制信号幅度 (future_dim)
+        gating_input_dim = d_model + future_dim
+        
+        self.gating_temp = nn.Sequential(nn.Linear(gating_input_dim, 32), nn.ReLU(), nn.Linear(32, 3)) # Heat, Vent, Nat
+        self.gating_hum = nn.Sequential(nn.Linear(gating_input_dim, 32), nn.ReLU(), nn.Linear(32, 3))  # Heat, Vent, Nat
+        self.gating_co2 = nn.Sequential(nn.Linear(gating_input_dim, 32), nn.ReLU(), nn.Linear(32, 3))  # Light, Vent, Nat
+
     def forward(self, x_past, x_future):
         """
         Args:
@@ -130,8 +142,12 @@ class TransformerHybridModel(nn.Module):
         x_past_t = torch.nn.functional.pad(x_past_t, (self.patch_len - 1, 0))
         enc_emb = self.past_val_embedding(x_past_t) # (batch, d_model, seq_len)
         enc_emb = enc_emb.transpose(1, 2)           # 转回 (batch, seq_len, d_model)
-        enc_emb = self.pos_encoder(enc_emb)
-        memory = self.transformer_encoder(enc_emb)
+        
+        # RNN 提取物理惯性
+        rnn_past_out, _ = self.gru_past(enc_emb)
+
+        enc_emb_pos = self.pos_encoder(rnn_past_out)
+        memory = self.transformer_encoder(enc_emb_pos)
 
         # x_future: (batch, horizon, future_dim) -> Conv1d 需要 (batch, channels, horizon)
         x_future_t = x_future.transpose(1, 2)
@@ -139,38 +155,32 @@ class TransformerHybridModel(nn.Module):
         x_future_t = torch.nn.functional.pad(x_future_t, (self.patch_len - 1, 0))
         dec_emb = self.future_val_embedding(x_future_t) # (batch, d_model, horizon)
         dec_emb = dec_emb.transpose(1, 2)             # 转回 (batch, horizon, d_model)
-        dec_emb = self.pos_encoder(dec_emb)
+        
+        # RNN 提取未来干预序列的时序依赖
+        rnn_future_out, _ = self.gru_future(dec_emb)
+
+        dec_emb_pos = self.pos_encoder(rnn_future_out)
         # dec_out: (B, Horizon, d_model) — 每个时间步都有独立的特征向量
-        dec_out = self.transformer_decoder(tgt=dec_emb, memory=memory)
+        dec_out = self.transformer_decoder(tgt=dec_emb_pos, memory=memory)
 
-        # ==================== B. Softmax 门控 MoE ====================
-        # 提取各控制通道的逐步信号强度 (不再取均值, 保留时间分辨率)
-        # x_future = ['Heater', 'Ventilation', 'Fog', 'Lighting', ...]
-        heat_signal  = x_future[:, :, 0:1]   # (B, H, 1)
-        vent_signal  = x_future[:, :, 1:2]   # (B, H, 1)
-        light_signal = x_future[:, :, 3:4]   # (B, H, 1)
+        # ==================== B. 带有物理物理惯性的专家门控 (Inertial MoE) ====================
+        # [修正] 不再简单地根据当前的开关量大小做软门控，因为这违背了长序列积分惯性
+        # 将原始的 future 控制指令 (蕴含瞬时激活幅度) 和 rnn_future_out (蕴含经过时间平滑的动作累积量) 拼接
+        
+        # gating_context: (B, H, d_model + future_dim)
+        gating_context = torch.cat([x_future, rnn_future_out], dim=-1)
 
-        # [修正] 直接归一化物理控制信号，权重之和恒等于1，避免 Softmax 带来的幅度坍缩
         # Temperature 门控: heat / vent / natural
-        nat_temp = torch.clamp(1.0 - heat_signal - vent_signal, min=0.0)
-        sum_temp = heat_signal + vent_signal + nat_temp + 1e-8
-        w_t_heat = heat_signal / sum_temp
-        w_t_vent = vent_signal / sum_temp
-        w_t_nat  = nat_temp / sum_temp
+        w_temp = torch.softmax(self.gating_temp(gating_context), dim=-1)
+        w_t_heat, w_t_vent, w_t_nat = w_temp[:, :, 0:1], w_temp[:, :, 1:2], w_temp[:, :, 2:3]
 
         # Humidity 门控: heat / vent / natural
-        nat_hum = torch.clamp(1.0 - heat_signal - vent_signal, min=0.0)
-        sum_hum = heat_signal + vent_signal + nat_hum + 1e-8
-        w_h_heat = heat_signal / sum_hum
-        w_h_vent = vent_signal / sum_hum
-        w_h_nat  = nat_hum / sum_hum
+        w_hum = torch.softmax(self.gating_hum(gating_context), dim=-1)
+        w_h_heat, w_h_vent, w_h_nat = w_hum[:, :, 0:1], w_hum[:, :, 1:2], w_hum[:, :, 2:3]
 
         # CO2 门控: light / vent / natural
-        nat_co2 = torch.clamp(1.0 - light_signal - vent_signal, min=0.0)
-        sum_co2 = light_signal + vent_signal + nat_co2 + 1e-8
-        w_c_light = light_signal / sum_co2
-        w_c_vent  = vent_signal / sum_co2
-        w_c_nat   = nat_co2 / sum_co2
+        w_co2 = torch.softmax(self.gating_co2(gating_context), dim=-1)
+        w_c_light, w_c_vent, w_c_nat = w_co2[:, :, 0:1], w_co2[:, :, 1:2], w_co2[:, :, 2:3]
 
         # ==================== C. 逐步专家输出 ====================
         # dec_out: (B, H, d_model) → 每个专家头在每个时间步独立输出 1 个值
