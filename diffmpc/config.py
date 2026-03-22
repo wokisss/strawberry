@@ -62,8 +62,8 @@ class Config:
     # 时间编码列名
     time_cols: List[str] = field(default_factory=lambda: ['Hour_Sin', 'Hour_Cos'])
 
-    # 室内光照代理列 (如果有额外的光照度列，这里不强制加Lighting是因为Lighting算控制量)
-    indoor_solar_proxy: List[str] = field(default_factory=lambda: ['Illumination, lx'])
+    # 室内光照代理列 (禁用内生变量 Illumination 防止未来泄漏)
+    indoor_solar_proxy: List[str] = field(default_factory=list)
 
     # ======================== 序列参数 ========================
     seq_len: int = 240      # 历史窗口长度 (分钟) [修正: 120→240, 4小时覆盖半天温度趋势]
@@ -152,6 +152,13 @@ class Config:
     sac_target_update_interval: int = 1
     sac_train_steps: int = 50000  # 离线环境交互训练总步数
     sac_replay_size: int = 100000
+
+    # ======================== PSO控制器参数 ========================
+    pso_n_particles: int = 30       # 粒子数量
+    pso_n_generations: int = 50     # 迭代代数
+    pso_w_inertia: float = 0.7     # 惯性权重
+    pso_c1: float = 1.5            # 个体认知加速系数
+    pso_c2: float = 1.5            # 群体社会加速系数
 
     # ======================== PWM驱动参数 ========================
     pwm_cycle: int = 10       # PWM周期 (分钟)

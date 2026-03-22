@@ -2,10 +2,10 @@
 """
 controllers/dpc_controller.py
 -------------------------------
-可微预测控制器 (Differentiable Predictive Controller / DPC)
+可微预测控制�?(Differentiable Predictive Controller / DPC)
 
-基于梯度的模型预测控制: 将控制动作视为可学习参数，
-通过 PyTorch 自动微分 + Adam 优化器在线求解最优动作。
+基于梯度的模型预测控�? 将控制动作视为可学习参数�?
+通过 PyTorch 自动微分 + Adam 优化器在线求解最优动作�?
 """
 
 import numpy as np
@@ -14,12 +14,12 @@ import torch
 
 class DPCController:
     """
-    DPC 控制器 (原 MPC_Controller)
+    DPC 控制�?(�?MPC_Controller)
 
     核心流程:
         1. 初始化可学习动作张量 (温度误差驱动的热启动)
-        2. 前向传播: 动作 → DecisionControlModel → 预测轨迹
-        3. 计算 Loss = 跟踪误差 + 能耗 + 平滑度
+        2. 前向传播: 动作 �?DecisionControlModel �?预测轨迹
+        3. 计算 Loss = 跟踪误差 + 能�?+ 平滑�?
         4. 反向传播更新动作
         5. 物理互斥 + 比例安全兜底
     """
@@ -31,7 +31,7 @@ class DPCController:
         self.target_indices = target_indices
         self.future_indices = future_indices
 
-        # 从 config 或参数读取
+        # �?config 或参数读�?
         if config is not None:
             self.horizon = getattr(config, 'dpc_horizon', horizon) # 控制 horizon (20)
             self.pred_horizon = config.horizon # 预测模型输出长度 (120)
@@ -83,7 +83,7 @@ class DPCController:
         # 积分误差 (Leaky Integral for PID-I)
         self.integral_error = 0.0
 
-        # 目标归一化值
+        # 目标归一化�?
         dummy = np.zeros((1, len(scaler.scale_)))
         dummy[0, target_indices[0]] = self.target_temp
         dummy[0, target_indices[1]] = self.target_hum
@@ -97,13 +97,13 @@ class DPCController:
             self.target_temp_norm, self.target_hum_norm, self.target_co2_norm
         ], device=self._device).view(1, 1, 3)
 
-        # 上一步动作记录 (4维)
+        # 上一步动作记�?(4�?
         self.last_action = [0, 0, 0, 0]
         self.last_action_continuous = torch.tensor([0.0, 0.0, 0.0, 0.0], device=self._device)
 
     def get_optimal_action(self, current_past_tensor, current_future_base, current_temp=None):
         """
-        基于梯度的在线动作优化
+        基于梯度的在线动作优�?
 
         Args:
             current_past_tensor: (1, seq_len, feat_dim)
@@ -111,10 +111,10 @@ class DPCController:
             current_temp: 当前实际温度 (°C)
 
         Returns:
-            best_action: [heater, vent] 最优动作
-            best_loss: 最优 loss 值
+            best_action: [heater, vent] 最优动�?
+            best_loss: 最�?loss �?
         """
-        # 1. 智能初始化
+        # 1. 智能初始�?
         if current_temp is not None:
             temp_error = self.target_temp - current_temp
             if temp_error > 5.0:
@@ -139,7 +139,7 @@ class DPCController:
             p.requires_grad = False
 
         original_mode = self.model.training
-        self.model.train()  # cuDNN RNN backward 需要 train 模式 (模型无 Dropout，不影响结果)
+        self.model.eval()  # [Fix] 移除 train() 调用，强制使�?eval() 关闭 Transformer �?Dropout，防止优化目标震�?
 
         best_loss = float('inf')
         best_u_soft = None
@@ -148,15 +148,15 @@ class DPCController:
             for _ in range(self._iterations):
                 optimizer.zero_grad()
 
-                # Clamp 到 [0, 1]
+                # Clamp �?[0, 1]
                 u_soft = torch.clamp(action_param, min=0.0, max=1.0)
 
                 # 时域扩展 (Constant Action Assumption)
                 u_expanded = u_soft.repeat(1, self.horizon, 1)
 
                 # ==========================================================
-                # 解耦: 动作张量长度为 dpc_horizon(20)，但模型前传需要 120 步 future_base
-                # 策略: 真实天气提供 120 步，控制动作前 20 步优化，后 100 步用边缘填充
+                # 解�? 动作张量长度�?dpc_horizon(20)，但模型前传需�?120 �?future_base
+                # 策略: 真实天气提供 120 步，控制动作�?20 步优化，�?100 步用边缘填充
                 # ==========================================================
                 f_weather = current_future_base[:, :, 4:]  # (1, 120, N_weather)
                 
@@ -173,10 +173,10 @@ class DPCController:
                     target_temp_norm=self.target_temp_norm
                 )
                 
-                # 截断: 控制器只关心前 dpc_horizon 步的跟踪误差
+                # 截断: 控制器只关心�?dpc_horizon 步的跟踪误差
                 pred_norm = pred_norm_full[:, :self.horizon, :] # (B, 20, 3)
 
-                # Loss (多目标追踪只计算前 dpc_horizon 步)
+                # Loss (多目标追踪只计算�?dpc_horizon �?
                 track_error_sq = (pred_norm - self.target_norms) ** 2
                 loss_temp = torch.mean(track_error_sq[:, :, 0])
                 loss_hum = torch.mean(track_error_sq[:, :, 1])
@@ -204,7 +204,7 @@ class DPCController:
         finally:
             self.model.train(original_mode)
 
-        # 更新连续状态
+        # 更新连续状�?
         if best_u_soft is not None:
             self.last_action_continuous = best_u_soft.squeeze(0).squeeze(0)
         else:
@@ -256,3 +256,9 @@ class DPCController:
         self.integral_error = np.clip(
             self.integral_error, -self._integral_clip, self._integral_clip
         )
+
+    def reset(self):
+        """Reset controller state before a fresh rollout."""
+        self.integral_error = 0.0
+        self.last_action = [0.0, 0.0, 0.0, 0.0]
+        self.last_action_continuous = torch.zeros(4, device=self._device)

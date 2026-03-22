@@ -89,6 +89,15 @@ class PhysicsGreenhouseEnv:
             self.eff_vent = 0.1
             self.k_solar = 0.01
 
+            self.power_fog_hum = 5.0
+            self.power_fog_temp = -0.5
+            self.power_lighting_co2 = -50.0
+            self.power_lighting_temp = 0.2
+            
+            self.crop_transpiration = 0.2
+            self.crop_photosynthesis = 2.0
+            self.crop_respiration = 0.5
+
             self._ou_theta = 0.15
             self._ou_sigma = 0.2
             self._ou_mu = 0.0

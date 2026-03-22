@@ -41,6 +41,7 @@ class PSOController:
 
         if config is not None:
             self.horizon = config.horizon
+            self.dpc_horizon = getattr(config, 'dpc_horizon', config.horizon)  # [Fix] 与 DPC 对等的短视界
             self.target_temp = config.target_temp
             self.target_hum = config.target_hum
             self.target_co2 = config.target_co2
@@ -148,9 +149,12 @@ class PSOController:
             # 前向预测
             pred_norm = self.model(past_batch, x_future_optim,
                                    target_temp_norm=self.target_temp_norm)
+            # [Fix] 截断预测到 dpc_horizon 步，与 DPC 控制器的优化视界对等
+            eval_horizon = min(self.dpc_horizon, pred_norm.shape[1])
+            pred_norm_eval = pred_norm[:, :eval_horizon, :]
 
-            # 计算 Loss (多目标)
-            track_error_sq = (pred_norm - self.target_norms.expand(N, self.horizon, 3)) ** 2
+            # 计算 Loss (多目标, 只看前 dpc_horizon 步)
+            track_error_sq = (pred_norm_eval - self.target_norms.expand(N, eval_horizon, 3)) ** 2
             loss_temp = torch.mean(track_error_sq[:, :, 0], dim=1)
             loss_hum = torch.mean(track_error_sq[:, :, 1], dim=1)
             loss_co2 = torch.mean(track_error_sq[:, :, 2], dim=1)

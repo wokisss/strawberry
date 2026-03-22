@@ -23,7 +23,7 @@ class SAC(object):
         for target_param, param in zip(self.critic_target.parameters(), self.critic.parameters()):
             target_param.data.copy_(param.data)
 
-        # ---- 自动调节 Alpha (熵系数) ----
+        # ---- 自动调节 Alpha (熵系�? ----
         self.target_entropy = -torch.prod(torch.Tensor(action_space.shape).to(self.device)).item()
         self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
         self.alpha_optim = Adam([self.log_alpha], lr=config.sac_lr)
@@ -89,7 +89,7 @@ class SAC(object):
         self.alpha_optim.step()
         self.alpha = self.log_alpha.exp()
 
-        # 软更新 Target Critic
+        # 软更�?Target Critic
         if updates % self.target_update_interval == 0:
             for target_param, param in zip(self.critic_target.parameters(), self.critic.parameters()):
                 target_param.data.copy_(target_param.data * (1.0 - self.tau) + param.data * self.tau)
@@ -111,7 +111,14 @@ class SAC(object):
     def load_checkpoint(self, ckpt_path, evaluate=False):
         print('Loading models from {}'.format(ckpt_path))
         if ckpt_path is not None:
-            checkpoint = torch.load(ckpt_path, map_location=self.device, weights_only=True)
+            try:
+                checkpoint = torch.load(
+                    ckpt_path,
+                    map_location=self.device,
+                    weights_only=True,
+                )
+            except TypeError:
+                checkpoint = torch.load(ckpt_path, map_location=self.device)
             self.policy.load_state_dict(checkpoint['policy_state_dict'])
             self.critic.load_state_dict(checkpoint['critic_state_dict'])
             self.critic_target.load_state_dict(checkpoint['critic_target_state_dict'])
@@ -126,3 +133,4 @@ class SAC(object):
                 self.policy.train()
                 self.critic.train()
                 self.critic_target.train()
+

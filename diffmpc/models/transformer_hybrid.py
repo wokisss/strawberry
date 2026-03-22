@@ -2,11 +2,13 @@
 """
 models/transformer_hybrid.py
 -----------------------------
-Transformer-MoE 混合专家预测模型
+iTransformer-MoE 混合专家预测模型
 
 核心改进:
-  1. MoE 门控改为 Softmax 归一化 (权重之和恒等于1)
-  2. 专家头改为逐步输出 (避免展平导致参数爆炸)
+  1. [iTransformer] Encoder 端采用变量倒置 Tokenization，将每个传感器的完整时间序列
+     作为独立 Token 输入 Self-Attention，极大增强跨变量物理耦合学习，降低计算量。
+  2. MoE 门控改为 Softmax 归一化 (权重之和恒等于1)
+  3. 专家头改为逐步输出 (避免展平导致参数爆炸)
 """
 
 import math
@@ -29,19 +31,20 @@ class PositionalEncoding(nn.Module):
 
 class TransformerHybridModel(nn.Module):
     """
-    基于 Transformer 的变量解耦 MoE 预测模型
+    基于 iTransformer 思想融合 MoE 机制的多变量预测模型
 
-    架构:
-        - Past Encoder:  Transformer Encoder (历史物理状态的全局依赖)
-        - Future Decoder: Transformer Decoder (Cross-Attention 融合未来干预序列)
-        - MoE Heads:     逐步输出 + Softmax 门控归一化
-
-    [修正1] MoE 门控: clamp → Softmax, 确保权重之和始终为1
-    [修正2] 专家头:   展平+大MLP → 逐步输出(d_model→1), 参数量不随 horizon 爆炸
+    架构 (双路 Encoder 融合):
+        - Path 1 (iTransformer): 变量级 Token，捕获跨变量物理耦合 (Batch, V, d_model)
+        - Path 2 (Temporal):    时间步级 Token (Conv1d+GRU)，捕获分钟级时序定位 (Batch, T, d_model)
+        - Future Decoder:       Cross-Attention 融合未来干预方案，同时查询两种 Memory
+        - MoE Heads:            逐步输出 + Softmax 门控归一化
+        
+    [解决问题] 纯 iTransformer 丢失分钟级时间分辨率导致预测平滑、控制震荡。双路架构完美互补。
     """
     def __init__(
         self, 
-        input_dim, 
+        input_dim,          # 变量数量 V (例如 18 个传感器)
+        seq_len,            # 历史窗口长度 T (例如 240)
         future_dim, 
         target_dim, 
         forecast_horizon, 
@@ -62,24 +65,34 @@ class TransformerHybridModel(nn.Module):
         else:
             self.target_indices_tensor = None
 
-        # --- 1. Embedding 层 (引入 Patch Tokenization) ---
-        # 传统 Point-wise Tokenization:
-        # self.past_val_embedding = nn.Linear(input_dim, d_model)
-        # self.future_val_embedding = nn.Linear(future_dim, d_model)
+        # --- 1A. Embedding 层 (iTransformer Variate Tokenization) ---
+        # Encoder 端 Path 1: 将长度为 seq_len 的单变量时间序列映射为 d_model 的隐向量
+        # 使用 3层 MLP 增加容量，避免线性平均导致高频特征丢失
+        self.variate_embedding = nn.Sequential(
+            nn.Linear(seq_len, d_model * 4),
+            nn.GELU(),
+            nn.Linear(d_model * 4, d_model * 2),
+            nn.GELU(),
+            nn.Linear(d_model * 2, d_model),
+            nn.LayerNorm(d_model)
+        )
         
-        # PatchTST-style Tokenization: 使用 Conv1d 将相邻时间点聚合成一个 Token
-        self.patch_len = 5    # 每个 Patch 的时间长度 (感受野)
-        stride = 1       # 步长为 1 保持序列长度不变，方便后续一维逐时间点对应
-        
-        # 利用因果卷积 (Causal Convolution) 避免未来数据泄露，padding=0 并在 forward 中手动 padding
-        self.past_val_embedding = nn.Conv1d(in_channels=input_dim, out_channels=d_model, 
-                                            kernel_size=self.patch_len, stride=stride, padding=0)
-        
-        self.future_val_embedding = nn.Conv1d(in_channels=future_dim, out_channels=d_model, 
-                                              kernel_size=self.patch_len, stride=stride, padding=0)
-
-        # 引入 GRU (快车道: 物理脉冲动态捕获层)
+        # --- 1B. Embedding 层 (Temporal Tokenization) ---
+        # Encoder 端 Path 2: 传统的时序保留路径，用于提供分钟级的历史精确定位
+        self.patch_len = 5
+        stride = 1
+        self.temporal_embedding = nn.Conv1d(
+            in_channels=input_dim, out_channels=d_model, 
+            kernel_size=self.patch_len, stride=stride, padding=0
+        )
         self.gru_past = nn.GRU(input_size=d_model, hidden_size=d_model, num_layers=1, batch_first=True)
+
+        # --- 1C. Future Embedding ---
+        # Decoder 端 (未来控制): 保留时间级 Tokenization (将一拍的多变量预测映射为 d_model)
+        self.future_val_embedding = nn.Conv1d(
+            in_channels=future_dim, out_channels=d_model, 
+            kernel_size=self.patch_len, stride=stride, padding=0
+        )
         self.gru_future = nn.GRU(input_size=d_model, hidden_size=d_model, num_layers=1, batch_first=True)
 
         self.pos_encoder = PositionalEncoding(d_model)
@@ -135,40 +148,57 @@ class TransformerHybridModel(nn.Module):
         Returns:
             final_pred: (batch, horizon, target_dim) — 目标多变量预测
         """
-        # ==================== A. Transformer 编码解码 ====================
-        # x_past: (batch, seq_len, input_dim) -> Conv1d 需要 (batch, channels, seq_len)
-        x_past_t = x_past.transpose(1, 2)
-        # 因果卷积 Padding (仅在时间序列左侧 pad)
-        x_past_t = torch.nn.functional.pad(x_past_t, (self.patch_len - 1, 0))
-        enc_emb = self.past_val_embedding(x_past_t) # (batch, d_model, seq_len)
-        enc_emb = enc_emb.transpose(1, 2)           # 转回 (batch, seq_len, d_model)
+        # ==================== A. 双路 Encoder 编码 ====================
         
-        # RNN 提取物理惯性
-        rnn_past_out, _ = self.gru_past(enc_emb)
+        # --- Path 1: iTransformer Encoder (变量关系建模) ---
+        # 1. 变量维度反转: (B, T, V) -> (B, V, T)
+        x_past_invert = x_past.transpose(1, 2)
+        # 2. 映射到 d_model: (B, V, d_model)
+        enc_emb_var = self.variate_embedding(x_past_invert)
+        # 3. Transformer Encoder (Self-Attention on Variables)
+        memory_var = self.transformer_encoder(enc_emb_var)  # (B, input_dim, d_model)
 
-        enc_emb_pos = self.pos_encoder(rnn_past_out)
-        memory = self.transformer_encoder(enc_emb_pos)
+        # --- Path 2: Temporal Encoder (分钟级时序定位) ---
+        # (B, T, V) -> (B, V, T) for Conv1d
+        x_past_t = x_past.transpose(1, 2)
+        x_past_t = torch.nn.functional.pad(x_past_t, (self.patch_len - 1, 0))
+        enc_emb_time = self.temporal_embedding(x_past_t) # (B, d_model, T)
+        enc_emb_time = enc_emb_time.transpose(1, 2)      # (B, T, d_model)
+        # 加位置编码后送入 GRU
+        enc_emb_time_pos = self.pos_encoder(enc_emb_time)
+        rnn_past_out, _ = self.gru_past(enc_emb_time_pos) # (B, T, d_model)
 
-        # x_future: (batch, horizon, future_dim) -> Conv1d 需要 (batch, channels, horizon)
+        # --- 融合双路 Memory ---
+        # 让 Decoder 可以同时查询跨变量关系 (V个Token) 和具体历史时间点 (T个Token)
+        # 拼接后的 memory shape: (B, input_dim + seq_len, d_model)
+        memory_fused = torch.cat([memory_var, rnn_past_out], dim=1)
+
+        # ==================== B. Future Decoder 编码 ====================
+        # x_future 依然保持时间步粒度，每个时间点是一个 Token
+        # (batch, horizon, future_dim) -> Conv1d 需要 (batch, channels, horizon)
         x_future_t = x_future.transpose(1, 2)
         # 因果卷积 Padding (仅在时间序列左侧 pad)
         x_future_t = torch.nn.functional.pad(x_future_t, (self.patch_len - 1, 0))
         dec_emb = self.future_val_embedding(x_future_t) # (batch, d_model, horizon)
         dec_emb = dec_emb.transpose(1, 2)             # 转回 (batch, horizon, d_model)
         
-        # RNN 提取未来干预序列的时序依赖
-        rnn_future_out, _ = self.gru_future(dec_emb)
+        # [Fix] 先加位置编码，再送入 GRU (与 Past 路径保持一致)
+        dec_emb_pos = self.pos_encoder(dec_emb)
+        rnn_future_out, _ = self.gru_future(dec_emb_pos)
 
-        dec_emb_pos = self.pos_encoder(rnn_future_out)
+        # [注] Direct Multi-Step 架构下，x_future 是控制器预先规划好的完整动作序列，
+        #      Decoder 需要感知整个控制方案来预测每个时间步的状态，因此不使用因果掩码 (tgt_mask)。
+        #      如果未来改为自回归逐步生成，此处必须添加因果掩码以防止未来信息泄露。
         # dec_out: (B, Horizon, d_model) — 每个时间步都有独立的特征向量
-        dec_out = self.transformer_decoder(tgt=dec_emb_pos, memory=memory)
+        dec_out = self.transformer_decoder(tgt=rnn_future_out, memory=memory_fused)
 
-        # ==================== B. 带有物理物理惯性的专家门控 (Inertial MoE) ====================
+        # ==================== C. 带有物理物理惯性的专家门控 (Inertial MoE) ====================
         # [修正] 不再简单地根据当前的开关量大小做软门控，因为这违背了长序列积分惯性
         # 将原始的 future 控制指令 (蕴含瞬时激活幅度) 和 rnn_future_out (蕴含经过时间平滑的动作累积量) 拼接
         
-        # gating_context: (B, H, d_model + future_dim)
-        gating_context = torch.cat([x_future, rnn_future_out], dim=-1)
+        # [Fix] gating_context: (B, H, d_model + future_dim)
+        # 拼接顺序与 gating_input_dim = d_model + future_dim 声明一致
+        gating_context = torch.cat([rnn_future_out, x_future], dim=-1)
 
         # Temperature 门控: heat / vent / natural
         w_temp = torch.softmax(self.gating_temp(gating_context), dim=-1)
@@ -182,7 +212,7 @@ class TransformerHybridModel(nn.Module):
         w_co2 = torch.softmax(self.gating_co2(gating_context), dim=-1)
         w_c_light, w_c_vent, w_c_nat = w_co2[:, :, 0:1], w_co2[:, :, 1:2], w_co2[:, :, 2:3]
 
-        # ==================== C. 逐步专家输出 ====================
+        # ==================== D. 逐步专家输出 ====================
         # dec_out: (B, H, d_model) → 每个专家头在每个时间步独立输出 1 个值
         # 1. Temperature
         pred_temp = (w_t_heat * self.temp_expert_heat(dec_out) +
@@ -199,7 +229,7 @@ class TransformerHybridModel(nn.Module):
                     w_c_vent  * self.co2_expert_vent(dec_out) +
                     w_c_nat   * self.co2_expert_nat(dec_out))      # (B, H, 1)
 
-        # ==================== D. 流重组与残差锚定 (Residual Anchoring) ====================
+        # ==================== E. 流重组与残差锚定 (Residual Anchoring) ====================
         # Transformer 输出的是未来每个时间步相比上一步的变化量 (Delta per step)
         delta_pred_step = torch.cat([pred_temp, pred_hum, pred_co2], dim=2)  # (B, H, 3)
 
