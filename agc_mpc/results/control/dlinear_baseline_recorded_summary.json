@@ -1,0 +1,17 @@
+{
+  "predictor": "dlinear_baseline",
+  "controller": "recorded",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 12,
+  "objective_mean": 0.0,
+  "control_delta_mae": 0.0,
+  "action_tv": 0.0,
+  "target_mae": {
+    "Tair": 0.937647819519043,
+    "Rhair": 1.3936189413070679,
+    "CO2air": 43.37160873413086,
+    "Tot_PAR": 64.3449478149414
+  },
+  "figure_path": "results\\control\\figures\\dlinear_baseline_recorded_closed_loop.png"
+}

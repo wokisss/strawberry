@@ -1,0 +1,17 @@
+{
+  "predictor": "transformer_hybrid_baseline",
+  "controller": "recorded",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 12,
+  "objective_mean": 0.0,
+  "control_delta_mae": 0.0,
+  "action_tv": 0.0,
+  "target_mae": {
+    "Tair": 0.2351253777742386,
+    "Rhair": 0.8233610987663269,
+    "CO2air": 5.8314361572265625,
+    "Tot_PAR": 65.40384674072266
+  },
+  "figure_path": "results\\control\\figures\\transformer_hybrid_baseline_recorded_closed_loop.png"
+}
