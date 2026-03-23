@@ -12,7 +12,9 @@ from evaluation.evaluator import ForecasterEvaluator
 from models.dlinear_forecaster import ConditionalDLinearForecaster
 from models.gru_forecaster import ConditionalGRUForecaster
 from models.seg_rnn_forecaster import ConditionalSegRNNForecaster
+from models.transformer_forecaster import ConditionalTransformerForecaster
 from models.transformer_hybrid_forecaster import ConditionalTransformerHybridForecaster
+from results_utils import ensure_results_layout
 from training.trainer import Trainer
 
 
@@ -20,7 +22,7 @@ def run_baseline(name, model, bundle, cfg, device):
     print("\n" + "=" * 72)
     print(f"Running baseline: {name}")
     print("=" * 72)
-    cfg.model_save_path = f"results/{name}.pt"
+    cfg.model_save_path = f"{cfg.forecast_checkpoints_dir}/{name}.pt"
 
     trainer = Trainer(model, cfg, device=device)
     trainer.train(
@@ -36,8 +38,10 @@ def run_baseline(name, model, bundle, cfg, device):
 
     evaluator = ForecasterEvaluator(
         model,
+        x_scaler=bundle["scalers"]["x"],
         y_scaler=bundle["scalers"]["y"],
         target_cols=bundle["feature_groups"]["y_future"],
+        past_feature_cols=bundle["feature_groups"]["x_past"],
         device=device,
     )
     return evaluator.evaluate(
@@ -46,8 +50,9 @@ def run_baseline(name, model, bundle, cfg, device):
         bundle["U_future_test"],
         bundle["Y_future_test"],
         model_name=name,
-        output_dir=cfg.figures_dir,
+        output_dir=cfg.forecast_figures_dir,
         num_plot_examples=cfg.plot_examples,
+        plot_history_steps=cfg.plot_history_steps,
     )
 
 
@@ -60,6 +65,7 @@ def main() -> None:
     print(f"project_root: {project_root}")
 
     cfg = AGCConfig()
+    ensure_results_layout(cfg)
     processor = AGCDataProcessor(cfg)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"device: {device}")
@@ -123,11 +129,31 @@ def main() -> None:
         max_past_len=cfg.seq_len,
         max_future_len=cfg.horizon,
     )
+    pure_transformer_model = ConditionalTransformerForecaster(
+        past_dim=bundle["X_past_train"].shape[-1],
+        weather_dim=bundle["W_future_train"].shape[-1],
+        control_dim=bundle["U_future_train"].shape[-1],
+        target_dim=bundle["Y_future_train"].shape[-1],
+        hidden_dim=cfg.hidden_dim,
+        num_layers=cfg.num_layers,
+        dropout=cfg.dropout,
+        nhead=cfg.transformer_heads,
+        ff_dim=cfg.transformer_ff_dim,
+        max_past_len=cfg.seq_len,
+        max_future_len=cfg.horizon,
+    )
 
     results = {}
     results["gru_baseline"] = run_baseline("gru_baseline", gru_model, bundle, cfg, device)
     results["dlinear_baseline"] = run_baseline("dlinear_baseline", dlinear_model, bundle, cfg, device)
     results["segrnn_baseline"] = run_baseline("segrnn_baseline", segrnn_model, bundle, cfg, device)
+    results["transformer_baseline"] = run_baseline(
+        "transformer_baseline",
+        pure_transformer_model,
+        bundle,
+        cfg,
+        device,
+    )
     results["transformer_hybrid_baseline"] = run_baseline(
         "transformer_hybrid_baseline",
         transformer_model,
