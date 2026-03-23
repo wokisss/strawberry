@@ -3,15 +3,15 @@
   "controller": "recorded",
   "compartment": "Reference",
   "reference_mode": "trajectory",
-  "steps": 48,
+  "steps": 12,
   "objective_mean": 0.0,
   "control_delta_mae": 0.0,
-  "action_tv": 0.3089834451675415,
+  "action_tv": 0.0,
   "target_mae": {
-    "Tair": 0.5271631479263306,
-    "Rhair": 4.533159255981445,
-    "CO2air": 66.6908187866211,
-    "Tot_PAR": 36.82691955566406
+    "Tair": 0.20081312954425812,
+    "Rhair": 2.0484485626220703,
+    "CO2air": 58.23170471191406,
+    "Tot_PAR": 23.006423950195312
   },
   "figure_path": "results\\control\\figures\\dlinear_baseline_recorded_closed_loop.png"
 }

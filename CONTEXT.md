@@ -458,3 +458,43 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 48 --start-idx
 - 当前已完成：`DLinear / Transformer / Transformer-hybrid` 已接入 AGC 上的 `GradientMPC / CEMMPC` 初版 surrogate closed-loop benchmark
 - 当前已完成：forecast 侧新增 rolling multi-step rollout 图；control 侧默认切到更严格的 `surrogate` rollout，并验证了 `CEMMPC` 的可复现性
 - 当前下一步：继续把 surrogate 从 `state persistence + action proxy` 推到更接近 `sp -> vip -> actuator -> climate` 的层级建模；或并行开始做一个 `hybrid residual model`
+## 15. Strawberry vs AGC 对比图
+
+- 已新增导师展示用脚本：[compare_dataset_switch.py](c:/repositories/strawberry/agc_mpc/compare_dataset_switch.py)
+- 运行方式：
+  ```bash
+  conda activate strawberry_env
+  python c:\repositories\strawberry\agc_mpc\compare_dataset_switch.py
+  ```
+- 输出文件：
+  - [strawberry_vs_agc_dataset_switch.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/strawberry_vs_agc_dataset_switch.png)
+  - [strawberry_vs_agc_dataset_switch_summary.json](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/strawberry_vs_agc_dataset_switch_summary.json)
+- 图的比较口径：
+  - 只比较共同变量 `Temperature / Humidity / CO2`
+  - 只比较 final-step 指标
+  - 两边都按“2 小时预测任务”对齐：旧 Strawberry = `120 x 1 min`，AGC = `24 x 5 min`
+- 当前结论：
+  - 旧 Strawberry Transformer-hybrid 的 final MAE 为 `3.36 / 6.78 / 105.88`
+  - AGC `DLinear` 的 final MAE 为 `0.76 / 4.46 / 54.73`
+  - AGC `Transformer` 的 final MAE 为 `0.82 / 4.92 / 47.23`
+  - AGC `Transformer-hybrid` 的 final MAE 为 `0.77 / 5.31 / 58.32`
+  - 旧 Strawberry 在 `CO2` 上 final `R2` 只有 `0.073`；AGC 三个模型对应为 `0.776 / 0.824 / 0.743`
+- 对导师的推荐表述：
+  - 这张图不证明 “AGC 已经做到理想极限”
+  - 它证明的是：在当前 baseline-first 实现下，AGC 已经能提供更稳定、更可控、对闭环更友好的预测基座
+- 因此切换数据集的主要理由应表述为“任务匹配度更高 + 结果更稳 + 能自然扩展到闭环控制”，而不只是“旧数据集分数差”
+- 已新增代表性预测窗对比图：[strawberry_vs_agc_forecast_windows.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/strawberry_vs_agc_forecast_windows.png)
+- 该图只展示 `Strawberry / old Transformer-hybrid`、`AGC / Transformer`、`AGC / Transformer-hybrid`
+- 该图使用两边测试集各自的 midpoint sample，不做样本对齐，不用于严格统计比较，只用于给导师做“预测轨迹形态”的直观说明
+- forecasting 图已升级为“图内直接显示指标”：
+  - `forecast_examples / rollout / first-step rollout / heatmap` 现在都会在每个目标子图内直接标注 `Full R2 / Full MAE / Final R2 / Final MAE`
+  - `horizon_mae` 图会在图下方汇总全部目标的指标
+- control 图已升级为“状态 + 指标 + 动作”联合展示：
+  - 前四行仍是 `Tair / Rhair / CO2air / Tot_PAR`
+  - 第五行显示 `objective / |u-u_log| / action_tv`
+  - 第六行显示所有控制量的归一化动作轨迹，实线是 executed，虚线是 logged baseline
+- 已新增文献对照文档：[LITERATURE_COMPARISON.md](c:/repositories/strawberry/agc_mpc/LITERATURE_COMPARISON.md)
+- 文献对照文档的定位：
+  - 不做伪 leaderboard
+  - 按任务、输入、输出、horizon、模型、控制设定、结果和可比性分开写
+  - 当前结论是：AGC 结果还不是 final-paper quality，但已处于可辩护的 literature band 内；真正短板在 `Rhair`、uncertainty、economic objective 和更完整闭环

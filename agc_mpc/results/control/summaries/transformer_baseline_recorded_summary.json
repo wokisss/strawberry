@@ -3,15 +3,15 @@
   "controller": "recorded",
   "compartment": "Reference",
   "reference_mode": "trajectory",
-  "steps": 48,
+  "steps": 12,
   "objective_mean": 0.0,
   "control_delta_mae": 0.0,
-  "action_tv": 0.3089834451675415,
+  "action_tv": 0.0,
   "target_mae": {
-    "Tair": 1.4821513891220093,
-    "Rhair": 4.003833293914795,
-    "CO2air": 29.9976806640625,
-    "Tot_PAR": 20.7116641998291
+    "Tair": 0.22809474170207977,
+    "Rhair": 1.5254936218261719,
+    "CO2air": 34.79879379272461,
+    "Tot_PAR": 37.369266510009766
   },
   "figure_path": "results\\control\\figures\\transformer_baseline_recorded_closed_loop.png"
 }

@@ -3,15 +3,15 @@
   "controller": "cem_mpc",
   "compartment": "Reference",
   "reference_mode": "trajectory",
-  "steps": 48,
-  "objective_mean": 0.056341973560241364,
-  "control_delta_mae": 21.22627830505371,
-  "action_tv": 12.204741477966309,
+  "steps": 12,
+  "objective_mean": 0.026053020730614662,
+  "control_delta_mae": 17.853717803955078,
+  "action_tv": 6.597214778264363,
   "target_mae": {
-    "Tair": 0.6416198015213013,
-    "Rhair": 4.02572774887085,
-    "CO2air": 20.46769142150879,
-    "Tot_PAR": 12.490532875061035
+    "Tair": 0.6759865880012512,
+    "Rhair": 2.15265154838562,
+    "CO2air": 7.056005001068115,
+    "Tot_PAR": 21.798477172851562
   },
   "figure_path": "results\\control\\figures\\transformer_hybrid_baseline_cem_mpc_closed_loop.png"
 }
