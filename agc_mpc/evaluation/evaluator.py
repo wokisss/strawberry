@@ -34,11 +34,42 @@ class ForecasterEvaluator:
         inv = self.y_scaler.inverse_transform(flat)
         return inv.reshape(shape)
 
+    @staticmethod
+    def _format_metric_block(metrics: dict, target_idx: int) -> str:
+        return (
+            f"Full R2 {metrics['full_r2'][target_idx]:.3f}\n"
+            f"Full MAE {metrics['full_mae'][target_idx]:.3f}\n"
+            f"Final R2 {metrics['final_r2'][target_idx]:.3f}\n"
+            f"Final MAE {metrics['final_mae'][target_idx]:.3f}"
+        )
+
+    def _annotate_metric_box(self, ax, metrics: dict, target_idx: int) -> None:
+        ax.text(
+            0.02,
+            0.98,
+            self._format_metric_block(metrics, target_idx),
+            transform=ax.transAxes,
+            va="top",
+            ha="left",
+            fontsize=8.5,
+            bbox={"boxstyle": "round,pad=0.25", "facecolor": "white", "alpha": 0.88, "edgecolor": "0.75"},
+        )
+
+    def _build_metric_summary(self, metrics: dict) -> str:
+        lines = []
+        for idx, target in enumerate(self.target_cols):
+            lines.append(
+                f"{target}: Full R2={metrics['full_r2'][idx]:.3f}, Full MAE={metrics['full_mae'][idx]:.3f}, "
+                f"Final R2={metrics['final_r2'][idx]:.3f}, Final MAE={metrics['final_mae'][idx]:.3f}"
+            )
+        return "\n".join(lines)
+
     def _plot_prediction_examples(
         self,
         past_real: np.ndarray,
         pred_real: np.ndarray,
         true_real: np.ndarray,
+        metrics: dict,
         output_dir: Path,
         model_name: str,
         num_examples: int = 3,
@@ -75,11 +106,12 @@ class ForecasterEvaluator:
                 ax.set_xlabel("Step relative to t0")
                 ax.set_ylabel(target)
                 ax.grid(True, alpha=0.25)
+                self._annotate_metric_box(ax, metrics, col_idx)
                 if col_idx == 0 and ex_idx == 0:
                     ax.legend()
 
         fig.suptitle(f"{model_name} forecast examples", fontsize=14)
-        fig.tight_layout()
+        fig.tight_layout(rect=(0, 0, 1, 0.98))
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         return path
@@ -88,6 +120,7 @@ class ForecasterEvaluator:
         self,
         pred_real: np.ndarray,
         true_real: np.ndarray,
+        metrics: dict,
         output_dir: Path,
         model_name: str,
     ) -> Path:
@@ -104,7 +137,15 @@ class ForecasterEvaluator:
         ax.set_ylabel("MAE")
         ax.grid(True, alpha=0.25)
         ax.legend()
-        fig.tight_layout()
+        fig.text(
+            0.5,
+            -0.02,
+            self._build_metric_summary(metrics),
+            ha="center",
+            va="top",
+            fontsize=9,
+        )
+        fig.tight_layout(rect=(0, 0.05, 1, 1))
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         return path
@@ -113,6 +154,7 @@ class ForecasterEvaluator:
         self,
         pred_real: np.ndarray,
         true_real: np.ndarray,
+        metrics: dict,
         output_dir: Path,
         model_name: str,
         rollout_examples: int = 2,
@@ -164,6 +206,7 @@ class ForecasterEvaluator:
                 ax.set_xlabel("Timeline step")
                 ax.set_ylabel(target)
                 ax.grid(True, alpha=0.25)
+                self._annotate_metric_box(ax, metrics, col_idx)
                 if col_idx == 0 and ex_idx == 0:
                     ax.legend()
 
@@ -171,7 +214,7 @@ class ForecasterEvaluator:
             f"{model_name} rolling multi-step forecast windows | stride={rollout_stride}, horizon={pred_real.shape[1]}",
             fontsize=14,
         )
-        fig.tight_layout()
+        fig.tight_layout(rect=(0, 0, 1, 0.98))
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         return path
@@ -180,6 +223,7 @@ class ForecasterEvaluator:
         self,
         pred_real: np.ndarray,
         true_real: np.ndarray,
+        metrics: dict,
         output_dir: Path,
         model_name: str,
         rollout_examples: int = 2,
@@ -225,11 +269,12 @@ class ForecasterEvaluator:
                 ax.set_xlabel("Timeline step")
                 ax.set_ylabel(target)
                 ax.grid(True, alpha=0.25)
+                self._annotate_metric_box(ax, metrics, col_idx)
                 if col_idx == 0 and ex_idx == 0:
                     ax.legend()
 
         fig.suptitle(f"{model_name} first-step stitched rollout", fontsize=14)
-        fig.tight_layout()
+        fig.tight_layout(rect=(0, 0, 1, 0.98))
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         return path
@@ -238,6 +283,7 @@ class ForecasterEvaluator:
         self,
         pred_real: np.ndarray,
         true_real: np.ndarray,
+        metrics: dict,
         output_dir: Path,
         model_name: str,
         rollout_examples: int = 2,
@@ -277,10 +323,11 @@ class ForecasterEvaluator:
                 ax.set_title(f"{target} | start {start}")
                 ax.set_xlabel("Launch step")
                 ax.set_ylabel("Forecast horizon")
+                self._annotate_metric_box(ax, metrics, col_idx)
                 fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
         fig.suptitle(f"{model_name} forecast error heatmap", fontsize=14)
-        fig.tight_layout()
+        fig.tight_layout(rect=(0, 0, 1, 0.98))
         fig.savefig(path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         return path
@@ -353,15 +400,17 @@ class ForecasterEvaluator:
             past_real,
             pred_real,
             true_real,
+            metrics,
             output_path,
             model_name,
             num_examples=num_plot_examples,
             history_steps=plot_history_steps,
         )
-        mae_plot = self._plot_horizon_mae(pred_real, true_real, output_path, model_name)
+        mae_plot = self._plot_horizon_mae(pred_real, true_real, metrics, output_path, model_name)
         rollout_plot = self._plot_forecast_rollout(
             pred_real,
             true_real,
+            metrics,
             output_path,
             model_name,
             rollout_examples=forecast_rollout_examples,
@@ -371,6 +420,7 @@ class ForecasterEvaluator:
         first_step_rollout_plot = self._plot_first_step_rollout(
             pred_real,
             true_real,
+            metrics,
             output_path,
             model_name,
             rollout_examples=forecast_rollout_examples,
@@ -379,6 +429,7 @@ class ForecasterEvaluator:
         error_heatmap_plot = self._plot_forecast_error_heatmap(
             pred_real,
             true_real,
+            metrics,
             output_path,
             model_name,
             rollout_examples=forecast_rollout_examples,

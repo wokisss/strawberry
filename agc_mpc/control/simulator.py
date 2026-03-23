@@ -41,6 +41,8 @@ class RolloutTrace:
     executed_actions: List[List[float]] = field(default_factory=list)
     baseline_actions: List[List[float]] = field(default_factory=list)
     objectives: List[float] = field(default_factory=list)
+    control_delta: List[float] = field(default_factory=list)
+    action_tv: List[float] = field(default_factory=list)
 
 
 class AGCClosedLoopSimulator:
@@ -158,24 +160,55 @@ class AGCClosedLoopSimulator:
         ref = np.asarray(trace.reference_targets, dtype=np.float32)
         act = np.asarray(trace.executed_actions, dtype=np.float32)
         base = np.asarray(trace.baseline_actions, dtype=np.float32)
+        obj = np.asarray(trace.objectives, dtype=np.float32)
+        control_delta = np.asarray(trace.control_delta, dtype=np.float32)
+        action_tv = np.asarray(trace.action_tv, dtype=np.float32)
         steps = np.arange(1, len(pred) + 1)
+        act_unit = self.adapter.u_real_to_unit(act).detach().cpu().numpy()
+        base_unit = self.adapter.u_real_to_unit(base).detach().cpu().numpy()
+        target_mae = np.mean(np.abs(pred - ref), axis=0)
 
-        fig, axes = plt.subplots(5, 1, figsize=(12, 16), sharex=True)
+        fig, axes = plt.subplots(6, 1, figsize=(14, 20), sharex=True)
         for idx, target in enumerate(self.y_cols):
             axes[idx].plot(steps, ref[:, idx], label="Reference", linewidth=2.0)
             axes[idx].plot(steps, pred[:, idx], label="Closed-loop", linewidth=2.0, linestyle="--")
             axes[idx].set_ylabel(target)
+            axes[idx].set_title(f"{target} | stage MAE={target_mae[idx]:.3f}")
             axes[idx].grid(True, alpha=0.25)
             if idx == 0:
                 axes[idx].legend()
 
-        action_delta = np.mean(np.abs(act - base), axis=1)
-        axes[4].plot(steps, action_delta, color="tab:red", linewidth=2.0)
-        axes[4].set_ylabel("|u - u_log| mean")
-        axes[4].set_xlabel("Closed-loop step")
+        axes[4].plot(steps, obj, color="tab:purple", linewidth=2.0, label="Objective")
+        axes[4].plot(steps, control_delta, color="tab:red", linewidth=2.0, label="|u-u_log| mean")
+        if len(action_tv) == len(steps):
+            axes[4].plot(steps, action_tv, color="tab:orange", linewidth=2.0, label="Action TV")
+        axes[4].set_ylabel("Control metrics")
         axes[4].grid(True, alpha=0.25)
+        axes[4].legend(ncol=3, fontsize=9)
 
-        fig.tight_layout()
+        color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+        for idx, u_name in enumerate(self.u_cols):
+            color = color_cycle[idx % len(color_cycle)]
+            axes[5].plot(steps, act_unit[:, idx], color=color, linewidth=1.8, label=u_name)
+            axes[5].plot(steps, base_unit[:, idx], color=color, linewidth=1.2, linestyle="--", alpha=0.65)
+        axes[5].set_ylabel("Action unit")
+        axes[5].set_xlabel("Closed-loop step")
+        axes[5].set_ylim(-0.05, 1.05)
+        axes[5].grid(True, alpha=0.25)
+        axes[5].legend(ncol=3, fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.22))
+
+        summary_text = (
+            f"objective_mean={float(np.mean(obj)):.3f} | "
+            f"control_delta_mae={float(np.mean(control_delta)):.3f} | "
+            f"action_tv={float(np.mean(action_tv)) if len(action_tv) else 0.0:.3f}"
+        )
+        fig.suptitle(
+            f"{out_path.stem}\n{summary_text}\nsolid=executed action, dashed=logged action",
+            fontsize=14,
+            y=0.995,
+        )
+
+        fig.tight_layout(rect=(0, 0.04, 1, 0.965))
         fig.savefig(out_path, dpi=180, bbox_inches="tight")
         plt.close(fig)
         return out_path
@@ -230,6 +263,8 @@ class AGCClosedLoopSimulator:
             control_delta.append(np.mean(np.abs(executed_action - base_u_window[0])))
             if len(trace.executed_actions) > 0:
                 action_tv.append(np.mean(np.abs(executed_action - np.asarray(trace.executed_actions[-1], dtype=np.float32))))
+            else:
+                action_tv.append(0.0)
 
             trace.timestamps.append(str(t_test[idx]))
             trace.predicted_targets.append(next_targets.tolist())
@@ -237,6 +272,8 @@ class AGCClosedLoopSimulator:
             trace.executed_actions.append(executed_action.tolist())
             trace.baseline_actions.append(base_u_window[0].tolist())
             trace.objectives.append(float(plan.objective))
+            trace.control_delta.append(float(control_delta[-1]))
+            trace.action_tv.append(float(action_tv[-1]))
 
         target_mae = np.mean(np.asarray(stage_errors, dtype=np.float32), axis=0)
         figure_path = self._save_figure(
