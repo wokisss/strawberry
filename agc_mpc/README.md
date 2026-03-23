@@ -24,6 +24,9 @@ python c:\repositories\strawberry\agc_mpc\main.py
 - 模型权重：`agc_mpc/results/forecasting/checkpoints/*.pt`
 - 预测示例图：`agc_mpc/results/forecasting/figures/*_forecast_examples.png`
 - Horizon MAE 图：`agc_mpc/results/forecasting/figures/*_horizon_mae.png`
+- Rolling multi-step forecast windows：`agc_mpc/results/forecasting/figures/*_forecast_rollout.png`
+- First-step stitched rollout：`agc_mpc/results/forecasting/figures/*_forecast_first_step_rollout.png`
+- Forecast error heatmap：`agc_mpc/results/forecasting/figures/*_forecast_error_heatmap.png`
 - 控制闭环图：`agc_mpc/results/control/figures/*_closed_loop.png`
 - 控制 summary：`agc_mpc/results/control/summaries/*_summary.json`
 

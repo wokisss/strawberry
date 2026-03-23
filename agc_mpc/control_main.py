@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import random
 from pathlib import Path
 
+import numpy as np
 import torch
 
 from config import AGCConfig
@@ -22,6 +24,18 @@ from models.dlinear_forecaster import ConditionalDLinearForecaster
 from models.transformer_forecaster import ConditionalTransformerForecaster
 from models.transformer_hybrid_forecaster import ConditionalTransformerHybridForecaster
 from results_utils import ensure_results_layout
+
+
+def _set_global_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.use_deterministic_algorithms(True, warn_only=True)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    if torch.backends.cudnn.is_available():
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
 
 def _build_models(bundle, cfg):
@@ -95,6 +109,7 @@ def _print_summary(summary) -> None:
 def run_control_benchmarks(cfg: AGCConfig) -> None:
     project_root = Path(__file__).resolve().parent
     os.chdir(project_root)
+    _set_global_seed(cfg.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     print("=" * 72)
@@ -104,6 +119,8 @@ def run_control_benchmarks(cfg: AGCConfig) -> None:
     print(f"device: {device}")
     print(f"compartment: {cfg.control_compartment}")
     print(f"reference_mode: {cfg.control_reference_mode}")
+    print(f"rollout_mode: {cfg.control_rollout_mode}")
+    print(f"control_eval_steps: {cfg.control_eval_steps}")
 
     ensure_results_layout(cfg)
     processor = AGCDataProcessor(cfg)

@@ -75,6 +75,12 @@ class AGCClosedLoopSimulator:
             return np.asarray(self.cfg.constant_target_values, dtype=np.float32)
         return ref_y_window[0].astype(np.float32)
 
+    @staticmethod
+    def _compute_humidity_deficit_gm3(tair_c: float, rhair_pct: float) -> float:
+        sat_pressure_kpa = 0.6108 * np.exp((17.27 * tair_c) / (tair_c + 237.3))
+        vapor_deficit_kpa = sat_pressure_kpa * np.clip(1.0 - rhair_pct / 100.0, 0.0, 1.0)
+        return float(216.7 * vapor_deficit_kpa / (tair_c + 273.15) * 10.0)
+
     def _control_ratio(self, executed: float, baseline: float, u_name: str, x_name: str) -> float:
         u_idx = self.u_index[u_name]
         x_idx = self.x_index[x_name]
@@ -95,14 +101,25 @@ class AGCClosedLoopSimulator:
         proxy = x_lo + unit * (x_hi - x_lo)
         return max(proxy / max(x_hi, 1e-6), 0.0)
 
+    def _action_proxy_value(self, executed: float, baseline: float, u_name: str, x_name: str, current_value: float) -> float:
+        x_idx = self.x_index[x_name]
+        x_lo = float(self.adapter.x_min_real[x_idx].item())
+        x_hi = float(self.adapter.x_max_real[x_idx].item())
+        ratio = self._control_ratio(executed, baseline, u_name, x_name)
+        if abs(current_value) > 1e-6:
+            proxy = current_value * ratio
+        else:
+            proxy = x_lo + ratio * (x_hi - x_lo)
+        return float(np.clip(proxy, x_lo, x_hi))
+
     def _build_next_row(
         self,
-        base_next_row: np.ndarray,
+        current_row: np.ndarray,
         executed_action: np.ndarray,
         baseline_action: np.ndarray,
         next_targets: np.ndarray,
     ) -> np.ndarray:
-        next_row = base_next_row.copy()
+        next_row = current_row.copy()
 
         for name, value in zip(self.y_cols, next_targets):
             if name in self.x_index:
@@ -113,18 +130,25 @@ class AGCClosedLoopSimulator:
                 continue
             x_idx = self.x_index[x_name]
             u_idx = self.u_index[u_name]
-            ratio = self._control_ratio(
+            current_val = float(current_row[x_idx])
+            proxy_val = self._action_proxy_value(
                 float(executed_action[u_idx]),
                 float(baseline_action[u_idx]),
                 u_name,
                 x_name,
+                current_val,
             )
-            base_val = float(base_next_row[x_idx])
-            if abs(base_val) > 1e-6:
-                next_row[x_idx] = max(base_val * ratio, 0.0)
+            blend = float(np.clip(self.cfg.control_state_blend, 0.0, 1.0))
+            if x_name == "Cum_irr":
+                next_row[x_idx] = max(current_val, proxy_val)
             else:
-                x_hi = float(self.adapter.x_max_real[x_idx].item())
-                next_row[x_idx] = max(ratio * x_hi, 0.0)
+                next_row[x_idx] = blend * proxy_val + (1.0 - blend) * current_val
+
+        if "HumDef" in self.x_index and "Tair" in self.x_index and "Rhair" in self.x_index:
+            next_row[self.x_index["HumDef"]] = self._compute_humidity_deficit_gm3(
+                float(next_row[self.x_index["Tair"]]),
+                float(next_row[self.x_index["Rhair"]]),
+            )
 
         return next_row
 
@@ -193,9 +217,11 @@ class AGCClosedLoopSimulator:
                 pred_scaled = self.adapter.predict_scaled(x_scaled, w_scaled, u_scaled)
             next_targets = self.adapter.y_scaled_to_real(pred_scaled[:, 0]).detach().cpu().numpy()[0]
 
-            base_next_row = x_test[idx + 1, -1].copy()
+            current_row = current_x[-1].copy()
+            if self.cfg.control_rollout_mode == "semi_grounded":
+                current_row = x_test[idx + 1, -1].copy()
             current_x = np.concatenate(
-                [current_x[1:], self._build_next_row(base_next_row, executed_action, base_u_window[0], next_targets)[None, :]],
+                [current_x[1:], self._build_next_row(current_row, executed_action, base_u_window[0], next_targets)[None, :]],
                 axis=0,
             )
 

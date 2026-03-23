@@ -3,15 +3,15 @@
   "controller": "cem_mpc",
   "compartment": "Reference",
   "reference_mode": "trajectory",
-  "steps": 12,
-  "objective_mean": 0.040248750864217676,
-  "control_delta_mae": 31.512632369995117,
-  "action_tv": 32.02602767944336,
+  "steps": 48,
+  "objective_mean": 0.033772372912305094,
+  "control_delta_mae": 19.13605499267578,
+  "action_tv": 7.279941082000732,
   "target_mae": {
-    "Tair": 0.6850113868713379,
-    "Rhair": 1.8793054819107056,
-    "CO2air": 9.199142456054688,
-    "Tot_PAR": 42.01799011230469
+    "Tair": 0.3025609254837036,
+    "Rhair": 1.2372956275939941,
+    "CO2air": 11.970219612121582,
+    "Tot_PAR": 12.646773338317871
   },
   "figure_path": "results\\control\\figures\\dlinear_baseline_cem_mpc_closed_loop.png"
 }

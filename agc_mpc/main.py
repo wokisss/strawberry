@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """Entry point for the new AGC-based predictive control project."""
 
+import random
 import os
 from pathlib import Path
 
+import numpy as np
 import torch
 
 from config import AGCConfig
@@ -16,6 +18,18 @@ from models.transformer_forecaster import ConditionalTransformerForecaster
 from models.transformer_hybrid_forecaster import ConditionalTransformerHybridForecaster
 from results_utils import ensure_results_layout
 from training.trainer import Trainer
+
+
+def _set_global_seed(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.use_deterministic_algorithms(True, warn_only=True)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    if torch.backends.cudnn.is_available():
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
 
 def run_baseline(name, model, bundle, cfg, device):
@@ -53,6 +67,9 @@ def run_baseline(name, model, bundle, cfg, device):
         output_dir=cfg.forecast_figures_dir,
         num_plot_examples=cfg.plot_examples,
         plot_history_steps=cfg.plot_history_steps,
+        forecast_rollout_examples=cfg.forecast_rollout_examples,
+        forecast_rollout_steps=cfg.forecast_rollout_steps,
+        forecast_rollout_stride=cfg.forecast_rollout_stride,
     )
 
 
@@ -65,6 +82,7 @@ def main() -> None:
     print(f"project_root: {project_root}")
 
     cfg = AGCConfig()
+    _set_global_seed(cfg.seed)
     ensure_results_layout(cfg)
     processor = AGCDataProcessor(cfg)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -177,6 +195,9 @@ def main() -> None:
             )
         print(f"    forecast_examples: {result['figure_paths']['forecast_examples']}")
         print(f"    horizon_mae:      {result['figure_paths']['horizon_mae']}")
+        print(f"    forecast_rollout: {result['figure_paths']['forecast_rollout']}")
+        print(f"    first_step_rollout: {result['figure_paths']['forecast_first_step_rollout']}")
+        print(f"    forecast_heatmap: {result['figure_paths']['forecast_error_heatmap']}")
 
     print("---> Done.")
 

@@ -155,12 +155,26 @@ class BaseController:
         self.adapter = adapter
         self.cfg = cfg
         self.last_action_unit = torch.zeros(len(adapter.u_cols), dtype=torch.float32, device=adapter.device)
+        self.last_short_plan_unit: Optional[torch.Tensor] = None
 
     def reset(self, initial_action_real: Optional[np.ndarray] = None) -> None:
+        self.last_short_plan_unit = None
         if initial_action_real is None:
             self.last_action_unit = torch.zeros(len(self.adapter.u_cols), dtype=torch.float32, device=self.adapter.device)
             return
         self.last_action_unit = self.adapter.u_real_to_unit(initial_action_real)
+
+    def _baseline_short_plan_unit(self, baseline_u_real: np.ndarray) -> torch.Tensor:
+        return self.adapter.u_real_to_unit(baseline_u_real[: self.cfg.control_horizon]).unsqueeze(0)
+
+    def _warm_start_short_plan_unit(self, baseline_u_real: np.ndarray) -> torch.Tensor:
+        baseline_short = self._baseline_short_plan_unit(baseline_u_real)
+        if self.last_short_plan_unit is None:
+            return baseline_short
+
+        shifted = torch.cat([self.last_short_plan_unit[:, 1:], self.last_short_plan_unit[:, -1:]], dim=1)
+        mix = float(np.clip(self.cfg.control_warm_start_mix, 0.0, 1.0))
+        return torch.clamp(mix * shifted + (1.0 - mix) * baseline_short, 0.0, 1.0)
 
     def optimize(
         self,
@@ -195,13 +209,15 @@ class GradientMPCController(BaseController):
         w_scaled = self.adapter.w_real_to_scaled(w_future_real).unsqueeze(0)
         ref_scaled = self.adapter.build_reference_scaled(ref_y_real)
 
-        baseline_short_unit = self.adapter.u_real_to_unit(baseline_u_real[: self.cfg.control_horizon]).unsqueeze(0)
-        logits = torch.logit(torch.clamp(baseline_short_unit, 1e-4, 1.0 - 1e-4)).detach().clone()
+        baseline_short_unit = self._baseline_short_plan_unit(baseline_u_real)
+        init_short_unit = self._warm_start_short_plan_unit(baseline_u_real)
+        logits = torch.logit(torch.clamp(init_short_unit, 1e-4, 1.0 - 1e-4)).detach().clone()
         logits.requires_grad_(True)
         optimizer = torch.optim.Adam([logits], lr=self.cfg.dpc_lr)
 
         best_cost = float("inf")
         best_plan_unit = None
+        best_short_plan_unit = None
 
         for _ in range(self.cfg.dpc_iterations):
             optimizer.zero_grad()
@@ -223,12 +239,15 @@ class GradientMPCController(BaseController):
             if cost_value < best_cost:
                 best_cost = cost_value
                 best_plan_unit = plan_unit.detach()
+                best_short_plan_unit = short_plan_unit.detach()
 
         if best_plan_unit is None:
-            best_plan_unit = self.adapter.expand_control_plan(torch.sigmoid(logits).detach())
+            best_short_plan_unit = torch.sigmoid(logits).detach()
+            best_plan_unit = self.adapter.expand_control_plan(best_short_plan_unit)
 
         best_plan_real = self.adapter.u_unit_to_real(best_plan_unit).squeeze(0).detach().cpu().numpy()
         self.last_action_unit = best_plan_unit[0, 0].detach()
+        self.last_short_plan_unit = best_short_plan_unit
         return ControlPlan(plan_real=best_plan_real, objective=best_cost)
 
 
@@ -237,27 +256,41 @@ class CEMMPCController(BaseController):
 
     def __init__(self, adapter: PredictiveControlAdapter, cfg):
         super().__init__("cem_mpc", adapter, cfg)
+        self.rng = torch.Generator(device="cpu")
+        self.rng.manual_seed(int(cfg.seed))
+
+    def reset(self, initial_action_real: Optional[np.ndarray] = None) -> None:
+        super().reset(initial_action_real=initial_action_real)
+        self.rng.manual_seed(int(self.cfg.seed))
 
     def optimize(self, current_x_real, w_future_real, baseline_u_real, ref_y_real) -> ControlPlan:
         x_scaled = self.adapter.x_real_to_scaled(current_x_real).unsqueeze(0)
         w_scaled = self.adapter.w_real_to_scaled(w_future_real).unsqueeze(0)
         ref_scaled = self.adapter.build_reference_scaled(ref_y_real)
 
-        baseline_short_unit = self.adapter.u_real_to_unit(baseline_u_real[: self.cfg.control_horizon]).unsqueeze(0)
-        mean = baseline_short_unit.clone()
+        baseline_short_unit = self._baseline_short_plan_unit(baseline_u_real)
+        init_short_unit = self._warm_start_short_plan_unit(baseline_u_real)
+        mean = init_short_unit.clone()
         std = torch.full_like(mean, self.cfg.mpc_init_std)
 
         best_cost = float("inf")
-        best_short_plan = baseline_short_unit.clone()
+        best_short_plan = init_short_unit.clone()
+        baseline_plan = self.adapter.expand_control_plan(baseline_short_unit)
 
         for _ in range(self.cfg.mpc_iterations):
-            samples = mean + std * torch.randn(
+            samples = mean.cpu() + std.cpu() * torch.randn(
                 self.cfg.mpc_population,
                 self.cfg.control_horizon,
                 len(self.adapter.u_cols),
-                device=self.adapter.device,
+                generator=self.rng,
             )
-            samples = torch.clamp(samples, 0.0, 1.0)
+            samples = torch.clamp(samples, 0.0, 1.0).to(self.adapter.device)
+            if self.cfg.mpc_population >= 1:
+                samples[0] = baseline_short_unit[0]
+            if self.cfg.mpc_population >= 2:
+                samples[1] = init_short_unit[0]
+            if self.cfg.mpc_population >= 3:
+                samples[2] = best_short_plan[0]
             plans = self.adapter.expand_control_plan(samples)
 
             with torch.no_grad():
@@ -270,15 +303,22 @@ class CEMMPCController(BaseController):
                     pred_scaled,
                     ref_scaled.expand(self.cfg.mpc_population, -1, -1),
                     plans,
-                    self.adapter.expand_control_plan(baseline_short_unit).expand(self.cfg.mpc_population, -1, -1),
+                    baseline_plan.expand(self.cfg.mpc_population, -1, -1),
                     self.last_action_unit.unsqueeze(0).expand(self.cfg.mpc_population, -1),
                 )
 
             elite_idx = torch.topk(-costs, self.cfg.mpc_elites).indices
             elites = samples[elite_idx]
             elite_costs = costs[elite_idx]
-            mean = elites.mean(dim=0, keepdim=True)
-            std = torch.clamp(elites.std(dim=0, unbiased=False, keepdim=True), min=0.03, max=0.35)
+            elite_mean = elites.mean(dim=0, keepdim=True)
+            elite_std = elites.std(dim=0, unbiased=False, keepdim=True)
+            momentum = float(np.clip(self.cfg.mpc_momentum, 0.0, 1.0))
+            mean = torch.clamp(momentum * mean + (1.0 - momentum) * elite_mean, 0.0, 1.0)
+            std = torch.clamp(
+                momentum * std + (1.0 - momentum) * elite_std,
+                min=self.cfg.mpc_min_std,
+                max=self.cfg.mpc_max_std,
+            )
 
             elite_best = int(torch.argmin(elite_costs).item())
             elite_best_cost = float(elite_costs[elite_best].item())
@@ -286,9 +326,27 @@ class CEMMPCController(BaseController):
                 best_cost = elite_best_cost
                 best_short_plan = elites[elite_best : elite_best + 1].detach()
 
+        candidate_shorts = torch.cat([best_short_plan, mean, baseline_short_unit], dim=0)
+        candidate_plans = self.adapter.expand_control_plan(candidate_shorts)
+        with torch.no_grad():
+            candidate_costs = self.adapter.control_cost(
+                self.adapter.predict_scaled(
+                    x_scaled.expand(candidate_shorts.size(0), -1, -1),
+                    w_scaled.expand(candidate_shorts.size(0), -1, -1),
+                    self.adapter.u_unit_to_scaled(candidate_plans),
+                ),
+                ref_scaled.expand(candidate_shorts.size(0), -1, -1),
+                candidate_plans,
+                baseline_plan.expand(candidate_shorts.size(0), -1, -1),
+                self.last_action_unit.unsqueeze(0).expand(candidate_shorts.size(0), -1),
+            )
+        best_idx = int(torch.argmin(candidate_costs).item())
+        best_cost = float(candidate_costs[best_idx].item())
+        best_short_plan = candidate_shorts[best_idx : best_idx + 1].detach()
         best_plan_unit = self.adapter.expand_control_plan(best_short_plan)
         best_plan_real = self.adapter.u_unit_to_real(best_plan_unit).squeeze(0).detach().cpu().numpy()
         self.last_action_unit = best_plan_unit[0, 0].detach()
+        self.last_short_plan_unit = best_short_plan
         return ControlPlan(plan_real=best_plan_real, objective=best_cost)
 
 

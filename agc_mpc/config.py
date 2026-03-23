@@ -54,6 +54,9 @@ class AGCConfig:
     # ------------------------ Evaluation / plotting ------------------------
     plot_examples: int = 3
     plot_history_steps: int = 96
+    forecast_rollout_examples: int = 2
+    forecast_rollout_steps: int = 96
+    forecast_rollout_stride: int = 6
     control_results_dir: str = "results/control"
     control_summaries_dir: str = "results/control/summaries"
     control_figures_dir: str = "results/control/figures"
@@ -62,8 +65,11 @@ class AGCConfig:
     control_compartment: str = "Reference"
     control_reference_mode: str = "trajectory"   # "trajectory" or "constant"
     control_start_idx: int = 0
-    control_eval_steps: int = 48
+    control_eval_steps: int = 96
     control_horizon: int = 6
+    control_rollout_mode: str = "surrogate"      # "surrogate" or "semi_grounded"
+    control_warm_start_mix: float = 0.70
+    control_state_blend: float = 0.70
     control_min_quantile: float = 0.01
     control_max_quantile: float = 0.99
 
@@ -72,10 +78,13 @@ class AGCConfig:
     dpc_lr: float = 0.08
 
     # Sampling-based MPC solver (CEM)
-    mpc_population: int = 64
-    mpc_elites: int = 8
-    mpc_iterations: int = 4
-    mpc_init_std: float = 0.20
+    mpc_population: int = 96
+    mpc_elites: int = 12
+    mpc_iterations: int = 6
+    mpc_init_std: float = 0.12
+    mpc_min_std: float = 0.02
+    mpc_max_std: float = 0.25
+    mpc_momentum: float = 0.60
 
     # Closed-loop objective
     track_weights: List[float] = field(default_factory=lambda: [1.5, 1.0, 1.0, 0.75])

@@ -145,13 +145,18 @@
 - 条件 Transformer-hybrid baseline
 - 离线评估输出
 - forecast 图支持“历史上下文 + 未来 horizon”联合展示，不再只盯着纯 future window
+- forecast 图新增 rolling multi-step rollout 展示，用更长时间轴显示连续多窗预测，而不只是一段 24-step future window
+- forecasting 现在同时支持 3 类长时间轴图：rolling forecast windows、first-step stitched rollout、forecast error heatmap
+- 上述 3 类长时间轴图已经为 `GRU / DLinear / SegRNN / Transformer / Transformer-hybrid` 全部补齐
 - `results` 目录开始按 `forecasting / control` 分层整理
 - forecasting checkpoint 统一收敛到 `agc_mpc/results/forecasting/checkpoints`
 - forecasting 图统一收敛到 `agc_mpc/results/forecasting/figures`
 - control summary 统一收敛到 `agc_mpc/results/control/summaries`
 - AGC 控制侧初版接入
 - `DLinear / Transformer-hybrid` 已接到 AGC 上的两类 MPC 求解器
-- 新增基于测试集真实天气/时间推进的 semi-grounded surrogate closed-loop rollout
+- `CEMMPC` 已补上固定随机种子、warm start、candidate injection 和更平滑的 CEM 更新
+- 闭环 rollout 默认切到更严格的 `surrogate` 模式，不再默认用真实下一行状态打底
+- surrogate 状态更新里会重算 `HumDef`，并用 persistence + action proxy 更新非目标状态
 - 控制结果自动保存到 `agc_mpc/results/control`
 
 当前未完成：
@@ -170,9 +175,12 @@
   含义：24 小时历史窗口
 - `horizon = 24`  
   含义：2 小时预测窗口
+- 这意味着“单个 forecast 窗口图”天然只会显示 24 个未来步；如果想看更长时间轴，需要看 rolling forecast rollout 图，或直接把 `horizon` 改大后重训
 - `batch_size = 256`
 - `num_epochs = 12`
 - `early_stop_patience = 4`
+- `control_eval_steps = 96`
+- `control_rollout_mode = surrogate`
 
 当前目标变量：
 
@@ -268,13 +276,13 @@ python c:\repositories\strawberry\agc_mpc\main.py
 - 这继续支持一个重要论文论点：  
   **最好的离线预测模型可能因目标变量不同而分化，不存在单一绝对最优结构**
 
-### 8.6 控制侧 benchmark（2026-03-23）
+### 8.6 控制侧 benchmark（2026-03-23, stricter surrogate update）
 
 运行方式：
 
 ```bash
 conda activate strawberry_env
-python c:\repositories\strawberry\agc_mpc\control_main.py --steps 12 --start-idx 0 --reference-mode trajectory
+python c:\repositories\strawberry\agc_mpc\control_main.py --steps 48 --start-idx 0 --reference-mode trajectory
 ```
 
 协议说明：
@@ -283,10 +291,12 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 12 --start-idx
 - 控制器：`recorded` / `GradientMPC` / `CEMMPC`
 - 预测器：`DLinear`、纯 `Transformer`、`Transformer-hybrid`
 - 参考目标：测试集真实未来 `y_future` trajectory
-- 当前闭环协议不是完整物理仿真器，而是：
-  - 天气、时间和未建模列继续来自 AGC 测试集真实序列
+- 当前闭环协议仍不是完整物理仿真器，但比上一版更严格：
+  - 天气、时间和参考轨迹继续来自 AGC 测试集真实序列
   - 被控目标状态由预测器一步滚动产生
-  - 控制相关历史反馈由真实下一行打底，再按执行 setpoints 做启发式覆盖
+  - 历史状态默认不再直接拷贝真实下一行，而是从当前状态出发，用 persistence + action proxy + predicted targets 更新
+  - `HumDef` 根据预测的 `Tair / Rhair` 重新计算
+  - `CEMMPC` 现在使用固定随机种子，因此同一命令重跑时 summary 哈希保持一致
 
 结果：
 
@@ -299,29 +309,28 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 12 --start-idx
 
 #### DLinear as control surrogate
 
-- `recorded`: `Tair=0.362`, `Rhair=1.445`, `CO2air=54.851`, `Tot_PAR=28.634`
-- `GradientMPC`: `Tair=0.326`, `Rhair=1.048`, `CO2air=5.114`, `Tot_PAR=36.979`
-- `CEMMPC`: `Tair=0.685`, `Rhair=1.879`, `CO2air=9.199`, `Tot_PAR=42.018`
+- `recorded`: `Tair=0.527`, `Rhair=4.533`, `CO2air=66.691`, `Tot_PAR=36.827`
+- `GradientMPC`: `Tair=0.167`, `Rhair=0.458`, `CO2air=2.592`, `Tot_PAR=11.558`
+- `CEMMPC`: `Tair=0.303`, `Rhair=1.237`, `CO2air=11.970`, `Tot_PAR=12.647`
 
 #### Pure Transformer as control surrogate
 
-- `recorded`: `Tair=0.346`, `Rhair=1.689`, `CO2air=27.463`, `Tot_PAR=39.462`
-- `GradientMPC`: `Tair=0.148`, `Rhair=0.960`, `CO2air=8.948`, `Tot_PAR=33.930`
-- `CEMMPC`: `Tair=0.310`, `Rhair=0.774`, `CO2air=13.309`, `Tot_PAR=39.483`
+- `recorded`: `Tair=1.482`, `Rhair=4.004`, `CO2air=29.998`, `Tot_PAR=20.712`
+- `GradientMPC`: `Tair=0.251`, `Rhair=2.818`, `CO2air=15.884`, `Tot_PAR=18.789`
+- `CEMMPC`: `Tair=0.423`, `Rhair=3.800`, `CO2air=21.208`, `Tot_PAR=24.774`
 
 #### Transformer-hybrid as control surrogate
 
-- `recorded`: `Tair=1.025`, `Rhair=1.667`, `CO2air=10.969`, `Tot_PAR=16.593`
-- `GradientMPC`: `Tair=0.120`, `Rhair=1.474`, `CO2air=6.929`, `Tot_PAR=14.946`
-- `CEMMPC`: `Tair=0.444`, `Rhair=1.387`, `CO2air=10.370`, `Tot_PAR=24.421`
+- `recorded`: `Tair=2.253`, `Rhair=3.134`, `CO2air=28.444`, `Tot_PAR=26.593`
+- `GradientMPC`: `Tair=0.194`, `Rhair=1.861`, `CO2air=18.029`, `Tot_PAR=12.909`
+- `CEMMPC`: `Tair=0.642`, `Rhair=4.026`, `CO2air=20.468`, `Tot_PAR=12.491`
 
 当前控制结论：
 
-- 在当前 12-step surrogate rollout 上，`GradientMPC` 仍普遍优于当前 `CEMMPC`
-- `DLinear + GradientMPC` 在 `CO2air` 上最强
-- `Transformer-hybrid + GradientMPC` 在 `Tair / Tot_PAR` 上最好
-- `Pure Transformer + GradientMPC` 在 `Rhair` 上最好，且整体优于其 own recorded / `CEMMPC`
-- 当前 `CEMMPC` 仍有明显随机性，重跑后数值会波动，需要继续调参、固定随机种子或改搜索策略
+- 在更严格的 48-step surrogate rollout 上，`GradientMPC` 仍普遍优于 `CEMMPC`
+- `DLinear + GradientMPC` 是当前最强的严格 surrogate 控制组合，四个目标都显著优于 recorded
+- `CEMMPC` 现在已经可复现，同一命令重复运行时其 summary 哈希保持一致，但性能仍落后于 `GradientMPC`
+- surrogate 协议一旦收紧，recorded control 和各 predictor 的误差都会明显变大，这说明上一版 semi-grounded rollout 确实偏乐观
 - 这进一步提示：**最强离线预测器不一定自动变成最强闭环控制 surrogate**
 
 
@@ -379,9 +388,9 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 12 --start-idx
 
 先稳住控制 benchmark：
 
-- 调整 `CEMMPC` 搜索稳定性
-- 验证 `DLinear / Transformer / Transformer-hybrid` 在更长 rollout 下的闭环排名
-- 逐步把 `sp -> actuator feedback -> climate` 的 surrogate 更新做实
+- 已完成：`CEMMPC` 的可复现性和基础稳定性
+- 正在做：验证 `DLinear / Transformer / Transformer-hybrid` 在更长 rollout 下的闭环排名
+- 下一步：逐步把 `sp -> actuator feedback -> climate` 的 surrogate 更新做实
 
 第二层继续补强预测 benchmark：
 
@@ -432,6 +441,10 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 12 --start-idx
    - 再提新模型与 forecasting 结果
    - 最后提 control benchmark、结果图 / summary 和 `CONTEXT.md`
 10. 如果后续 push 因 pack 过大或二进制结果过多失败，优先考虑继续拆提交，必要时把“代码变更”和“实验产物”分开处理，而不是无限重试 push。
+11. 当前环境下，`Remove-Item` 一类删除动作也可能被沙箱拦住并报 `Access is denied`，即使文件 ACL 看起来正常；如果需要清理 legacy 结果文件：
+   - 先区分是沙箱/提权限制还是文件自身 ACL 问题，不要默认是文件损坏
+   - 优先用“精确过滤 + 提权删除”，不要用会误伤新文件的宽泛通配
+   - 例如清理旧控制结果时，只删除旧命名的 `_dpc_` 和旧 `_mpc_` 文件，不要匹配到 `gradient_mpc` / `cem_mpc`
 
 
 ## 14. 下次对话建议起手内容
@@ -443,4 +456,5 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 12 --start-idx
 - 当前已完成：数据管线 + GRU baseline + DLinear baseline
 - 当前已完成：数据管线 + GRU baseline + DLinear baseline + SegRNN baseline + Transformer baseline + Transformer-hybrid baseline + 自动结果图
 - 当前已完成：`DLinear / Transformer / Transformer-hybrid` 已接入 AGC 上的 `GradientMPC / CEMMPC` 初版 surrogate closed-loop benchmark
-- 当前下一步：稳住 `CEMMPC`、拉长闭环评估窗口，并把 surrogate rollout 逐步替换为更严格的 AGC 控制环境；或并行开始做一个 `hybrid residual model`
+- 当前已完成：forecast 侧新增 rolling multi-step rollout 图；control 侧默认切到更严格的 `surrogate` rollout，并验证了 `CEMMPC` 的可复现性
+- 当前下一步：继续把 surrogate 从 `state persistence + action proxy` 推到更接近 `sp -> vip -> actuator -> climate` 的层级建模；或并行开始做一个 `hybrid residual model`

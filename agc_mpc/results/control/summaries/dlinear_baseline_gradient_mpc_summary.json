@@ -3,15 +3,15 @@
   "controller": "gradient_mpc",
   "compartment": "Reference",
   "reference_mode": "trajectory",
-  "steps": 12,
-  "objective_mean": 0.02464939110601942,
-  "control_delta_mae": 16.840410232543945,
-  "action_tv": 5.027647018432617,
+  "steps": 48,
+  "objective_mean": 0.03087490808684379,
+  "control_delta_mae": 8.161076545715332,
+  "action_tv": 3.8803460597991943,
   "target_mae": {
-    "Tair": 0.32631587982177734,
-    "Rhair": 1.0477339029312134,
-    "CO2air": 5.1136627197265625,
-    "Tot_PAR": 36.979129791259766
+    "Tair": 0.16665787994861603,
+    "Rhair": 0.4575270116329193,
+    "CO2air": 2.5922164916992188,
+    "Tot_PAR": 11.558162689208984
   },
   "figure_path": "results\\control\\figures\\dlinear_baseline_gradient_mpc_closed_loop.png"
 }
