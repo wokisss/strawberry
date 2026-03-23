@@ -184,11 +184,11 @@ class RecordedBaselineController(BaseController):
         return ControlPlan(plan_real=plan_real, objective=0.0)
 
 
-class GradientDPCController(BaseController):
-    """Gradient-based differentiable predictive controller."""
+class GradientMPCController(BaseController):
+    """Gradient-based MPC solver on top of a differentiable surrogate."""
 
     def __init__(self, adapter: PredictiveControlAdapter, cfg):
-        super().__init__("dpc", adapter, cfg)
+        super().__init__("gradient_mpc", adapter, cfg)
 
     def optimize(self, current_x_real, w_future_real, baseline_u_real, ref_y_real) -> ControlPlan:
         x_scaled = self.adapter.x_real_to_scaled(current_x_real).unsqueeze(0)
@@ -232,11 +232,11 @@ class GradientDPCController(BaseController):
         return ControlPlan(plan_real=best_plan_real, objective=best_cost)
 
 
-class SamplingMPCController(BaseController):
-    """Sampling-based MPC using Cross-Entropy Method over future setpoint plans."""
+class CEMMPCController(BaseController):
+    """Sampling-based MPC using the Cross-Entropy Method over future setpoint plans."""
 
     def __init__(self, adapter: PredictiveControlAdapter, cfg):
-        super().__init__("mpc", adapter, cfg)
+        super().__init__("cem_mpc", adapter, cfg)
 
     def optimize(self, current_x_real, w_future_real, baseline_u_real, ref_y_real) -> ControlPlan:
         x_scaled = self.adapter.x_real_to_scaled(current_x_real).unsqueeze(0)
@@ -290,3 +290,8 @@ class SamplingMPCController(BaseController):
         best_plan_real = self.adapter.u_unit_to_real(best_plan_unit).squeeze(0).detach().cpu().numpy()
         self.last_action_unit = best_plan_unit[0, 0].detach()
         return ControlPlan(plan_real=best_plan_real, objective=best_cost)
+
+
+# Backward-compatible aliases. These refer to MPC solvers, not separate control paradigms.
+GradientDPCController = GradientMPCController
+SamplingMPCController = CEMMPCController

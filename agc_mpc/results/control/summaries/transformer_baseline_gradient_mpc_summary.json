@@ -1,0 +1,17 @@
+{
+  "predictor": "transformer_baseline",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 12,
+  "objective_mean": 0.02240610836694638,
+  "control_delta_mae": 14.1582670211792,
+  "action_tv": 5.163290977478027,
+  "target_mae": {
+    "Tair": 0.1479160040616989,
+    "Rhair": 0.9598363041877747,
+    "CO2air": 8.948328971862793,
+    "Tot_PAR": 33.92959213256836
+  },
+  "figure_path": "results\\control\\figures\\transformer_baseline_gradient_mpc_closed_loop.png"
+}

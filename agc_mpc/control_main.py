@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Entry point for AGC MPC / DPC closed-loop benchmarks."""
+"""Entry point for AGC closed-loop MPC solver benchmarks."""
 
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ import torch
 
 from config import AGCConfig
 from control.controller import (
-    GradientDPCController,
+    CEMMPCController,
+    GradientMPCController,
     PredictiveControlAdapter,
     RecordedBaselineController,
-    SamplingMPCController,
 )
 from control.simulator import AGCClosedLoopSimulator
 from data_processing.processor import AGCDataProcessor
@@ -98,7 +98,7 @@ def run_control_benchmarks(cfg: AGCConfig) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     print("=" * 72)
-    print("AGC Closed-Loop MPC / DPC Benchmark")
+    print("AGC Closed-Loop MPC Solver Benchmark")
     print("=" * 72)
     print(f"project_root: {project_root}")
     print(f"device: {device}")
@@ -132,8 +132,8 @@ def run_control_benchmarks(cfg: AGCConfig) -> None:
         print("-" * 72)
         for controller in [
             RecordedBaselineController(adapter, cfg),
-            GradientDPCController(adapter, cfg),
-            SamplingMPCController(adapter, cfg),
+            GradientMPCController(adapter, cfg),
+            CEMMPCController(adapter, cfg),
         ]:
             summary = simulator.run(controller, predictor_name=name)
             _print_summary(summary)

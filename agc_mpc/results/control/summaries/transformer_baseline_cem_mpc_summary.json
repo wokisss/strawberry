@@ -1,0 +1,17 @@
+{
+  "predictor": "transformer_baseline",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 12,
+  "objective_mean": 0.02888794398556153,
+  "control_delta_mae": 27.420700073242188,
+  "action_tv": 25.416608810424805,
+  "target_mae": {
+    "Tair": 0.31003236770629883,
+    "Rhair": 0.7744305729866028,
+    "CO2air": 13.308517456054688,
+    "Tot_PAR": 39.48322296142578
+  },
+  "figure_path": "results\\control\\figures\\transformer_baseline_cem_mpc_closed_loop.png"
+}

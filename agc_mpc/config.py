@@ -67,11 +67,11 @@ class AGCConfig:
     control_min_quantile: float = 0.01
     control_max_quantile: float = 0.99
 
-    # Gradient-based DPC
+    # Gradient-based MPC solver
     dpc_iterations: int = 30
     dpc_lr: float = 0.08
 
-    # Sampling-based MPC (CEM)
+    # Sampling-based MPC solver (CEM)
     mpc_population: int = 64
     mpc_elites: int = 8
     mpc_iterations: int = 4

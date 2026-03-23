@@ -1,0 +1,17 @@
+{
+  "predictor": "dlinear_baseline",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 12,
+  "objective_mean": 0.040248750864217676,
+  "control_delta_mae": 31.512632369995117,
+  "action_tv": 32.02602767944336,
+  "target_mae": {
+    "Tair": 0.6850113868713379,
+    "Rhair": 1.8793054819107056,
+    "CO2air": 9.199142456054688,
+    "Tot_PAR": 42.01799011230469
+  },
+  "figure_path": "results\\control\\figures\\dlinear_baseline_cem_mpc_closed_loop.png"
+}

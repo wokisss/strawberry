@@ -9,8 +9,8 @@
 - `x_past / w_future / u_future / y_future` 样本构造
 - 单隔间与多隔间联合训练
 - leak-free 时间切分与全局标准化
-- `GRU / DLinear / SegRNN / Transformer-hybrid` 四个预测 baseline
-- 自动保存评估图到 `results/figures`
+- `GRU / DLinear / SegRNN / Transformer / Transformer-hybrid` 五个预测 baseline
+- 自动保存 forecasting / control 结果到分层后的 `results` 目录
 
 运行方式：
 
@@ -21,9 +21,11 @@ python c:\repositories\strawberry\agc_mpc\main.py
 
 结果输出：
 
-- 模型权重：`agc_mpc/results/*.pt`
-- 预测示例图：`agc_mpc/results/figures/*_forecast_examples.png`
-- Horizon MAE 图：`agc_mpc/results/figures/*_horizon_mae.png`
+- 模型权重：`agc_mpc/results/forecasting/checkpoints/*.pt`
+- 预测示例图：`agc_mpc/results/forecasting/figures/*_forecast_examples.png`
+- Horizon MAE 图：`agc_mpc/results/forecasting/figures/*_horizon_mae.png`
+- 控制闭环图：`agc_mpc/results/control/figures/*_closed_loop.png`
+- 控制 summary：`agc_mpc/results/control/summaries/*_summary.json`
 
 当前默认设置：
 
@@ -43,5 +45,6 @@ python c:\repositories\strawberry\agc_mpc\main.py
 下一步主线：
 
 1. 分析哪类预测器更适合后续控制
-2. 把预测模型接入 AGC 上的 MPC / DPC
+2. 把预测模型接入 AGC 上的 MPC
+   当前区分的是两种 MPC 求解器：gradient-based MPC 和 CEM-based MPC
 3. 再引入资源成本和经济指标

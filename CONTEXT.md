@@ -16,7 +16,7 @@
 
 当前目标不是复现原草莓论文，而是做：
 
-**面向控制的温室多步预测 + 闭环 MPC / DPC**
+**面向控制的温室多步预测 + 闭环 MPC**
 
 核心设定：
 
@@ -25,7 +25,7 @@
 - 输入未来天气 / 外生量
 - 输入未来控制设定值
 - 预测未来室内温室状态
-- 最终服务于 MPC / DPC
+- 最终服务于 MPC
 - SAC 仅作为 baseline，不是主线方法
 
 
@@ -150,7 +150,7 @@
 - forecasting 图统一收敛到 `agc_mpc/results/forecasting/figures`
 - control summary 统一收敛到 `agc_mpc/results/control/summaries`
 - AGC 控制侧初版接入
-- `DLinear / Transformer-hybrid` 已接到 AGC 上的 `DPC / MPC`
+- `DLinear / Transformer-hybrid` 已接到 AGC 上的两类 MPC 求解器
 - 新增基于测试集真实天气/时间推进的 semi-grounded surrogate closed-loop rollout
 - 控制结果自动保存到 `agc_mpc/results/control`
 
@@ -207,8 +207,8 @@ python c:\repositories\strawberry\agc_mpc\main.py
 
 结果图：
 
-- [gru_forecast_examples.png](c:/repositories/strawberry/agc_mpc/results/figures/gru_baseline_forecast_examples.png)
-- [gru_horizon_mae.png](c:/repositories/strawberry/agc_mpc/results/figures/gru_baseline_horizon_mae.png)
+- [gru_forecast_examples.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/gru_baseline_forecast_examples.png)
+- [gru_horizon_mae.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/gru_baseline_horizon_mae.png)
 
 ### 8.2 DLinear baseline
 
@@ -219,8 +219,8 @@ python c:\repositories\strawberry\agc_mpc\main.py
 
 结果图：
 
-- [dlinear_forecast_examples.png](c:/repositories/strawberry/agc_mpc/results/figures/dlinear_baseline_forecast_examples.png)
-- [dlinear_horizon_mae.png](c:/repositories/strawberry/agc_mpc/results/figures/dlinear_baseline_horizon_mae.png)
+- [dlinear_forecast_examples.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/dlinear_baseline_forecast_examples.png)
+- [dlinear_horizon_mae.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/dlinear_baseline_horizon_mae.png)
 
 ### 8.3 SegRNN baseline
 
@@ -231,8 +231,8 @@ python c:\repositories\strawberry\agc_mpc\main.py
 
 结果图：
 
-- [segrnn_forecast_examples.png](c:/repositories/strawberry/agc_mpc/results/figures/segrnn_baseline_forecast_examples.png)
-- [segrnn_horizon_mae.png](c:/repositories/strawberry/agc_mpc/results/figures/segrnn_baseline_horizon_mae.png)
+- [segrnn_forecast_examples.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/segrnn_baseline_forecast_examples.png)
+- [segrnn_horizon_mae.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/segrnn_baseline_horizon_mae.png)
 
 ### 8.4 纯 Transformer baseline
 
@@ -280,7 +280,7 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 12 --start-idx
 协议说明：
 
 - 控制隔间：`Reference`
-- 控制器：`recorded` / `DPC` / `MPC(CEM)`
+- 控制器：`recorded` / `GradientMPC` / `CEMMPC`
 - 预测器：`DLinear`、纯 `Transformer`、`Transformer-hybrid`
 - 参考目标：测试集真实未来 `y_future` trajectory
 - 当前闭环协议不是完整物理仿真器，而是：
@@ -290,31 +290,38 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 12 --start-idx
 
 结果：
 
+术语说明：
+
+- 这里原来写作 `DPC` 的方法，现在统一记为 `GradientMPC`
+- 它不是独立于 MPC 的另一类控制范式，而是“通过梯度直接求解滚动时域优化问题的 MPC 求解器”
+- 原来写作 `MPC(CEM)` 的方法，现在统一记为 `CEMMPC`
+- 因此当前控制对比更准确地说是：`GradientMPC vs CEMMPC`
+
 #### DLinear as control surrogate
 
 - `recorded`: `Tair=0.362`, `Rhair=1.445`, `CO2air=54.851`, `Tot_PAR=28.634`
-- `DPC`: `Tair=0.326`, `Rhair=1.048`, `CO2air=5.114`, `Tot_PAR=36.979`
-- `MPC`: `Tair=0.660`, `Rhair=2.257`, `CO2air=20.883`, `Tot_PAR=46.301`
+- `GradientMPC`: `Tair=0.326`, `Rhair=1.048`, `CO2air=5.114`, `Tot_PAR=36.979`
+- `CEMMPC`: `Tair=0.685`, `Rhair=1.879`, `CO2air=9.199`, `Tot_PAR=42.018`
 
 #### Pure Transformer as control surrogate
 
 - `recorded`: `Tair=0.346`, `Rhair=1.689`, `CO2air=27.463`, `Tot_PAR=39.462`
-- `DPC`: `Tair=0.148`, `Rhair=0.960`, `CO2air=8.948`, `Tot_PAR=33.930`
-- `MPC`: `Tair=0.293`, `Rhair=1.249`, `CO2air=12.570`, `Tot_PAR=48.918`
+- `GradientMPC`: `Tair=0.148`, `Rhair=0.960`, `CO2air=8.948`, `Tot_PAR=33.930`
+- `CEMMPC`: `Tair=0.310`, `Rhair=0.774`, `CO2air=13.309`, `Tot_PAR=39.483`
 
 #### Transformer-hybrid as control surrogate
 
 - `recorded`: `Tair=1.025`, `Rhair=1.667`, `CO2air=10.969`, `Tot_PAR=16.593`
-- `DPC`: `Tair=0.120`, `Rhair=1.474`, `CO2air=6.929`, `Tot_PAR=14.946`
-- `MPC`: `Tair=0.535`, `Rhair=1.690`, `CO2air=7.484`, `Tot_PAR=26.476`
+- `GradientMPC`: `Tair=0.120`, `Rhair=1.474`, `CO2air=6.929`, `Tot_PAR=14.946`
+- `CEMMPC`: `Tair=0.444`, `Rhair=1.387`, `CO2air=10.370`, `Tot_PAR=24.421`
 
 当前控制结论：
 
-- 在当前 12-step surrogate rollout 上，`DPC` 仍普遍优于当前 `MPC(CEM)`
-- `DLinear + DPC` 在 `CO2air` 上最强
-- `Transformer-hybrid + DPC` 在 `Tair / Tot_PAR` 上最好
-- `Pure Transformer + DPC` 在 `Rhair` 上最好，且整体优于其 own recorded / MPC
-- 当前 `MPC(CEM)` 还不稳，需要继续调参或改搜索策略
+- 在当前 12-step surrogate rollout 上，`GradientMPC` 仍普遍优于当前 `CEMMPC`
+- `DLinear + GradientMPC` 在 `CO2air` 上最强
+- `Transformer-hybrid + GradientMPC` 在 `Tair / Tot_PAR` 上最好
+- `Pure Transformer + GradientMPC` 在 `Rhair` 上最好，且整体优于其 own recorded / `CEMMPC`
+- 当前 `CEMMPC` 仍有明显随机性，重跑后数值会波动，需要继续调参、固定随机种子或改搜索策略
 - 这进一步提示：**最强离线预测器不一定自动变成最强闭环控制 surrogate**
 
 
@@ -372,7 +379,7 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 12 --start-idx
 
 先稳住控制 benchmark：
 
-- 调整 `MPC(CEM)` 搜索稳定性
+- 调整 `CEMMPC` 搜索稳定性
 - 验证 `DLinear / Transformer / Transformer-hybrid` 在更长 rollout 下的闭环排名
 - 逐步把 `sp -> actuator feedback -> climate` 的 surrogate 更新做实
 
@@ -406,11 +413,25 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 12 --start-idx
 2. 除非有明确需要，不要继续把主工作流堆回 `diffmpc`。
 3. 代码默认运行环境是 `strawberry_env`。
 4. 每次做完关键代码改动、实验结果更新或路线变化后，都要更新本文件。
-5. 任何新模型都要同时回答四个问题：
+5. 当前控制术语约定：
+   - `GradientMPC` = 通过梯度直接求解滚动时域优化问题的 MPC 求解器
+   - `CEMMPC` = 通过 CEM 采样搜索求解同一 MPC 目标的 MPC 求解器
+   - 不再把 `DPC` 和 `MPC` 记成两个平级范式，以免术语混淆
+6. 任何新模型都要同时回答四个问题：
    - 离线预测是否提升
    - 闭环控制是否提升
    - 对 forecast error 是否稳健
    - 是否能解释为面向控制的设计
+7. Git 提交默认采用“小步分段提交”，不要把结果目录重构、模型新增、控制实验结果、文档更新一次性混成一个大提交。
+8. 当前仓库在本机上曾出现 `.git` ACL / `index.lock` 写入受限问题；如果 `git add` / `git commit` 报 `Unable to create .git/index.lock: Permission denied`：
+   - 不要反复重试很多次
+   - 先检查 `.git` 的 ACL
+   - 必要时一次性递归移除 `.git` 下针对当前用户的 `DENY` ACL 后再继续提交
+9. 推荐的提交拆分顺序：
+   - 先提结果目录结构 / plotting / 基础设施
+   - 再提新模型与 forecasting 结果
+   - 最后提 control benchmark、结果图 / summary 和 `CONTEXT.md`
+10. 如果后续 push 因 pack 过大或二进制结果过多失败，优先考虑继续拆提交，必要时把“代码变更”和“实验产物”分开处理，而不是无限重试 push。
 
 
 ## 14. 下次对话建议起手内容
@@ -421,5 +442,5 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 12 --start-idx
 - 当前主数据集：`AutonomousGreenhouseChallenge_edition2`
 - 当前已完成：数据管线 + GRU baseline + DLinear baseline
 - 当前已完成：数据管线 + GRU baseline + DLinear baseline + SegRNN baseline + Transformer baseline + Transformer-hybrid baseline + 自动结果图
-- 当前已完成：`DLinear / Transformer / Transformer-hybrid` 已接入 AGC 上的 `DPC / MPC` 初版 surrogate closed-loop benchmark
-- 当前下一步：稳住 `MPC(CEM)`、拉长闭环评估窗口，并把 surrogate rollout 逐步替换为更严格的 AGC 控制环境；或并行开始做一个 `hybrid residual model`
+- 当前已完成：`DLinear / Transformer / Transformer-hybrid` 已接入 AGC 上的 `GradientMPC / CEMMPC` 初版 surrogate closed-loop benchmark
+- 当前下一步：稳住 `CEMMPC`、拉长闭环评估窗口，并把 surrogate rollout 逐步替换为更严格的 AGC 控制环境；或并行开始做一个 `hybrid residual model`

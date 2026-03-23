@@ -1,6 +1,6 @@
 {
   "predictor": "dlinear_baseline",
-  "controller": "dpc",
+  "controller": "gradient_mpc",
   "compartment": "Reference",
   "reference_mode": "trajectory",
   "steps": 12,
@@ -13,5 +13,5 @@
     "CO2air": 5.1136627197265625,
     "Tot_PAR": 36.979129791259766
   },
-  "figure_path": "results\\control\\figures\\dlinear_baseline_dpc_closed_loop.png"
+  "figure_path": "results\\control\\figures\\dlinear_baseline_gradient_mpc_closed_loop.png"
 }

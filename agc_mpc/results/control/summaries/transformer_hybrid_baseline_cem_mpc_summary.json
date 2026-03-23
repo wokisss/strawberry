@@ -1,0 +1,17 @@
+{
+  "predictor": "transformer_hybrid_baseline",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 12,
+  "objective_mean": 0.02822794687623779,
+  "control_delta_mae": 23.938447952270508,
+  "action_tv": 18.169267654418945,
+  "target_mae": {
+    "Tair": 0.44444146752357483,
+    "Rhair": 1.3872674703598022,
+    "CO2air": 10.369847297668457,
+    "Tot_PAR": 24.421478271484375
+  },
+  "figure_path": "results\\control\\figures\\transformer_hybrid_baseline_cem_mpc_closed_loop.png"
+}
