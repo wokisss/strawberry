@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """Entry point for DiffMPC training and evaluation."""
 
+import os
 import sys
 import warnings
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -37,6 +39,9 @@ def setup_seed(seed):
 
 
 def main():
+    project_root = Path(__file__).resolve().parent
+    os.chdir(project_root)
+
     print("=" * 60)
     print("--- Greenhouse Control System ---")
     print("--- DPC vs SAC ---")

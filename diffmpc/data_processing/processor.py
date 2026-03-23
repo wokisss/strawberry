@@ -271,8 +271,8 @@ class DataProcessor:
         if train_end_row <= 0:
             raise ValueError("Training split is empty; cannot fit scaler.")
 
-        self.scaler.fit(df.iloc[:train_end_row])
-        data_scaled = self.scaler.transform(df)
+        self.scaler.fit(df.iloc[:train_end_row].values)
+        data_scaled = self.scaler.transform(df.values)
 
         print(f"---> future_indices includes {len(self.future_indices)} columns")
         print(f"    controls: {[feature_order[i] for i in control_indices]}")

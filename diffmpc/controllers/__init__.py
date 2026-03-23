@@ -1,4 +1,7 @@
-from .dpc_controller import DPCController
-from .pso_controller import PSOController
-from .mdp_controller import LegacyMDPController
-from .pwm_driver import PWMDriver, PWMSimulator
+"""Controller package.
+
+Keep package import side effects minimal so optional controllers do not block
+startup when they are not used.
+"""
+
+__all__ = []
