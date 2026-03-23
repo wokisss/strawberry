@@ -14,11 +14,19 @@ from sklearn.metrics import mean_absolute_error, r2_score
 class ForecasterEvaluator:
     """Evaluate multi-step forecasting models on standardized AGC bundles."""
 
-    def __init__(self, model, y_scaler, target_cols, device=None):
+    def __init__(self, model, x_scaler, y_scaler, target_cols, past_feature_cols=None, device=None):
         self.model = model
+        self.x_scaler = x_scaler
         self.y_scaler = y_scaler
         self.target_cols = target_cols
+        self.past_feature_cols = past_feature_cols or []
         self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    def _inverse_past(self, arr: np.ndarray) -> np.ndarray:
+        shape = arr.shape
+        flat = arr.reshape(-1, shape[-1])
+        inv = self.x_scaler.inverse_transform(flat)
+        return inv.reshape(shape)
 
     def _inverse_targets(self, arr: np.ndarray) -> np.ndarray:
         shape = arr.shape
@@ -28,11 +36,13 @@ class ForecasterEvaluator:
 
     def _plot_prediction_examples(
         self,
+        past_real: np.ndarray,
         pred_real: np.ndarray,
         true_real: np.ndarray,
         output_dir: Path,
         model_name: str,
         num_examples: int = 3,
+        history_steps: int = 96,
     ) -> Path:
         output_dir.mkdir(parents=True, exist_ok=True)
         n_examples = min(num_examples, len(pred_real))
@@ -47,15 +57,22 @@ class ForecasterEvaluator:
             figsize=(5 * n_examples, 3.5 * len(self.target_cols)),
             squeeze=False,
         )
-        horizon = np.arange(1, pred_real.shape[1] + 1)
+        future_steps = np.arange(1, pred_real.shape[1] + 1)
 
         for col_idx, target in enumerate(self.target_cols):
+            past_idx = self.past_feature_cols.index(target) if target in self.past_feature_cols else None
             for ex_idx, sample_idx in enumerate(indices):
                 ax = axes[col_idx][ex_idx]
-                ax.plot(horizon, true_real[sample_idx, :, col_idx], label="True", linewidth=2.0)
-                ax.plot(horizon, pred_real[sample_idx, :, col_idx], label="Pred", linewidth=2.0, linestyle="--")
+                if past_idx is not None:
+                    hist = past_real[sample_idx, :, past_idx]
+                    hist = hist[-min(history_steps, len(hist)) :]
+                    hist_steps = np.arange(-len(hist) + 1, 1)
+                    ax.plot(hist_steps, hist, label="History", linewidth=1.8, color="0.45")
+                ax.plot(future_steps, true_real[sample_idx, :, col_idx], label="True", linewidth=2.0)
+                ax.plot(future_steps, pred_real[sample_idx, :, col_idx], label="Pred", linewidth=2.0, linestyle="--")
+                ax.axvline(0, color="0.25", linewidth=1.0, linestyle=":")
                 ax.set_title(f"{target} | sample {sample_idx}")
-                ax.set_xlabel("Forecast step")
+                ax.set_xlabel("Step relative to t0")
                 ax.set_ylabel(target)
                 ax.grid(True, alpha=0.25)
                 if col_idx == 0 and ex_idx == 0:
@@ -92,7 +109,17 @@ class ForecasterEvaluator:
         plt.close(fig)
         return path
 
-    def evaluate(self, X_past, W_future, U_future, Y_future, model_name="model", output_dir=None, num_plot_examples=3):
+    def evaluate(
+        self,
+        X_past,
+        W_future,
+        U_future,
+        Y_future,
+        model_name="model",
+        output_dir=None,
+        num_plot_examples=3,
+        plot_history_steps=96,
+    ):
         self.model.eval()
         preds = []
         batch_size = 512
@@ -108,6 +135,7 @@ class ForecasterEvaluator:
         pred_scaled = np.concatenate(preds, axis=0)
         true_scaled = Y_future
 
+        past_real = self._inverse_past(X_past)
         pred_real = self._inverse_targets(pred_scaled)
         true_real = self._inverse_targets(true_scaled)
 
@@ -141,13 +169,15 @@ class ForecasterEvaluator:
             )
         print("=" * 80)
 
-        output_path = Path(output_dir) if output_dir else Path("results/figures")
+        output_path = Path(output_dir) if output_dir else Path("results/forecasting/figures")
         forecast_plot = self._plot_prediction_examples(
+            past_real,
             pred_real,
             true_real,
             output_path,
             model_name,
             num_examples=num_plot_examples,
+            history_steps=plot_history_steps,
         )
         mae_plot = self._plot_horizon_mae(pred_real, true_real, output_path, model_name)
         print(f"Saved forecast figure: {forecast_plot}")

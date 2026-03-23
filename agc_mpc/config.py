@@ -14,7 +14,9 @@ class AGCConfig:
     # ------------------------ Paths ------------------------
     data_root: str = "../AutonomousGreenhouseChallenge_edition2"
     results_dir: str = "results"
-    figures_dir: str = "results/figures"
+    forecast_results_dir: str = "results/forecasting"
+    forecast_checkpoints_dir: str = "results/forecasting/checkpoints"
+    forecast_figures_dir: str = "results/forecasting/figures"
 
     # ------------------------ Compartments ------------------------
     selected_compartments: List[str] = field(default_factory=lambda: [
@@ -39,7 +41,7 @@ class AGCConfig:
     num_epochs: int = 12
     early_stop_patience: int = 4
     lambda_trend: float = 0.1
-    model_save_path: str = "results/best_gru_baseline.pt"
+    model_save_path: str = "results/forecasting/checkpoints/best_gru_baseline.pt"
 
     # ------------------------ Model ------------------------
     hidden_dim: int = 96
@@ -51,7 +53,9 @@ class AGCConfig:
 
     # ------------------------ Evaluation / plotting ------------------------
     plot_examples: int = 3
+    plot_history_steps: int = 96
     control_results_dir: str = "results/control"
+    control_summaries_dir: str = "results/control/summaries"
     control_figures_dir: str = "results/control/figures"
 
     # ------------------------ Control benchmark ------------------------
