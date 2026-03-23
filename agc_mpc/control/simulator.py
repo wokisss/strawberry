@@ -231,7 +231,7 @@ class AGCClosedLoopSimulator:
             figure_path=str(figure_path),
         )
 
-        summary_path = Path(self.cfg.control_results_dir) / f"{predictor_name}_{controller.name}_summary.json"
+        summary_path = Path(self.cfg.control_summaries_dir) / f"{predictor_name}_{controller.name}_summary.json"
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(json.dumps(asdict(summary), indent=2, ensure_ascii=False), encoding="utf-8")
         return summary

@@ -19,7 +19,9 @@ from control.controller import (
 from control.simulator import AGCClosedLoopSimulator
 from data_processing.processor import AGCDataProcessor
 from models.dlinear_forecaster import ConditionalDLinearForecaster
+from models.transformer_forecaster import ConditionalTransformerForecaster
 from models.transformer_hybrid_forecaster import ConditionalTransformerHybridForecaster
+from results_utils import ensure_results_layout
 
 
 def _build_models(bundle, cfg):
@@ -46,11 +48,28 @@ def _build_models(bundle, cfg):
             max_past_len=cfg.seq_len,
             max_future_len=cfg.horizon,
         ),
+        "transformer_baseline": ConditionalTransformerForecaster(
+            past_dim=bundle["X_past_test"].shape[-1],
+            weather_dim=bundle["W_future_test"].shape[-1],
+            control_dim=bundle["U_future_test"].shape[-1],
+            target_dim=bundle["Y_future_test"].shape[-1],
+            hidden_dim=cfg.hidden_dim,
+            num_layers=cfg.num_layers,
+            dropout=cfg.dropout,
+            nhead=cfg.transformer_heads,
+            ff_dim=cfg.transformer_ff_dim,
+            max_past_len=cfg.seq_len,
+            max_future_len=cfg.horizon,
+        ),
     }
     return models
 
 
 def _load_checkpoint(model, ckpt_path: Path, device) -> None:
+    if not ckpt_path.exists():
+        legacy_path = ckpt_path.parents[2] / f"{ckpt_path.stem}.pt"
+        if legacy_path.exists():
+            ckpt_path = legacy_path
     if not ckpt_path.exists():
         raise FileNotFoundError(
             f"Missing checkpoint: {ckpt_path}. Run agc_mpc/main.py first to produce forecasting baselines."
@@ -86,13 +105,18 @@ def run_control_benchmarks(cfg: AGCConfig) -> None:
     print(f"compartment: {cfg.control_compartment}")
     print(f"reference_mode: {cfg.control_reference_mode}")
 
+    ensure_results_layout(cfg)
     processor = AGCDataProcessor(cfg)
     raw_bundle = processor.build_compartment_raw_bundle(cfg.control_compartment)
     scaled_bundle = processor.build_compartment_bundle(cfg.control_compartment)
 
     models = _build_models(scaled_bundle, cfg)
     for name, model in models.items():
-        _load_checkpoint(model, project_root / "results" / f"{name}.pt", device)
+        _load_checkpoint(
+            model,
+            project_root / "results" / "forecasting" / "checkpoints" / f"{name}.pt",
+            device,
+        )
         adapter = PredictiveControlAdapter(
             model=model,
             scalers=scaled_bundle["scalers"],

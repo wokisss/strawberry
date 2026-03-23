@@ -4,14 +4,14 @@
   "compartment": "Reference",
   "reference_mode": "trajectory",
   "steps": 12,
-  "objective_mean": 0.03061193445076545,
-  "control_delta_mae": 22.702987670898438,
-  "action_tv": 22.049972534179688,
+  "objective_mean": 0.02909396681934595,
+  "control_delta_mae": 25.70206642150879,
+  "action_tv": 28.725341796875,
   "target_mae": {
-    "Tair": 0.38422074913978577,
-    "Rhair": 1.0207074880599976,
-    "CO2air": 8.58018970489502,
-    "Tot_PAR": 57.3772087097168
+    "Tair": 0.5352174639701843,
+    "Rhair": 1.6901689767837524,
+    "CO2air": 7.4842681884765625,
+    "Tot_PAR": 26.4764461517334
   },
   "figure_path": "results\\control\\figures\\transformer_hybrid_baseline_mpc_closed_loop.png"
 }

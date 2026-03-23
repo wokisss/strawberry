@@ -8,10 +8,10 @@
   "control_delta_mae": 0.0,
   "action_tv": 0.0,
   "target_mae": {
-    "Tair": 0.937647819519043,
-    "Rhair": 1.3936189413070679,
-    "CO2air": 43.37160873413086,
-    "Tot_PAR": 64.3449478149414
+    "Tair": 0.362314373254776,
+    "Rhair": 1.4446443319320679,
+    "CO2air": 54.85112380981445,
+    "Tot_PAR": 28.633852005004883
   },
   "figure_path": "results\\control\\figures\\dlinear_baseline_recorded_closed_loop.png"
 }

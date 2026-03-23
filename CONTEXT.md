@@ -121,6 +121,7 @@
 - [gru_forecaster.py](c:/repositories/strawberry/agc_mpc/models/gru_forecaster.py)
 - [dlinear_forecaster.py](c:/repositories/strawberry/agc_mpc/models/dlinear_forecaster.py)
 - [seg_rnn_forecaster.py](c:/repositories/strawberry/agc_mpc/models/seg_rnn_forecaster.py)
+- [transformer_forecaster.py](c:/repositories/strawberry/agc_mpc/models/transformer_forecaster.py)
 - [transformer_hybrid_forecaster.py](c:/repositories/strawberry/agc_mpc/models/transformer_hybrid_forecaster.py)
 - [trainer.py](c:/repositories/strawberry/agc_mpc/training/trainer.py)
 - [evaluator.py](c:/repositories/strawberry/agc_mpc/evaluation/evaluator.py)
@@ -140,9 +141,14 @@
 - 条件 GRU baseline
 - 条件 DLinear baseline
 - 条件 SegRNN baseline
+- 条件纯 Transformer baseline
 - 条件 Transformer-hybrid baseline
 - 离线评估输出
-- 自动保存结果图到 `agc_mpc/results/figures`
+- forecast 图支持“历史上下文 + 未来 horizon”联合展示，不再只盯着纯 future window
+- `results` 目录开始按 `forecasting / control` 分层整理
+- forecasting checkpoint 统一收敛到 `agc_mpc/results/forecasting/checkpoints`
+- forecasting 图统一收敛到 `agc_mpc/results/forecasting/figures`
+- control summary 统一收敛到 `agc_mpc/results/control/summaries`
 - AGC 控制侧初版接入
 - `DLinear / Transformer-hybrid` 已接到 AGC 上的 `DPC / MPC`
 - 新增基于测试集真实天气/时间推进的 semi-grounded surrogate closed-loop rollout
@@ -228,28 +234,41 @@ python c:\repositories\strawberry\agc_mpc\main.py
 - [segrnn_forecast_examples.png](c:/repositories/strawberry/agc_mpc/results/figures/segrnn_baseline_forecast_examples.png)
 - [segrnn_horizon_mae.png](c:/repositories/strawberry/agc_mpc/results/figures/segrnn_baseline_horizon_mae.png)
 
-### 8.4 Transformer-hybrid baseline
+### 8.4 纯 Transformer baseline
 
-- `Tair`: Full `R²=0.9517`, MAE `0.748`; Final `R²=0.9435`, MAE `0.836`
-- `Rhair`: Full `R²=0.8070`, MAE `4.191`; Final `R²=0.7445`, MAE `4.899`
-- `CO2air`: Full `R²=0.8097`, MAE `47.653`; Final `R²=0.7638`, MAE `53.823`
-- `Tot_PAR`: Full `R²=0.9783`, MAE `30.745`; Final `R²=0.9801`, MAE `29.211`
+- `Tair`: Full `R²=0.9483`, MAE `0.765`; Final `R²=0.9413`, MAE `0.823`
+- `Rhair`: Full `R²=0.8038`, MAE `4.249`; Final `R²=0.7454`, MAE `4.919`
+- `CO2air`: Full `R²=0.8509`, MAE `43.206`; Final `R²=0.8242`, MAE `47.229`
+- `Tot_PAR`: Full `R²=0.9853`, MAE `26.484`; Final `R²=0.9859`, MAE `24.964`
 
 结果图：
 
-- [transformer_forecast_examples.png](c:/repositories/strawberry/agc_mpc/results/figures/transformer_hybrid_baseline_forecast_examples.png)
-- [transformer_horizon_mae.png](c:/repositories/strawberry/agc_mpc/results/figures/transformer_hybrid_baseline_horizon_mae.png)
+- [transformer_forecast_examples.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/transformer_baseline_forecast_examples.png)
+- [transformer_horizon_mae.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/transformer_baseline_horizon_mae.png)
 
-当前结论：
+### 8.5 Transformer-hybrid baseline
 
-- `DLinear` 当前整体最强，尤其是 `Tair / Rhair`
-- `Transformer-hybrid` 在 `Tot_PAR` 最终步最好，在 `CO2air` 上接近 `DLinear`
+- `Tair`: Full `R²=0.9544`, MAE `0.708`; Final `R²=0.9480`, MAE `0.770`
+- `Rhair`: Full `R²=0.7539`, MAE `4.650`; Final `R²=0.6927`, MAE `5.306`
+- `CO2air`: Full `R²=0.7870`, MAE `51.905`; Final `R²=0.7434`, MAE `58.318`
+- `Tot_PAR`: Full `R²=0.9848`, MAE `28.237`; Final `R²=0.9846`, MAE `28.509`
+
+结果图：
+
+- [transformer_hybrid_forecast_examples.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/transformer_hybrid_baseline_forecast_examples.png)
+- [transformer_hybrid_horizon_mae.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/transformer_hybrid_baseline_horizon_mae.png)
+
+当前离线结论：
+
+- `DLinear` 仍然是 `Tair / Rhair` 上最稳的整体 baseline
+- 纯 `Transformer` 在当前设置下对 `CO2air / Tot_PAR` 最强，且整体强于当前 `Transformer-hybrid`
+- `Transformer-hybrid` 仍保留结构价值，但当前实现没有在所有目标上超过纯 Transformer
 - `GRU` 当前不再是整体最优，但仍然是重要的时序 baseline
 - `SegRNN` 当前未超过前三者
-- 这初步支持一个重要论文论点：  
+- 这继续支持一个重要论文论点：  
   **最好的离线预测模型可能因目标变量不同而分化，不存在单一绝对最优结构**
 
-### 8.5 初版控制侧 benchmark（2026-03-23）
+### 8.6 控制侧 benchmark（2026-03-23）
 
 运行方式：
 
@@ -262,7 +281,7 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 12 --start-idx
 
 - 控制隔间：`Reference`
 - 控制器：`recorded` / `DPC` / `MPC(CEM)`
-- 预测器：`DLinear` 与 `Transformer-hybrid`
+- 预测器：`DLinear`、纯 `Transformer`、`Transformer-hybrid`
 - 参考目标：测试集真实未来 `y_future` trajectory
 - 当前闭环协议不是完整物理仿真器，而是：
   - 天气、时间和未建模列继续来自 AGC 测试集真实序列
@@ -273,25 +292,29 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 12 --start-idx
 
 #### DLinear as control surrogate
 
-- `recorded`: `Tair=0.938`, `Rhair=1.394`, `CO2air=43.372`, `Tot_PAR=64.345`
-- `DPC`: `Tair=0.317`, `Rhair=0.927`, `CO2air=5.443`, `Tot_PAR=57.345`
-- `MPC`: `Tair=3.022`, `Rhair=2.768`, `CO2air=59.089`, `Tot_PAR=69.307`
+- `recorded`: `Tair=0.362`, `Rhair=1.445`, `CO2air=54.851`, `Tot_PAR=28.634`
+- `DPC`: `Tair=0.326`, `Rhair=1.048`, `CO2air=5.114`, `Tot_PAR=36.979`
+- `MPC`: `Tair=0.660`, `Rhair=2.257`, `CO2air=20.883`, `Tot_PAR=46.301`
 
-结论：
+#### Pure Transformer as control surrogate
 
-- 在当前 12-step surrogate rollout 上，`DLinear + DPC` 明显优于 logged control 和当前 `MPC(CEM)`
-- 当前 `MPC(CEM)` 还不稳，需要继续调参或改搜索策略
+- `recorded`: `Tair=0.346`, `Rhair=1.689`, `CO2air=27.463`, `Tot_PAR=39.462`
+- `DPC`: `Tair=0.148`, `Rhair=0.960`, `CO2air=8.948`, `Tot_PAR=33.930`
+- `MPC`: `Tair=0.293`, `Rhair=1.249`, `CO2air=12.570`, `Tot_PAR=48.918`
 
 #### Transformer-hybrid as control surrogate
 
-- `recorded`: `Tair=0.235`, `Rhair=0.823`, `CO2air=5.831`, `Tot_PAR=65.404`
-- `DPC`: `Tair=0.247`, `Rhair=1.139`, `CO2air=12.814`, `Tot_PAR=53.317`
-- `MPC`: `Tair=0.384`, `Rhair=1.021`, `CO2air=8.580`, `Tot_PAR=57.377`
+- `recorded`: `Tair=1.025`, `Rhair=1.667`, `CO2air=10.969`, `Tot_PAR=16.593`
+- `DPC`: `Tair=0.120`, `Rhair=1.474`, `CO2air=6.929`, `Tot_PAR=14.946`
+- `MPC`: `Tair=0.535`, `Rhair=1.690`, `CO2air=7.484`, `Tot_PAR=26.476`
 
-结论：
+当前控制结论：
 
-- `Transformer-hybrid` 在当前 surrogate rollout 中对 `Tot_PAR` 改善最明显
-- 但在 `Tair / CO2air` 上，当前配置下未整体超过 logged control
+- 在当前 12-step surrogate rollout 上，`DPC` 仍普遍优于当前 `MPC(CEM)`
+- `DLinear + DPC` 在 `CO2air` 上最强
+- `Transformer-hybrid + DPC` 在 `Tair / Tot_PAR` 上最好
+- `Pure Transformer + DPC` 在 `Rhair` 上最好，且整体优于其 own recorded / MPC
+- 当前 `MPC(CEM)` 还不稳，需要继续调参或改搜索策略
 - 这进一步提示：**最强离线预测器不一定自动变成最强闭环控制 surrogate**
 
 
@@ -350,7 +373,7 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 12 --start-idx
 先稳住控制 benchmark：
 
 - 调整 `MPC(CEM)` 搜索稳定性
-- 验证 `DLinear` 与 `Transformer-hybrid` 在更长 rollout 下的闭环排名
+- 验证 `DLinear / Transformer / Transformer-hybrid` 在更长 rollout 下的闭环排名
 - 逐步把 `sp -> actuator feedback -> climate` 的 surrogate 更新做实
 
 第二层继续补强预测 benchmark：
@@ -397,6 +420,6 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 12 --start-idx
 - 当前主项目目录：`agc_mpc`
 - 当前主数据集：`AutonomousGreenhouseChallenge_edition2`
 - 当前已完成：数据管线 + GRU baseline + DLinear baseline
-- 当前已完成：数据管线 + GRU baseline + DLinear baseline + SegRNN baseline + Transformer-hybrid baseline + 自动结果图
-- 当前已完成：`DLinear / Transformer-hybrid` 已接入 AGC 上的 `DPC / MPC` 初版 surrogate closed-loop benchmark
+- 当前已完成：数据管线 + GRU baseline + DLinear baseline + SegRNN baseline + Transformer baseline + Transformer-hybrid baseline + 自动结果图
+- 当前已完成：`DLinear / Transformer / Transformer-hybrid` 已接入 AGC 上的 `DPC / MPC` 初版 surrogate closed-loop benchmark
 - 当前下一步：稳住 `MPC(CEM)`、拉长闭环评估窗口，并把 surrogate rollout 逐步替换为更严格的 AGC 控制环境；或并行开始做一个 `hybrid residual model`

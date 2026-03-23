@@ -1,0 +1,17 @@
+{
+  "predictor": "transformer_baseline",
+  "controller": "mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 12,
+  "objective_mean": 0.030838744714856148,
+  "control_delta_mae": 25.0946044921875,
+  "action_tv": 21.204923629760742,
+  "target_mae": {
+    "Tair": 0.2933386266231537,
+    "Rhair": 1.2493139505386353,
+    "CO2air": 12.569758415222168,
+    "Tot_PAR": 48.91763687133789
+  },
+  "figure_path": "results\\control\\figures\\transformer_baseline_mpc_closed_loop.png"
+}

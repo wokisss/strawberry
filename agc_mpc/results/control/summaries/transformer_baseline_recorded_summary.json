@@ -1,0 +1,17 @@
+{
+  "predictor": "transformer_baseline",
+  "controller": "recorded",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 12,
+  "objective_mean": 0.0,
+  "control_delta_mae": 0.0,
+  "action_tv": 0.0,
+  "target_mae": {
+    "Tair": 0.34634509682655334,
+    "Rhair": 1.6886850595474243,
+    "CO2air": 27.462997436523438,
+    "Tot_PAR": 39.461971282958984
+  },
+  "figure_path": "results\\control\\figures\\transformer_baseline_recorded_closed_loop.png"
+}
