@@ -51,3 +51,6 @@ python c:\repositories\strawberry\agc_mpc\main.py
 2. 把预测模型接入 AGC 上的 MPC
    当前区分的是两种 MPC 求解器：gradient-based MPC 和 CEM-based MPC
 3. 再引入资源成本和经济指标
+- forecasting 图现在会直接在图内标注 `R2 / MAE` 等关键指标
+- control 图现在会同时展示状态跟踪、控制代价/动作偏移，以及归一化动作轨迹
+- 文献与项目对照文档：`agc_mpc/LITERATURE_COMPARISON.md`
