@@ -1,0 +1,62 @@
+{
+  "run_name": "diffmpc_style_transformer_joint_all_reference",
+  "dataset": "AGC",
+  "target_compartment": "Reference",
+  "regime": "joint_all",
+  "protocol": {
+    "intent": "Keep the old DiffMPC Transformer-hybrid structure and training budget as close as possible while moving to AGC.",
+    "targets": [
+      "Tair",
+      "Rhair",
+      "CO2air"
+    ],
+    "seq_len_steps": 48,
+    "seq_len_minutes": 240,
+    "horizon_steps": 24,
+    "horizon_minutes": 120,
+    "batch_size": 256,
+    "num_epochs": 200,
+    "learning_rate": 0.0001,
+    "lambda_trend": 0.3,
+    "early_stop_patience": 15,
+    "model": {
+      "d_model": 64,
+      "nhead": 4,
+      "num_layers": 4,
+      "dim_feedforward": 128,
+      "dropout": 0.1
+    }
+  },
+  "train_compartments": [
+    "AICU",
+    "Automatoes",
+    "Digilog",
+    "IUACAAS",
+    "Reference",
+    "TheAutomators"
+  ],
+  "eval_compartments": [
+    "Reference"
+  ],
+  "metrics_by_target": {
+    "Tair": {
+      "full_r2": 0.92023104429245,
+      "full_mae": 0.7695885300636292,
+      "final_r2": 0.8006881475448608,
+      "final_mae": 1.358429193496704
+    },
+    "Rhair": {
+      "full_r2": 0.8442883491516113,
+      "full_mae": 4.793438911437988,
+      "final_r2": 0.6469653844833374,
+      "final_mae": 7.891263008117676
+    },
+    "CO2air": {
+      "full_r2": 0.7399916052818298,
+      "full_mae": 44.585060119628906,
+      "final_r2": 0.38991767168045044,
+      "final_mae": 72.86660766601562
+    }
+  },
+  "checkpoint_path": "results/forecasting/checkpoints/diffmpc_style_transformer_joint_all_reference.pt"
+}
