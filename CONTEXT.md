@@ -1,5 +1,20 @@
 # CONTEXT.md
 
+## 0. 对话与表达规则
+
+- 默认把回答对象视为“从零开始了解项目的人”。
+- 解释概念时优先使用中文。
+- 除非必须，不要中英夹杂。
+- 如果必须使用英文术语，要立刻在后面补中文释义，例如“平均绝对误差（Mean Absolute Error，MAE）”。
+- 讲图、讲指标、讲模型时，先说“它是什么”，再说“它说明了什么”，最后再说“怎么解读”。
+- 涉及容易混淆的术语时，优先给出直白解释，不默认假设读者已有机器学习或控制背景。
+- forecasting 默认结果图只保留三类：
+  - `forecast_examples`：单次预测样例图
+  - `forecast_rollout`：滚动多窗预测图
+  - `horizon_mae`：预测步长误差图
+- `forecast_error_heatmap` 已移除，不再作为默认结果图输出。
+- `forecast_first_step_rollout` 也已移除，不再作为默认结果图输出。
+
 ## 1. 使用方式
 
 这是本项目的长期上下文文件。
@@ -146,7 +161,7 @@
 - 离线评估输出
 - forecast 图支持“历史上下文 + 未来 horizon”联合展示，不再只盯着纯 future window
 - forecast 图新增 rolling multi-step rollout 展示，用更长时间轴显示连续多窗预测，而不只是一段 24-step future window
-- forecasting 现在同时支持 3 类长时间轴图：rolling forecast windows、first-step stitched rollout、forecast error heatmap
+- forecasting 现在默认保留 3 类预测图：单次预测样例图、滚动多窗预测图、预测步长误差图
 - 上述 3 类长时间轴图已经为 `GRU / DLinear / SegRNN / Transformer / Transformer-hybrid` 全部补齐
 - `results` 目录开始按 `forecasting / control` 分层整理
 - forecasting checkpoint 统一收敛到 `agc_mpc/results/forecasting/checkpoints`
@@ -487,7 +502,7 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 48 --start-idx
 - 该图只展示 `Strawberry / old Transformer-hybrid`、`AGC / Transformer`、`AGC / Transformer-hybrid`
 - 该图使用两边测试集各自的 midpoint sample，不做样本对齐，不用于严格统计比较，只用于给导师做“预测轨迹形态”的直观说明
 - forecasting 图已升级为“图内直接显示指标”：
-  - `forecast_examples / rollout / first-step rollout / heatmap` 现在都会在每个目标子图内直接标注 `Full R2 / Full MAE / Final R2 / Final MAE`
+- `forecast_examples / rollout / horizon_mae` 现在都会直接关联当前模型的 `Full R2 / Full MAE / Final R2 / Final MAE`
   - `horizon_mae` 图会在图下方汇总全部目标的指标
 - control 图已升级为“状态 + 指标 + 动作”联合展示：
   - 前四行仍是 `Tair / Rhair / CO2air / Tot_PAR`

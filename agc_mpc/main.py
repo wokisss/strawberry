@@ -197,8 +197,6 @@ def main() -> None:
         print(f"    forecast_examples: {result['figure_paths']['forecast_examples']}")
         print(f"    horizon_mae:      {result['figure_paths']['horizon_mae']}")
         print(f"    forecast_rollout: {result['figure_paths']['forecast_rollout']}")
-        print(f"    first_step_rollout: {result['figure_paths']['forecast_first_step_rollout']}")
-        print(f"    forecast_heatmap: {result['figure_paths']['forecast_error_heatmap']}")
 
     print("---> Done.")
 

@@ -116,9 +116,7 @@
       "figure_paths": {
         "forecast_examples": "results\\forecasting\\analysis\\dlinear_baseline_single_reference_forecast_examples.png",
         "horizon_mae": "results\\forecasting\\analysis\\dlinear_baseline_single_reference_horizon_mae.png",
-        "forecast_rollout": "results\\forecasting\\analysis\\dlinear_baseline_single_reference_forecast_rollout.png",
-        "forecast_first_step_rollout": "results\\forecasting\\analysis\\dlinear_baseline_single_reference_forecast_first_step_rollout.png",
-        "forecast_error_heatmap": "results\\forecasting\\analysis\\dlinear_baseline_single_reference_forecast_error_heatmap.png"
+        "forecast_rollout": "results\\forecasting\\analysis\\dlinear_baseline_single_reference_forecast_rollout.png"
       }
     },
     {
@@ -233,9 +231,7 @@
       "figure_paths": {
         "forecast_examples": "results\\forecasting\\analysis\\dlinear_baseline_joint_all_reference_forecast_examples.png",
         "horizon_mae": "results\\forecasting\\analysis\\dlinear_baseline_joint_all_reference_horizon_mae.png",
-        "forecast_rollout": "results\\forecasting\\analysis\\dlinear_baseline_joint_all_reference_forecast_rollout.png",
-        "forecast_first_step_rollout": "results\\forecasting\\analysis\\dlinear_baseline_joint_all_reference_forecast_first_step_rollout.png",
-        "forecast_error_heatmap": "results\\forecasting\\analysis\\dlinear_baseline_joint_all_reference_forecast_error_heatmap.png"
+        "forecast_rollout": "results\\forecasting\\analysis\\dlinear_baseline_joint_all_reference_forecast_rollout.png"
       }
     },
     {
@@ -349,9 +345,7 @@
       "figure_paths": {
         "forecast_examples": "results\\forecasting\\analysis\\dlinear_baseline_leave_one_out_reference_forecast_examples.png",
         "horizon_mae": "results\\forecasting\\analysis\\dlinear_baseline_leave_one_out_reference_horizon_mae.png",
-        "forecast_rollout": "results\\forecasting\\analysis\\dlinear_baseline_leave_one_out_reference_forecast_rollout.png",
-        "forecast_first_step_rollout": "results\\forecasting\\analysis\\dlinear_baseline_leave_one_out_reference_forecast_first_step_rollout.png",
-        "forecast_error_heatmap": "results\\forecasting\\analysis\\dlinear_baseline_leave_one_out_reference_forecast_error_heatmap.png"
+        "forecast_rollout": "results\\forecasting\\analysis\\dlinear_baseline_leave_one_out_reference_forecast_rollout.png"
       }
     }
   ]
