@@ -1,0 +1,62 @@
+{
+  "run_name": "current_hybrid_transformer_joint_all_reference",
+  "dataset": "AGC",
+  "target_compartment": "Reference",
+  "regime": "joint_all",
+  "protocol": {
+    "intent": "Train the current AGC hybrid-transformer with a fairer budget for cross-dataset comparison.",
+    "targets": [
+      "Tair",
+      "Rhair",
+      "CO2air"
+    ],
+    "seq_len_steps": 288,
+    "seq_len_minutes": 1440,
+    "horizon_steps": 24,
+    "horizon_minutes": 120,
+    "batch_size": 256,
+    "num_epochs": 200,
+    "learning_rate": 0.0001,
+    "lambda_trend": 0.3,
+    "early_stop_patience": 15,
+    "model": {
+      "hidden_dim": 96,
+      "nhead": 4,
+      "num_layers": 2,
+      "ff_dim": 192,
+      "dropout": 0.1
+    }
+  },
+  "train_compartments": [
+    "AICU",
+    "Automatoes",
+    "Digilog",
+    "IUACAAS",
+    "Reference",
+    "TheAutomators"
+  ],
+  "eval_compartments": [
+    "Reference"
+  ],
+  "metrics_by_target": {
+    "Tair": {
+      "full_r2": 0.9343671798706055,
+      "full_mae": 0.6302051544189453,
+      "final_r2": 0.9317971467971802,
+      "final_mae": 0.6512539386749268
+    },
+    "Rhair": {
+      "full_r2": 0.8951220512390137,
+      "full_mae": 3.698213577270508,
+      "final_r2": 0.8552595973014832,
+      "final_mae": 4.402961730957031
+    },
+    "CO2air": {
+      "full_r2": 0.8183664083480835,
+      "full_mae": 41.200687408447266,
+      "final_r2": 0.7859955430030823,
+      "final_mae": 44.56687545776367
+    }
+  },
+  "checkpoint_path": "results/forecasting/checkpoints/current_hybrid_transformer_joint_all_reference.pt"
+}

@@ -498,3 +498,144 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 48 --start-idx
   - 不做伪 leaderboard
   - 按任务、输入、输出、horizon、模型、控制设定、结果和可比性分开写
   - 当前结论是：AGC 结果还不是 final-paper quality，但已处于可辩护的 literature band 内；真正短板在 `Rhair`、uncertainty、economic objective 和更完整闭环
+- 已新增表格式近期论文综述文档：[RECENT_PAPERS_SURVEY.md](c:/repositories/strawberry/agc_mpc/RECENT_PAPERS_SURVEY.md)
+- 该文档按“论文 / 任务 / 主模型 / 对比-baseline / 启发 / 链接”组织，分为：
+  - 温室预测论文
+  - 温室控制论文
+  - 通用时序模型参考
+- 用途：
+  - 快速回答“最近相似论文都用了什么模型、baseline 和对比对象是什么”
+  - 为后续新模型路线提供文献锚点，避免反复手工整理
+- 已在该文档中补充 `Mao et al., 2024` 的重点详解小节，专门回答：
+  - 为什么该文 `PSO-BiGRU-Attention-LightGBM` 的 `R2` 很高
+  - 它和当前 `AGC` 数据集到底有多相似
+  - 它是否可以被严格复现，哪些部分只能做方法级复现
+- `README.md` 已补充数据集背景与训练设定说明：
+  - 明确 `AGC` 更准确是 multi-compartment benchmark，而不是 fully independent multi-greenhouse dataset
+  - 补充当前 `x_past / w_future / u_future / y_future` 的控制导向接口说明
+  - 补充 single-compartment training 与 multi-compartment joint training 的取舍，当前默认仍以 joint training 为主
+- 已新增训练策略对照脚本：[compare_training_regimes.py](c:/repositories/strawberry/agc_mpc/compare_training_regimes.py)
+- 该脚本支持围绕一个目标隔间比较三种 regime：
+  - `single`: 只在目标隔间上训练并在该隔间测试
+  - `joint_all`: 在全部隔间上训练，但只在目标隔间测试
+  - `leave_one_out`: 在除目标隔间外的其余隔间上训练，再在目标隔间测试
+- 数据管线已新增自定义 bundle 组装能力，可按 train/eval compartments 自由拼接并仅用训练集拟合 scaler
+- 结果统一落到：`agc_mpc/results/forecasting/analysis`
+- 已做 1-epoch smoke test（目标隔间 `Reference`，模型 `DLinear`）：
+  - `single`：`Tair/Rhair/CO2air/Tot_PAR` Final MAE = `0.772 / 4.815 / 93.219 / 53.889`
+  - `joint_all`：`0.776 / 3.798 / 53.866 / 32.658`
+  - `leave_one_out`：`0.671 / 5.469 / 56.336 / 38.663`
+- 初步信号：
+  - joint training 对 `Rhair / CO2air / Tot_PAR` 明显更有帮助
+  - leave-one-out 在 `Reference` 的 `Tair` 上很强，但对湿度和 CO2 不占优
+  - 单隔间训练并不天然更好，至少在当前 `Reference + DLinear` 的 smoke test 上不是
+- 已新增 `diffmpc` 风格 Transformer 迁移基准脚本：[benchmark_diffmpc_style_transformer.py](c:/repositories/strawberry/agc_mpc/benchmark_diffmpc_style_transformer.py)
+- 该脚本的目的不是追当前 `agc_mpc` 最强分数，而是控制变量地回答：
+  - 在尽量保留旧 `diffmpc` Transformer-hybrid 架构与训练预算时，`AGC` 是否比旧 Strawberry 更适合作为 Transformer 的数据基座
+- 固定协议：
+  - targets = `Tair / Rhair / CO2air`
+  - `seq_len = 48`（对应旧项目 `240 min` 历史）
+  - `horizon = 24`（对应旧项目 `120 min` 预测窗）
+  - `d_model = 64`, `nhead = 4`, `num_layers = 4`, `ff_dim = 128`, `dropout = 0.1`
+  - `batch_size = 256`, `num_epochs = 200`, `lr = 1e-4`, `lambda_trend = 0.3`, `patience = 15`
+- 设计原则：
+  - 默认只落 summary JSON，不自动生成大图
+  - 先把“模型结构/训练预算/时间口径”对齐，再谈数据集是否更适合 Transformer
+- 已做 1-epoch smoke test（`single + Reference`）并成功落盘：
+  - [diffmpc_style_transformer_single_reference_summary.json](c:/repositories/strawberry/agc_mpc/results/forecasting/analysis/diffmpc_style_transformer_single_reference_summary.json)
+  - 当前仅用于验证入口与协议，不用于正式结论
+- 该基准现已完成 `Reference` 上的正式三组运行：
+  - [diffmpc_style_transformer_single_reference_summary.json](c:/repositories/strawberry/agc_mpc/results/forecasting/analysis/diffmpc_style_transformer_single_reference_summary.json)
+  - [diffmpc_style_transformer_joint_all_reference_summary.json](c:/repositories/strawberry/agc_mpc/results/forecasting/analysis/diffmpc_style_transformer_joint_all_reference_summary.json)
+  - [diffmpc_style_transformer_leave_one_out_reference_summary.json](c:/repositories/strawberry/agc_mpc/results/forecasting/analysis/diffmpc_style_transformer_leave_one_out_reference_summary.json)
+- `diffmpc` 风格 Transformer 在 AGC / `Reference` 上的最终指标：
+  - `single`
+    - `Tair`: Final `R2=0.5198`, MAE `2.023`
+    - `Rhair`: Final `R2=0.6850`, MAE `6.874`
+    - `CO2air`: Final `R2=0.3543`, MAE `75.857`
+  - `joint_all`
+    - `Tair`: Final `R2=0.8007`, MAE `1.358`
+    - `Rhair`: Final `R2=0.6470`, MAE `7.891`
+    - `CO2air`: Final `R2=0.3899`, MAE `72.867`
+  - `leave_one_out`
+    - `Tair`: Final `R2=0.8859`, MAE `0.926`
+    - `Rhair`: Final `R2=0.5763`, MAE `8.169`
+    - `CO2air`: Final `R2=0.3140`, MAE `78.422`
+- 当前读法：
+  - 旧 `diffmpc` 风格结构迁到 AGC 后，`Tair / CO2air` 明显好于旧 Strawberry 上的旧 Transformer-hybrid 结果，说明数据集切换确实帮助了这类 conditional Transformer
+  - 但 `Rhair` 没有同步变成强项，说明“数据集更适合 Transformer”不等于“旧结构无需改造就会全面变强”
+  - 三种 AGC 训练 regime 没有单一绝对最优：
+    - `single` 在 `Rhair` 上最好
+    - `joint_all` 在 `CO2air` 上最好
+    - `leave_one_out` 在 `Tair` 上最好
+  - 因此对导师更稳的表述应是：
+    - AGC 给旧 Transformer 风格提供了更合理的数据接口和更高的上限空间
+    - 但真正把该架构做强，仍然需要进一步面向 AGC/控制任务改造，而不是直接照搬旧结构
+- 已新增直观对比图：[diffmpc_style_transformer_dataset_suitability.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/diffmpc_style_transformer_dataset_suitability.png)
+- 该图只比较：
+  - `Strawberry / old Transformer-hybrid`
+  - `AGC / diffmpc-style / single`
+  - `AGC / diffmpc-style / joint_all`
+  - `AGC / diffmpc-style / leave_one_out`
+- 该图的定位：
+  - 用于直观展示“尽量相似的 Transformer 风格与训练预算”下，换到 AGC 后 `Temperature / Humidity / CO2` 的 final MAE 与 final R2 如何变化
+  - 不混入当前 `agc_mpc` 的 `DLinear / Transformer / Transformer-hybrid` 新 baseline，避免论证口径漂移
+- 已新增更适合汇报的两张中文图：
+  - [diffmpc_style_transformer_best_vs_old_line_cn.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/diffmpc_style_transformer_best_vs_old_line_cn.png)
+  - [diffmpc_style_transformer_old_vs_agc_joint_all_windows_cn.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/diffmpc_style_transformer_old_vs_agc_joint_all_windows_cn.png)
+- 两图定位：
+  - `best_vs_old_line_cn`：只看 `old Strawberry` vs `AGC joint_all`，用中文折线图展示 `Temperature / Humidity / CO2` 的 final MAE 与 final R2
+  - `old_vs_agc_joint_all_windows_cn`：并排展示旧 Strawberry 与 AGC joint_all 的代表性预测窗，让导师直接看轨迹贴合与偏移方式
+- 已新增“旧数据集旧 hybrid-transformer vs 新数据集新 hybrid-transformer”的公平预算对照主线：
+  - 旧侧：`diffmpc` 原始 `TransformerHybridModel`
+  - 新侧：`agc_mpc` 当前 `ConditionalTransformerHybridForecaster`
+  - 共同口径：只看 `Tair / Rhair / CO2air`，统一按 `2h` 预测任务讨论
+  - 旧侧保留旧项目方法与架构；新侧保留 AGC 当前 `x_past / w_future / u_future -> y_future` 的 control-oriented 接口
+- 已新增脚本：[benchmark_current_hybrid_transformer.py](c:/repositories/strawberry/agc_mpc/benchmark_current_hybrid_transformer.py)
+  - 目的：给 AGC 当前 hybrid-transformer 一个比 12 epoch baseline 更公平的训练预算，再与旧 Strawberry 的 old hybrid-transformer 做对比
+  - 当前正式跑通的配置为：`joint_all + Reference`
+  - 训练预算：`batch_size=256`, `num_epochs=200`, `lr=1e-4`, `lambda_trend=0.3`, `patience=15`
+  - 模型参数：`hidden_dim=96`, `nhead=4`, `num_layers=2`, `ff_dim=192`, `dropout=0.1`
+- 当前正式结果文件：
+  - [current_hybrid_transformer_joint_all_reference_summary.json](c:/repositories/strawberry/agc_mpc/results/forecasting/analysis/current_hybrid_transformer_joint_all_reference_summary.json)
+  - [current_hybrid_transformer_joint_all_reference.pt](c:/repositories/strawberry/agc_mpc/results/forecasting/checkpoints/current_hybrid_transformer_joint_all_reference.pt)
+- `AGC + current hybrid-transformer + joint_all + Reference` 正式结果：
+  - `Tair`: Full `R2=0.9344`, MAE `0.630`; Final `R2=0.9318`, MAE `0.651`
+  - `Rhair`: Full `R2=0.8951`, MAE `3.698`; Final `R2=0.8553`, MAE `4.403`
+  - `CO2air`: Full `R2=0.8184`, MAE `41.201`; Final `R2=0.7860`, MAE `44.567`
+- 与 `AGC + diffmpc-style hybrid-transformer + joint_all + Reference` 的直接对比：
+  - `Tair`: Final MAE `1.358 -> 0.651`, Final `R2 0.8007 -> 0.9318`
+  - `Rhair`: Final MAE `7.891 -> 4.403`, Final `R2 0.6470 -> 0.8553`
+  - `CO2air`: Final MAE `72.867 -> 44.567`, Final `R2 0.3899 -> 0.7860`
+- 当前更稳的表述应改为：
+  - 不是“AGC 自动让旧 Transformer 变强”
+  - 而是“AGC 更适合当前这套面向控制的 hybrid-transformer 接口与训练范式”
+  - 旧 Strawberry + old hybrid-transformer 与 AGC + current hybrid-transformer 的对比，才更能支持‘换数据集 + 换方法是合理主线’这一结论
+- 已新增 `AGC + current hybrid-transformer + joint_all + Reference + horizon=120` 正式实验：
+  - [current_hybrid_transformer_h120_joint_all_reference_summary.json](c:/repositories/strawberry/agc_mpc/results/forecasting/analysis/current_hybrid_transformer_h120_joint_all_reference_summary.json)
+  - [current_hybrid_transformer_h120_joint_all_reference.pt](c:/repositories/strawberry/agc_mpc/results/forecasting/checkpoints/current_hybrid_transformer_h120_joint_all_reference.pt)
+  - 注意：这里的 `120-step` 指 `120 x 5min = 600 min`，不再等价于旧 Strawberry 的 `120 x 1min = 120 min`
+- `AGC current hybrid-transformer` 在 `horizon=120` 下的正式结果：
+  - `Tair`: Full `R2=0.9204`, MAE `0.764`; Final `R2=0.9153`, MAE `0.820`
+  - `Rhair`: Full `R2=0.7302`, MAE `6.705`; Final `R2=0.7149`, MAE `6.875`
+  - `CO2air`: Full `R2=0.5754`, MAE `63.666`; Final `R2=0.5573`, MAE `65.198`
+- 与当前 `horizon=24` 对比的读法：
+  - `Tair`: Final MAE `0.651 -> 0.820`
+  - `Rhair`: Final MAE `4.403 -> 6.875`
+  - `CO2air`: Final MAE `44.567 -> 65.198`
+  - 说明：把 AGC 任务从 `2h` 拉到 `10h` 后，性能明显下降，但 `Tair` 仍保持较强；`Rhair / CO2air` 更容易随 horizon 拉长而退化
+- 已新增两张中文 horizon 对比图：
+  - [current_hybrid_transformer_h24_vs_h120_metrics_cn.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/current_hybrid_transformer_h24_vs_h120_metrics_cn.png)
+  - [current_hybrid_transformer_h24_vs_h120_windows_cn.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/current_hybrid_transformer_h24_vs_h120_windows_cn.png)
+  - 用途：把 `24-step (120 min)` 和 `120-step (600 min)` 放在同一页上，看指标和轨迹如何随 horizon 拉长而退化
+- 已新增更符合当前主线的两张中文汇报图：
+  - [current_hybrid_transformer_best_vs_old_line_cn.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/current_hybrid_transformer_best_vs_old_line_cn.png)
+  - [current_hybrid_transformer_old_vs_agc_joint_all_windows_cn.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/current_hybrid_transformer_old_vs_agc_joint_all_windows_cn.png)
+- 已新增“分钟对齐展示版”窗口图：
+  - [current_hybrid_transformer_old_vs_agc_joint_all_windows_minute_aligned_cn.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/current_hybrid_transformer_old_vs_agc_joint_all_windows_minute_aligned_cn.png)
+  - 用途：让左侧 `120 x 1min` 和右侧 `24 x 5min` 在视觉上都展开到 `120 min` 时间轴，便于导师肉眼比较
+  - 重要说明：右侧只是把 `24 x 5min` 的真实/预测轨迹插值到 `120` 个分钟点做显示，不代表模型真的做了 `120` 步 AGC 预测
+- 这两张图的口径是：
+  - 左侧固定为“旧 Strawberry + old hybrid-transformer”
+  - 右侧固定为“AGC + current hybrid-transformer + joint_all”
+  - 用于向导师说明：真正值得讲的不是“旧结构迁到新数据集”，而是“新数据集让新的 control-oriented hybrid-transformer 变得合理且有效”
