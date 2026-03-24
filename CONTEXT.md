@@ -138,9 +138,11 @@
 - [seg_rnn_forecaster.py](c:/repositories/strawberry/agc_mpc/models/seg_rnn_forecaster.py)
 - [transformer_forecaster.py](c:/repositories/strawberry/agc_mpc/models/transformer_forecaster.py)
 - [transformer_hybrid_forecaster.py](c:/repositories/strawberry/agc_mpc/models/transformer_hybrid_forecaster.py)
+- [hybrid_residual_forecaster.py](c:/repositories/strawberry/agc_mpc/models/hybrid_residual_forecaster.py)
 - [trainer.py](c:/repositories/strawberry/agc_mpc/training/trainer.py)
 - [evaluator.py](c:/repositories/strawberry/agc_mpc/evaluation/evaluator.py)
 - [main.py](c:/repositories/strawberry/agc_mpc/main.py)
+- [benchmark_hybrid_residual_forecaster.py](c:/repositories/strawberry/agc_mpc/benchmark_hybrid_residual_forecaster.py)
 - [README.md](c:/repositories/strawberry/agc_mpc/README.md)
 
 当前已完成：
@@ -158,6 +160,7 @@
 - 条件 SegRNN baseline
 - 条件纯 Transformer baseline
 - 条件 Transformer-hybrid baseline
+- `DLinear main path + Transformer-hybrid residual` 混合残差模型原型
 - 离线评估输出
 - forecast 图支持“历史上下文 + 未来 horizon”联合展示，不再只盯着纯 future window
 - forecast 图新增 rolling multi-step rollout 展示，用更长时间轴显示连续多窗预测，而不只是一段 24-step future window
@@ -173,6 +176,7 @@
 - 闭环 rollout 默认切到更严格的 `surrogate` 模式，不再默认用真实下一行状态打底
 - surrogate 状态更新里会重算 `HumDef`，并用 persistence + action proxy 更新非目标状态
 - 控制结果自动保存到 `agc_mpc/results/control`
+- 已新增 `benchmark_hybrid_residual_forecaster.py`，用于在公平训练预算下单独评估混合残差模型
 
 当前未完成：
 
@@ -409,7 +413,8 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 48 --start-idx
 
 第二层继续补强预测 benchmark：
 
-- 可能的 `hybrid residual model`
+- 已启动 `hybrid residual model`
+- 下一步是给 `hybrid residual model` 跑正式预算，并与 `DLinear / Transformer / current hybrid-transformer` 做统一口径对比
 
 ### 第二优先级
 
@@ -469,10 +474,10 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 48 --start-idx
 - 当前主项目目录：`agc_mpc`
 - 当前主数据集：`AutonomousGreenhouseChallenge_edition2`
 - 当前已完成：数据管线 + GRU baseline + DLinear baseline
-- 当前已完成：数据管线 + GRU baseline + DLinear baseline + SegRNN baseline + Transformer baseline + Transformer-hybrid baseline + 自动结果图
+- 当前已完成：数据管线 + GRU baseline + DLinear baseline + SegRNN baseline + Transformer baseline + Transformer-hybrid baseline + hybrid residual 原型 + 自动结果图
 - 当前已完成：`DLinear / Transformer / Transformer-hybrid` 已接入 AGC 上的 `GradientMPC / CEMMPC` 初版 surrogate closed-loop benchmark
 - 当前已完成：forecast 侧新增 rolling multi-step rollout 图；control 侧默认切到更严格的 `surrogate` rollout，并验证了 `CEMMPC` 的可复现性
-- 当前下一步：继续把 surrogate 从 `state persistence + action proxy` 推到更接近 `sp -> vip -> actuator -> climate` 的层级建模；或并行开始做一个 `hybrid residual model`
+- 当前下一步：控制侧继续把 surrogate 从 `state persistence + action proxy` 推到更接近 `sp -> vip -> actuator -> climate` 的层级建模；预测侧把 `hybrid residual model` 跑成正式预算并做统一对比
 ## 15. Strawberry vs AGC 对比图
 
 - 已新增导师展示用脚本：[compare_dataset_switch.py](c:/repositories/strawberry/agc_mpc/compare_dataset_switch.py)
@@ -654,3 +659,27 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 48 --start-idx
   - 左侧固定为“旧 Strawberry + old hybrid-transformer”
   - 右侧固定为“AGC + current hybrid-transformer + joint_all”
   - 用于向导师说明：真正值得讲的不是“旧结构迁到新数据集”，而是“新数据集让新的 control-oriented hybrid-transformer 变得合理且有效”
+- 已新增混合残差模型脚本：[benchmark_hybrid_residual_forecaster.py](c:/repositories/strawberry/agc_mpc/benchmark_hybrid_residual_forecaster.py)
+  - 定位：作为当前预测主线的下一步，不再继续堆 plain Transformer，而是把 `DLinear` 的稳健主路径与 `Transformer-hybrid` 的高阶残差建模结合起来
+  - 结构：`ConditionalDLinearForecaster` 负责 main path，`ConditionalTransformerHybridForecaster` 负责 residual path，最终输出为 `base + gated residual`
+  - 当前已接入 [main.py](c:/repositories/strawberry/agc_mpc/main.py) 的 baseline 入口，也支持独立 fair-budget benchmark
+- 已做 1-epoch smoke test（`joint_all + Reference`，targets = `Tair / Rhair / CO2air`）：
+  - [hybrid_residual_forecaster_joint_all_reference_summary.json](c:/repositories/strawberry/agc_mpc/results/forecasting/analysis/hybrid_residual_forecaster_joint_all_reference_summary.json)
+  - [hybrid_residual_forecaster_joint_all_reference.pt](c:/repositories/strawberry/agc_mpc/results/forecasting/checkpoints/hybrid_residual_forecaster_joint_all_reference.pt)
+  - `Tair`: Full `R2=0.8960`, MAE `0.912`; Final `R2=0.8904`, MAE `0.925`
+  - `Rhair`: Full `R2=0.8828`, MAE `4.145`; Final `R2=0.8435`, MAE `4.887`
+  - `CO2air`: Full `R2=0.6480`, MAE `58.135`; Final `R2=0.5861`, MAE `62.729`
+- 已补做同协议 `DLinear` 1-epoch quick benchmark（`joint_all + Reference`，targets = `Tair / Rhair / CO2air`）：
+  - [dlinear_forecaster_joint_all_reference_summary.json](c:/repositories/strawberry/agc_mpc/results/forecasting/analysis/dlinear_forecaster_joint_all_reference_summary.json)
+  - [dlinear_forecaster_joint_all_reference.pt](c:/repositories/strawberry/agc_mpc/results/forecasting/checkpoints/dlinear_forecaster_joint_all_reference.pt)
+  - `Tair`: Full `R2=0.8870`, MAE `1.003`; Final `R2=0.8745`, MAE `1.047`
+  - `Rhair`: Full `R2=0.8872`, MAE `3.865`; Final `R2=0.8385`, MAE `4.651`
+  - `CO2air`: Full `R2=0.5086`, MAE `71.191`; Final `R2=0.4850`, MAE `72.943`
+- 已新增快速对比图：
+  - [hybrid_residual_vs_dlinear_joint_all_reference.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/hybrid_residual_vs_dlinear_joint_all_reference.png)
+  - 定位：用于明天汇报时快速展示“在同一 1-epoch quick benchmark 下，混合残差模型相对 `DLinear` 是否已经出现早期优势信号”
+- 当前读法：
+  - 这组结果仅是 1-epoch smoke test，不用于正式结论
+  - 但它已经证明：`hybrid residual` 这条线的代码入口、训练、checkpoint、summary 落盘都已打通，可直接继续跑正式预算
+  - 在当前 1-epoch quick benchmark 下，`hybrid residual` 已经在 `Tair / CO2air` 上明显优于同协议 `DLinear`，而 `Rhair` 与其接近但略逊
+  - 更合理的下一步是与 `current_hybrid_transformer` 使用同一预算（如 `200 epoch, lr=1e-4, lambda_trend=0.3, patience=15`）做正式对比，再决定是否接入控制侧 benchmark

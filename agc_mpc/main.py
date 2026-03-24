@@ -13,6 +13,7 @@ from data_processing.processor import AGCDataProcessor
 from evaluation.evaluator import ForecasterEvaluator
 from models.dlinear_forecaster import ConditionalDLinearForecaster
 from models.gru_forecaster import ConditionalGRUForecaster
+from models.hybrid_residual_forecaster import ConditionalHybridResidualForecaster
 from models.seg_rnn_forecaster import ConditionalSegRNNForecaster
 from models.transformer_forecaster import ConditionalTransformerForecaster
 from models.transformer_hybrid_forecaster import ConditionalTransformerHybridForecaster
@@ -161,6 +162,21 @@ def main() -> None:
         max_past_len=cfg.seq_len,
         max_future_len=cfg.horizon,
     )
+    hybrid_residual_model = ConditionalHybridResidualForecaster(
+        seq_len=cfg.seq_len,
+        horizon=cfg.horizon,
+        past_dim=bundle["X_past_train"].shape[-1],
+        weather_dim=bundle["W_future_train"].shape[-1],
+        control_dim=bundle["U_future_train"].shape[-1],
+        target_dim=bundle["Y_future_train"].shape[-1],
+        hidden_dim=cfg.hidden_dim,
+        num_layers=cfg.num_layers,
+        dropout=cfg.dropout,
+        nhead=cfg.transformer_heads,
+        ff_dim=cfg.transformer_ff_dim,
+        max_past_len=cfg.seq_len,
+        max_future_len=cfg.horizon,
+    )
 
     results = {}
     results["gru_baseline"] = run_baseline("gru_baseline", gru_model, bundle, cfg, device)
@@ -176,6 +192,13 @@ def main() -> None:
     results["transformer_hybrid_baseline"] = run_baseline(
         "transformer_hybrid_baseline",
         transformer_model,
+        bundle,
+        cfg,
+        device,
+    )
+    results["hybrid_residual_baseline"] = run_baseline(
+        "hybrid_residual_baseline",
+        hybrid_residual_model,
         bundle,
         cfg,
         device,
