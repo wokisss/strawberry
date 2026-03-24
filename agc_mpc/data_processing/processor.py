@@ -237,19 +237,61 @@ class AGCDataProcessor:
         scaled["scalers"] = self.scalers
         return scaled
 
-    def build_multi_compartment_bundle(self) -> Dict[str, np.ndarray]:
-        raw_bundles = [self.build_compartment_raw_bundle(comp) for comp in self.cfg.selected_compartments]
-
+    def _merge_raw_bundles(
+        self,
+        train_bundles: List[Dict[str, np.ndarray]],
+        eval_bundles: List[Dict[str, np.ndarray]],
+    ) -> Dict[str, np.ndarray]:
         merged: Dict[str, np.ndarray] = {"feature_groups": self.feature_groups}
         for prefix in ["X_past", "W_future", "U_future", "Y_future", "t0"]:
-            for split in ["train", "val", "test"]:
-                key = f"{prefix}_{split}"
-                merged[key] = np.concatenate([bundle[key] for bundle in raw_bundles], axis=0)
+            merged[f"{prefix}_train"] = np.concatenate(
+                [bundle[f"{prefix}_train"] for bundle in train_bundles],
+                axis=0,
+            )
+            merged[f"{prefix}_val"] = np.concatenate(
+                [bundle[f"{prefix}_val"] for bundle in train_bundles],
+                axis=0,
+            )
+            merged[f"{prefix}_test"] = np.concatenate(
+                [bundle[f"{prefix}_test"] for bundle in eval_bundles],
+                axis=0,
+            )
+        return merged
 
+    def build_custom_bundle(
+        self,
+        train_compartments: List[str],
+        eval_compartments: List[str] | None = None,
+    ) -> Dict[str, np.ndarray]:
+        eval_compartments = eval_compartments or train_compartments
+
+        train_bundles = [
+            self.build_compartment_raw_bundle(compartment)
+            for compartment in train_compartments
+        ]
+
+        if eval_compartments == train_compartments:
+            eval_bundles = train_bundles
+        else:
+            eval_bundles = [
+                self.build_compartment_raw_bundle(compartment)
+                for compartment in eval_compartments
+            ]
+
+        merged = self._merge_raw_bundles(train_bundles, eval_bundles)
         self._fit_scalers(merged)
         merged = self._apply_scalers(merged)
-        merged["compartments"] = list(self.cfg.selected_compartments)
+        merged["train_compartments"] = list(train_compartments)
+        merged["eval_compartments"] = list(eval_compartments)
         merged["scalers"] = self.scalers
+        return merged
+
+    def build_multi_compartment_bundle(self) -> Dict[str, np.ndarray]:
+        merged = self.build_custom_bundle(
+            train_compartments=list(self.cfg.selected_compartments),
+            eval_compartments=list(self.cfg.selected_compartments),
+        )
+        merged["compartments"] = list(self.cfg.selected_compartments)
         return merged
 
     def summarize_bundle(self, bundle: Dict[str, np.ndarray]) -> List[str]:

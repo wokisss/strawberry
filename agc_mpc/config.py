@@ -17,6 +17,7 @@ class AGCConfig:
     forecast_results_dir: str = "results/forecasting"
     forecast_checkpoints_dir: str = "results/forecasting/checkpoints"
     forecast_figures_dir: str = "results/forecasting/figures"
+    forecast_analysis_dir: str = "results/forecasting/analysis"
 
     # ------------------------ Compartments ------------------------
     selected_compartments: List[str] = field(default_factory=lambda: [

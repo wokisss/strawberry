@@ -1,0 +1,358 @@
+{
+  "target_compartment": "Reference",
+  "regimes": [
+    "single",
+    "joint_all",
+    "leave_one_out"
+  ],
+  "models": [
+    "dlinear_baseline"
+  ],
+  "records": [
+    {
+      "model_name": "dlinear_baseline",
+      "regime": "single",
+      "target_compartment": "Reference",
+      "train_compartments": [
+        "Reference"
+      ],
+      "eval_compartments": [
+        "Reference"
+      ],
+      "shapes": {
+        "train": {
+          "X_past": [
+            33248,
+            288,
+            15
+          ],
+          "W_future": [
+            33248,
+            24,
+            12
+          ],
+          "U_future": [
+            33248,
+            24,
+            9
+          ],
+          "Y_future": [
+            33248,
+            24,
+            4
+          ]
+        },
+        "val": {
+          "X_past": [
+            6813,
+            288,
+            15
+          ],
+          "W_future": [
+            6813,
+            24,
+            12
+          ],
+          "U_future": [
+            6813,
+            24,
+            9
+          ],
+          "Y_future": [
+            6813,
+            24,
+            4
+          ]
+        },
+        "test": {
+          "X_past": [
+            6813,
+            288,
+            15
+          ],
+          "W_future": [
+            6813,
+            24,
+            12
+          ],
+          "U_future": [
+            6813,
+            24,
+            9
+          ],
+          "Y_future": [
+            6813,
+            24,
+            4
+          ]
+        }
+      },
+      "metrics_by_target": {
+        "Tair": {
+          "full_r2": 0.887185275554657,
+          "full_mae": 0.7483921647071838,
+          "final_r2": 0.8780261874198914,
+          "final_mae": 0.7723817229270935
+        },
+        "Rhair": {
+          "full_r2": 0.8405699729919434,
+          "full_mae": 4.342349052429199,
+          "final_r2": 0.79865962266922,
+          "final_mae": 4.814692974090576
+        },
+        "CO2air": {
+          "full_r2": 0.5956334471702576,
+          "full_mae": 90.15325164794922,
+          "final_r2": 0.5650780200958252,
+          "final_mae": 93.21864318847656
+        },
+        "Tot_PAR": {
+          "full_r2": 0.9528065919876099,
+          "full_mae": 52.06961441040039,
+          "final_r2": 0.9486551284790039,
+          "final_mae": 53.88875961303711
+        }
+      },
+      "figure_paths": {
+        "forecast_examples": "results\\forecasting\\analysis\\dlinear_baseline_single_reference_forecast_examples.png",
+        "horizon_mae": "results\\forecasting\\analysis\\dlinear_baseline_single_reference_horizon_mae.png",
+        "forecast_rollout": "results\\forecasting\\analysis\\dlinear_baseline_single_reference_forecast_rollout.png",
+        "forecast_first_step_rollout": "results\\forecasting\\analysis\\dlinear_baseline_single_reference_forecast_first_step_rollout.png",
+        "forecast_error_heatmap": "results\\forecasting\\analysis\\dlinear_baseline_single_reference_forecast_error_heatmap.png"
+      }
+    },
+    {
+      "model_name": "dlinear_baseline",
+      "regime": "joint_all",
+      "target_compartment": "Reference",
+      "train_compartments": [
+        "AICU",
+        "Automatoes",
+        "Digilog",
+        "IUACAAS",
+        "Reference",
+        "TheAutomators"
+      ],
+      "eval_compartments": [
+        "Reference"
+      ],
+      "shapes": {
+        "train": {
+          "X_past": [
+            199488,
+            288,
+            15
+          ],
+          "W_future": [
+            199488,
+            24,
+            12
+          ],
+          "U_future": [
+            199488,
+            24,
+            9
+          ],
+          "Y_future": [
+            199488,
+            24,
+            4
+          ]
+        },
+        "val": {
+          "X_past": [
+            40878,
+            288,
+            15
+          ],
+          "W_future": [
+            40878,
+            24,
+            12
+          ],
+          "U_future": [
+            40878,
+            24,
+            9
+          ],
+          "Y_future": [
+            40878,
+            24,
+            4
+          ]
+        },
+        "test": {
+          "X_past": [
+            6813,
+            288,
+            15
+          ],
+          "W_future": [
+            6813,
+            24,
+            12
+          ],
+          "U_future": [
+            6813,
+            24,
+            9
+          ],
+          "Y_future": [
+            6813,
+            24,
+            4
+          ]
+        }
+      },
+      "metrics_by_target": {
+        "Tair": {
+          "full_r2": 0.9096289873123169,
+          "full_mae": 0.7093934416770935,
+          "final_r2": 0.8927395343780518,
+          "final_mae": 0.7758256793022156
+        },
+        "Rhair": {
+          "full_r2": 0.9305567741394043,
+          "full_mae": 3.115062952041626,
+          "final_r2": 0.8977295160293579,
+          "final_mae": 3.7977120876312256
+        },
+        "CO2air": {
+          "full_r2": 0.7431069612503052,
+          "full_mae": 51.225032806396484,
+          "final_r2": 0.7195439338684082,
+          "final_mae": 53.86600112915039
+        },
+        "Tot_PAR": {
+          "full_r2": 0.9821744561195374,
+          "full_mae": 32.28727340698242,
+          "final_r2": 0.9815235137939453,
+          "final_mae": 32.65812301635742
+        }
+      },
+      "figure_paths": {
+        "forecast_examples": "results\\forecasting\\analysis\\dlinear_baseline_joint_all_reference_forecast_examples.png",
+        "horizon_mae": "results\\forecasting\\analysis\\dlinear_baseline_joint_all_reference_horizon_mae.png",
+        "forecast_rollout": "results\\forecasting\\analysis\\dlinear_baseline_joint_all_reference_forecast_rollout.png",
+        "forecast_first_step_rollout": "results\\forecasting\\analysis\\dlinear_baseline_joint_all_reference_forecast_first_step_rollout.png",
+        "forecast_error_heatmap": "results\\forecasting\\analysis\\dlinear_baseline_joint_all_reference_forecast_error_heatmap.png"
+      }
+    },
+    {
+      "model_name": "dlinear_baseline",
+      "regime": "leave_one_out",
+      "target_compartment": "Reference",
+      "train_compartments": [
+        "AICU",
+        "Automatoes",
+        "Digilog",
+        "IUACAAS",
+        "TheAutomators"
+      ],
+      "eval_compartments": [
+        "Reference"
+      ],
+      "shapes": {
+        "train": {
+          "X_past": [
+            166240,
+            288,
+            15
+          ],
+          "W_future": [
+            166240,
+            24,
+            12
+          ],
+          "U_future": [
+            166240,
+            24,
+            9
+          ],
+          "Y_future": [
+            166240,
+            24,
+            4
+          ]
+        },
+        "val": {
+          "X_past": [
+            34065,
+            288,
+            15
+          ],
+          "W_future": [
+            34065,
+            24,
+            12
+          ],
+          "U_future": [
+            34065,
+            24,
+            9
+          ],
+          "Y_future": [
+            34065,
+            24,
+            4
+          ]
+        },
+        "test": {
+          "X_past": [
+            6813,
+            288,
+            15
+          ],
+          "W_future": [
+            6813,
+            24,
+            12
+          ],
+          "U_future": [
+            6813,
+            24,
+            9
+          ],
+          "Y_future": [
+            6813,
+            24,
+            4
+          ]
+        }
+      },
+      "metrics_by_target": {
+        "Tair": {
+          "full_r2": 0.9488815665245056,
+          "full_mae": 0.6350118517875671,
+          "final_r2": 0.9389386177062988,
+          "final_mae": 0.6713834404945374
+        },
+        "Rhair": {
+          "full_r2": 0.8476126790046692,
+          "full_mae": 5.077459335327148,
+          "final_r2": 0.8148844242095947,
+          "final_mae": 5.469498157501221
+        },
+        "CO2air": {
+          "full_r2": 0.69492506980896,
+          "full_mae": 54.07096862792969,
+          "final_r2": 0.6674771904945374,
+          "final_mae": 56.33572769165039
+        },
+        "Tot_PAR": {
+          "full_r2": 0.9747442007064819,
+          "full_mae": 38.83809280395508,
+          "final_r2": 0.9751505851745605,
+          "final_mae": 38.662933349609375
+        }
+      },
+      "figure_paths": {
+        "forecast_examples": "results\\forecasting\\analysis\\dlinear_baseline_leave_one_out_reference_forecast_examples.png",
+        "horizon_mae": "results\\forecasting\\analysis\\dlinear_baseline_leave_one_out_reference_horizon_mae.png",
+        "forecast_rollout": "results\\forecasting\\analysis\\dlinear_baseline_leave_one_out_reference_forecast_rollout.png",
+        "forecast_first_step_rollout": "results\\forecasting\\analysis\\dlinear_baseline_leave_one_out_reference_forecast_first_step_rollout.png",
+        "forecast_error_heatmap": "results\\forecasting\\analysis\\dlinear_baseline_leave_one_out_reference_forecast_error_heatmap.png"
+      }
+    }
+  ]
+}

@@ -26,6 +26,7 @@ def ensure_results_layout(cfg) -> None:
         cfg.forecast_results_dir,
         cfg.forecast_checkpoints_dir,
         cfg.forecast_figures_dir,
+        cfg.forecast_analysis_dir,
         cfg.control_results_dir,
         cfg.control_summaries_dir,
         cfg.control_figures_dir,

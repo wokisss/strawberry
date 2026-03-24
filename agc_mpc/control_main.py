@@ -27,6 +27,7 @@ from results_utils import ensure_results_layout
 
 
 def _set_global_seed(seed: int) -> None:
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
