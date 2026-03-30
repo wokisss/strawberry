@@ -1,0 +1,216 @@
+{
+  "predictors": [
+    "current_hybrid_transformer",
+    "transformer_hybrid_residual",
+    "itransformer_residual",
+    "patchtst_residual"
+  ],
+  "controllers": [
+    "recorded",
+    "gradient_mpc",
+    "cem_mpc"
+  ],
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "rollout_mode": "surrogate",
+  "steps": 48,
+  "target_cols": [
+    "Tair",
+    "Rhair",
+    "CO2air"
+  ],
+  "records": [
+    {
+      "predictor": "current_hybrid_transformer",
+      "controller": "recorded",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 48,
+      "objective_mean": 0.0,
+      "control_delta_mae": 0.0,
+      "action_tv": 0.3025463089191665,
+      "target_mae": {
+        "Tair": 1.1977990865707397,
+        "Rhair": 3.4093055725097656,
+        "CO2air": 33.2415771484375
+      },
+      "figure_path": "results\\control\\figures\\current_hybrid_transformer_recorded_closed_loop.png"
+    },
+    {
+      "predictor": "current_hybrid_transformer",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 48,
+      "objective_mean": 0.046075103571638465,
+      "control_delta_mae": 12.20287799835205,
+      "action_tv": 3.7185324393212795,
+      "target_mae": {
+        "Tair": 0.28646647930145264,
+        "Rhair": 0.9212978482246399,
+        "CO2air": 17.831445693969727
+      },
+      "figure_path": "results\\control\\figures\\current_hybrid_transformer_gradient_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "current_hybrid_transformer",
+      "controller": "cem_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 48,
+      "objective_mean": 0.056189629482105374,
+      "control_delta_mae": 22.89635467529297,
+      "action_tv": 11.925526564319929,
+      "target_mae": {
+        "Tair": 0.6095240116119385,
+        "Rhair": 1.6618303060531616,
+        "CO2air": 20.334659576416016
+      },
+      "figure_path": "results\\control\\figures\\current_hybrid_transformer_cem_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "transformer_hybrid_residual",
+      "controller": "recorded",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 48,
+      "objective_mean": 0.0,
+      "control_delta_mae": 0.0,
+      "action_tv": 0.3025463089191665,
+      "target_mae": {
+        "Tair": 0.4616631269454956,
+        "Rhair": 2.7727622985839844,
+        "CO2air": 26.30045509338379
+      },
+      "figure_path": "results\\control\\figures\\transformer_hybrid_residual_recorded_closed_loop.png"
+    },
+    {
+      "predictor": "transformer_hybrid_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 48,
+      "objective_mean": 0.04364585969597101,
+      "control_delta_mae": 13.727065086364746,
+      "action_tv": 6.285824246704578,
+      "target_mae": {
+        "Tair": 0.47213152050971985,
+        "Rhair": 1.6276540756225586,
+        "CO2air": 16.12832260131836
+      },
+      "figure_path": "results\\control\\figures\\transformer_hybrid_residual_gradient_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "transformer_hybrid_residual",
+      "controller": "cem_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 48,
+      "objective_mean": 0.06596477543159078,
+      "control_delta_mae": 21.567550659179688,
+      "action_tv": 10.351255429287752,
+      "target_mae": {
+        "Tair": 1.0129786729812622,
+        "Rhair": 3.2468202114105225,
+        "CO2air": 20.59099006652832
+      },
+      "figure_path": "results\\control\\figures\\transformer_hybrid_residual_cem_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_residual",
+      "controller": "recorded",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 48,
+      "objective_mean": 0.0,
+      "control_delta_mae": 0.0,
+      "action_tv": 0.3025463089191665,
+      "target_mae": {
+        "Tair": 1.5481270551681519,
+        "Rhair": 4.660602569580078,
+        "CO2air": 41.89969253540039
+      },
+      "figure_path": "results\\control\\figures\\itransformer_residual_recorded_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 48,
+      "objective_mean": 0.06047135036593924,
+      "control_delta_mae": 9.682724952697754,
+      "action_tv": 4.736369469358276,
+      "target_mae": {
+        "Tair": 0.3358800411224365,
+        "Rhair": 2.5874016284942627,
+        "CO2air": 5.950181484222412
+      },
+      "figure_path": "results\\control\\figures\\itransformer_residual_gradient_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_residual",
+      "controller": "cem_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 48,
+      "objective_mean": 0.11760227052339663,
+      "control_delta_mae": 22.124488830566406,
+      "action_tv": 12.777524704734484,
+      "target_mae": {
+        "Tair": 1.193825364112854,
+        "Rhair": 4.906114101409912,
+        "CO2air": 14.603373527526855
+      },
+      "figure_path": "results\\control\\figures\\itransformer_residual_cem_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "patchtst_residual",
+      "controller": "recorded",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 48,
+      "objective_mean": 0.0,
+      "control_delta_mae": 0.0,
+      "action_tv": 0.3025463089191665,
+      "target_mae": {
+        "Tair": 2.402815818786621,
+        "Rhair": 8.607269287109375,
+        "CO2air": 40.09333419799805
+      },
+      "figure_path": "results\\control\\figures\\patchtst_residual_recorded_closed_loop.png"
+    },
+    {
+      "predictor": "patchtst_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 48,
+      "objective_mean": 0.13843799378567687,
+      "control_delta_mae": 19.916616439819336,
+      "action_tv": 6.904953909416993,
+      "target_mae": {
+        "Tair": 1.0472372770309448,
+        "Rhair": 4.412435054779053,
+        "CO2air": 17.126506805419922
+      },
+      "figure_path": "results\\control\\figures\\patchtst_residual_gradient_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "patchtst_residual",
+      "controller": "cem_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 48,
+      "objective_mean": 0.21078534012970826,
+      "control_delta_mae": 25.98979377746582,
+      "action_tv": 16.883101642131805,
+      "target_mae": {
+        "Tair": 1.9858688116073608,
+        "Rhair": 5.709537506103516,
+        "CO2air": 23.903640747070312
+      },
+      "figure_path": "results\\control\\figures\\patchtst_residual_cem_mpc_closed_loop.png"
+    }
+  ]
+}

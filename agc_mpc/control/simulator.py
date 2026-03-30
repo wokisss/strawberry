@@ -168,7 +168,8 @@ class AGCClosedLoopSimulator:
         base_unit = self.adapter.u_real_to_unit(base).detach().cpu().numpy()
         target_mae = np.mean(np.abs(pred - ref), axis=0)
 
-        fig, axes = plt.subplots(6, 1, figsize=(14, 20), sharex=True)
+        nrows = len(self.y_cols) + 2
+        fig, axes = plt.subplots(nrows, 1, figsize=(14, 3.2 * len(self.y_cols) + 8), sharex=True)
         for idx, target in enumerate(self.y_cols):
             axes[idx].plot(steps, ref[:, idx], label="Reference", linewidth=2.0)
             axes[idx].plot(steps, pred[:, idx], label="Closed-loop", linewidth=2.0, linestyle="--")
@@ -178,24 +179,27 @@ class AGCClosedLoopSimulator:
             if idx == 0:
                 axes[idx].legend()
 
-        axes[4].plot(steps, obj, color="tab:purple", linewidth=2.0, label="Objective")
-        axes[4].plot(steps, control_delta, color="tab:red", linewidth=2.0, label="|u-u_log| mean")
+        control_ax = axes[len(self.y_cols)]
+        action_ax = axes[len(self.y_cols) + 1]
+
+        control_ax.plot(steps, obj, color="tab:purple", linewidth=2.0, label="Objective")
+        control_ax.plot(steps, control_delta, color="tab:red", linewidth=2.0, label="|u-u_log| mean")
         if len(action_tv) == len(steps):
-            axes[4].plot(steps, action_tv, color="tab:orange", linewidth=2.0, label="Action TV")
-        axes[4].set_ylabel("Control metrics")
-        axes[4].grid(True, alpha=0.25)
-        axes[4].legend(ncol=3, fontsize=9)
+            control_ax.plot(steps, action_tv, color="tab:orange", linewidth=2.0, label="Action TV")
+        control_ax.set_ylabel("Control metrics")
+        control_ax.grid(True, alpha=0.25)
+        control_ax.legend(ncol=3, fontsize=9)
 
         color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
         for idx, u_name in enumerate(self.u_cols):
             color = color_cycle[idx % len(color_cycle)]
-            axes[5].plot(steps, act_unit[:, idx], color=color, linewidth=1.8, label=u_name)
-            axes[5].plot(steps, base_unit[:, idx], color=color, linewidth=1.2, linestyle="--", alpha=0.65)
-        axes[5].set_ylabel("Action unit")
-        axes[5].set_xlabel("Closed-loop step")
-        axes[5].set_ylim(-0.05, 1.05)
-        axes[5].grid(True, alpha=0.25)
-        axes[5].legend(ncol=3, fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.22))
+            action_ax.plot(steps, act_unit[:, idx], color=color, linewidth=1.8, label=u_name)
+            action_ax.plot(steps, base_unit[:, idx], color=color, linewidth=1.2, linestyle="--", alpha=0.65)
+        action_ax.set_ylabel("Action unit")
+        action_ax.set_xlabel("Closed-loop step")
+        action_ax.set_ylim(-0.05, 1.05)
+        action_ax.grid(True, alpha=0.25)
+        action_ax.legend(ncol=3, fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.22))
 
         summary_text = (
             f"objective_mean={float(np.mean(obj)):.3f} | "

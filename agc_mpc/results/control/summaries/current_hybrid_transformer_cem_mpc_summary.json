@@ -1,0 +1,16 @@
+{
+  "predictor": "current_hybrid_transformer",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 48,
+  "objective_mean": 0.056189629482105374,
+  "control_delta_mae": 22.89635467529297,
+  "action_tv": 11.925526564319929,
+  "target_mae": {
+    "Tair": 0.6095240116119385,
+    "Rhair": 1.6618303060531616,
+    "CO2air": 20.334659576416016
+  },
+  "figure_path": "results\\control\\figures\\current_hybrid_transformer_cem_mpc_closed_loop.png"
+}

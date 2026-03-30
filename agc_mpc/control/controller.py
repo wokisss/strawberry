@@ -64,10 +64,20 @@ class PredictiveControlAdapter:
         self.y_mean = torch.tensor(self.scalers["y"].mean_, dtype=torch.float32, device=device)
         self.y_scale = torch.tensor(self.scalers["y"].scale_, dtype=torch.float32, device=device)
 
-        self.track_weights = torch.tensor(cfg.track_weights, dtype=torch.float32, device=device).view(1, 1, -1)
+        track_weights = np.asarray(cfg.track_weights[: len(self.y_cols)], dtype=np.float32)
+        if len(track_weights) < len(self.y_cols):
+            track_weights = np.pad(track_weights, (0, len(self.y_cols) - len(track_weights)), constant_values=1.0)
+        self.track_weights = torch.tensor(track_weights, dtype=torch.float32, device=device).view(1, 1, -1)
         horizon_weights = np.power(cfg.horizon_decay, np.arange(cfg.horizon, dtype=np.float32))
         self.horizon_weights = torch.tensor(horizon_weights, dtype=torch.float32, device=device).view(1, -1, 1)
-        constant_target = np.asarray(cfg.constant_target_values, dtype=np.float32)
+        constant_target = np.asarray(cfg.constant_target_values[: len(self.y_cols)], dtype=np.float32)
+        if len(constant_target) < len(self.y_cols):
+            pad_value = constant_target[-1] if len(constant_target) else 0.0
+            constant_target = np.pad(
+                constant_target,
+                (0, len(self.y_cols) - len(constant_target)),
+                constant_values=pad_value,
+            )
         self.constant_target_real = torch.tensor(constant_target, dtype=torch.float32, device=device).view(1, 1, -1)
 
     def _to_tensor(self, arr: np.ndarray) -> torch.Tensor:

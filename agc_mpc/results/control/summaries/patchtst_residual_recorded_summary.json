@@ -1,0 +1,16 @@
+{
+  "predictor": "patchtst_residual",
+  "controller": "recorded",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 48,
+  "objective_mean": 0.0,
+  "control_delta_mae": 0.0,
+  "action_tv": 0.3025463089191665,
+  "target_mae": {
+    "Tair": 2.402815818786621,
+    "Rhair": 8.607269287109375,
+    "CO2air": 40.09333419799805
+  },
+  "figure_path": "results\\control\\figures\\patchtst_residual_recorded_closed_loop.png"
+}

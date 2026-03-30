@@ -1,0 +1,16 @@
+{
+  "predictor": "patchtst_residual",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 48,
+  "objective_mean": 0.21078534012970826,
+  "control_delta_mae": 25.98979377746582,
+  "action_tv": 16.883101642131805,
+  "target_mae": {
+    "Tair": 1.9858688116073608,
+    "Rhair": 5.709537506103516,
+    "CO2air": 23.903640747070312
+  },
+  "figure_path": "results\\control\\figures\\patchtst_residual_cem_mpc_closed_loop.png"
+}

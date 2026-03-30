@@ -1,0 +1,16 @@
+{
+  "predictor": "transformer_hybrid_residual",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 48,
+  "objective_mean": 0.06596477543159078,
+  "control_delta_mae": 21.567550659179688,
+  "action_tv": 10.351255429287752,
+  "target_mae": {
+    "Tair": 1.0129786729812622,
+    "Rhair": 3.2468202114105225,
+    "CO2air": 20.59099006652832
+  },
+  "figure_path": "results\\control\\figures\\transformer_hybrid_residual_cem_mpc_closed_loop.png"
+}
