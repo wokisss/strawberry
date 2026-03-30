@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from config import AGCConfig
+from figure_layout import comparison_figures_dir
 from results_utils import ensure_results_layout
 
 
@@ -428,11 +429,13 @@ def build_dataset_switch_figure(repo_root: Path) -> tuple[Path, Path, Path]:
     old_metrics = _collect_old_metrics(repo_root)
     new_metrics = _collect_new_metrics(repo_root)
 
-    out_dir = repo_root / "agc_mpc" / "results" / "forecasting" / "figures"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    fig_path = out_dir / "strawberry_vs_agc_dataset_switch.png"
-    window_fig_path = out_dir / "strawberry_vs_agc_forecast_windows.png"
-    json_path = out_dir / "strawberry_vs_agc_dataset_switch_summary.json"
+    figures_out_dir = comparison_figures_dir(repo_root / "agc_mpc" / "results" / "forecasting" / "figures")
+    analysis_out_dir = repo_root / "agc_mpc" / "results" / "forecasting" / "analysis"
+    figures_out_dir.mkdir(parents=True, exist_ok=True)
+    analysis_out_dir.mkdir(parents=True, exist_ok=True)
+    fig_path = figures_out_dir / "strawberry_vs_agc_dataset_switch.png"
+    window_fig_path = figures_out_dir / "strawberry_vs_agc_forecast_windows.png"
+    json_path = analysis_out_dir / "strawberry_vs_agc_dataset_switch_summary.json"
 
     fig = plt.figure(figsize=(18, 6.8))
     gs = fig.add_gridspec(1, 3, width_ratios=[1.2, 1.2, 1.2])

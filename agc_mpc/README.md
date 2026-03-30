@@ -174,55 +174,42 @@ Design choice:
 - it does not generate a large comparison figure automatically
 - the intention is to lock the protocol first, then compare datasets with controlled variables
 
-这是独立于 `diffmpc` 的新项目目录，用于基于 `Autonomous Greenhouse Challenge, Second Edition (2019)` 数据集重建预测控制主线。
+杩欐槸鐙珛浜?`diffmpc` 鐨勬柊椤圭洰鐩綍锛岀敤浜庡熀浜?`Autonomous Greenhouse Challenge, Second Edition (2019)` 鏁版嵁闆嗛噸寤洪娴嬫帶鍒朵富绾裤€?
+褰撳墠宸茬粡鍏峰锛?
+- AGC 鏁版嵁璇诲彇涓庡瓧娈垫爣鍑嗗寲
+- `sp/vip` 缂哄け鍥炲～
+- `x_past / w_future / u_future / y_future` 鏍锋湰鏋勯€?- 鍗曢殧闂翠笌澶氶殧闂磋仈鍚堣缁?- leak-free 鏃堕棿鍒囧垎涓庡叏灞€鏍囧噯鍖?- `GRU / DLinear / SegRNN / Transformer / Transformer-hybrid` 浜斾釜棰勬祴 baseline
+- 鑷姩淇濆瓨 forecasting / control 缁撴灉鍒板垎灞傚悗鐨?`results` 鐩綍
 
-当前已经具备：
-
-- AGC 数据读取与字段标准化
-- `sp/vip` 缺失回填
-- `x_past / w_future / u_future / y_future` 样本构造
-- 单隔间与多隔间联合训练
-- leak-free 时间切分与全局标准化
-- `GRU / DLinear / SegRNN / Transformer / Transformer-hybrid` 五个预测 baseline
-- 自动保存 forecasting / control 结果到分层后的 `results` 目录
-
-运行方式：
-
+杩愯鏂瑰紡锛?
 ```bash
 conda activate strawberry_env
 python c:\repositories\strawberry\agc_mpc\main.py
 ```
 
-结果输出：
+缁撴灉杈撳嚭锛?
+- 妯″瀷鏉冮噸锛歚agc_mpc/results/forecasting/checkpoints/*.pt`
+- 棰勬祴绀轰緥鍥撅細`agc_mpc/results/forecasting/figures/*_forecast_examples.png`
+- Horizon MAE 鍥撅細`agc_mpc/results/forecasting/figures/*_horizon_mae.png`
+- Rolling multi-step forecast windows锛歚agc_mpc/results/forecasting/figures/*_forecast_rollout.png`
+- 鎺у埗闂幆鍥撅細`agc_mpc/results/control/figures/*_closed_loop.png`
+- 鎺у埗 summary锛歚agc_mpc/results/control/summaries/*_summary.json`
 
-- 模型权重：`agc_mpc/results/forecasting/checkpoints/*.pt`
-- 预测示例图：`agc_mpc/results/forecasting/figures/*_forecast_examples.png`
-- Horizon MAE 图：`agc_mpc/results/forecasting/figures/*_horizon_mae.png`
-- Rolling multi-step forecast windows：`agc_mpc/results/forecasting/figures/*_forecast_rollout.png`
-- 控制闭环图：`agc_mpc/results/control/figures/*_closed_loop.png`
-- 控制 summary：`agc_mpc/results/control/summaries/*_summary.json`
+褰撳墠榛樿璁剧疆锛?
+- 鏁版嵁闆嗭細`AutonomousGreenhouseChallenge_edition2`
+- 闅旈棿锛? 涓?compartment 鑱斿悎璁粌
+- 鍘嗗彶绐楀彛锛歚seq_len = 288`锛?4 灏忔椂锛?- 棰勬祴绐楀彛锛歚horizon = 24`锛? 灏忔椂锛?- 鐩爣锛歚Tair / Rhair / CO2air / Tot_PAR`
 
-当前默认设置：
+褰撳墠缁撴灉姒傝锛?
+- `DLinear` 褰撳墠鏁翠綋鏈€寮猴紝灏ゅ叾鏄?`Tair / Rhair`
+- `Transformer-hybrid` 鍦?`Tot_PAR` 鏈€缁堟鏈€濂斤紝涔熷湪 `CO2air` 涓婃帴杩戞渶浼?- `GRU` 褰撳墠涓嶅啀鏄暣浣撴渶浼橈紝浣嗕粛鐒舵槸閲嶈鐨勬椂搴?baseline
+- `SegRNN` 褰撳墠琛ㄧ幇涓嶅鍓嶄笁鑰咃紝浠嶄繚鐣欎綔缁撴瀯鍖?RNN 瀵圭収
 
-- 数据集：`AutonomousGreenhouseChallenge_edition2`
-- 隔间：6 个 compartment 联合训练
-- 历史窗口：`seq_len = 288`（24 小时）
-- 预测窗口：`horizon = 24`（2 小时）
-- 目标：`Tair / Rhair / CO2air / Tot_PAR`
+涓嬩竴姝ヤ富绾匡細
 
-当前结果概览：
+1. 鍒嗘瀽鍝被棰勬祴鍣ㄦ洿閫傚悎鍚庣画鎺у埗
+2. 鎶婇娴嬫ā鍨嬫帴鍏?AGC 涓婄殑 MPC
+   褰撳墠鍖哄垎鐨勬槸涓ょ MPC 姹傝В鍣細gradient-based MPC 鍜?CEM-based MPC
+3. 鍐嶅紩鍏ヨ祫婧愭垚鏈拰缁忔祹鎸囨爣
+- forecasting 鍥剧幇鍦ㄤ細鐩存帴鍦ㄥ浘鍐呮爣娉?`R2 / MAE` 绛夊叧閿寚鏍?- control 鍥剧幇鍦ㄤ細鍚屾椂灞曠ず鐘舵€佽窡韪€佹帶鍒朵唬浠?鍔ㄤ綔鍋忕Щ锛屼互鍙婂綊涓€鍖栧姩浣滆建杩?- 鏂囩尞涓庨」鐩鐓ф枃妗ｏ細`agc_mpc/LITERATURE_COMPARISON.md`
 
-- `DLinear` 当前整体最强，尤其是 `Tair / Rhair`
-- `Transformer-hybrid` 在 `Tot_PAR` 最终步最好，也在 `CO2air` 上接近最优
-- `GRU` 当前不再是整体最优，但仍然是重要的时序 baseline
-- `SegRNN` 当前表现不如前三者，仍保留作结构化 RNN 对照
-
-下一步主线：
-
-1. 分析哪类预测器更适合后续控制
-2. 把预测模型接入 AGC 上的 MPC
-   当前区分的是两种 MPC 求解器：gradient-based MPC 和 CEM-based MPC
-3. 再引入资源成本和经济指标
-- forecasting 图现在会直接在图内标注 `R2 / MAE` 等关键指标
-- control 图现在会同时展示状态跟踪、控制代价/动作偏移，以及归一化动作轨迹
-- 文献与项目对照文档：`agc_mpc/LITERATURE_COMPARISON.md`

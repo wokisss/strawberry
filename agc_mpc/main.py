@@ -11,6 +11,7 @@ import torch
 from config import AGCConfig
 from data_processing.processor import AGCDataProcessor
 from evaluation.evaluator import ForecasterEvaluator
+from figure_layout import baseline_figures_dir
 from models.dlinear_forecaster import ConditionalDLinearForecaster
 from models.gru_forecaster import ConditionalGRUForecaster
 from models.hybrid_residual_forecaster import ConditionalHybridResidualForecaster
@@ -66,7 +67,7 @@ def run_baseline(name, model, bundle, cfg, device):
         bundle["U_future_test"],
         bundle["Y_future_test"],
         model_name=name,
-        output_dir=cfg.forecast_figures_dir,
+        output_dir=baseline_figures_dir(cfg.forecast_figures_dir),
         num_plot_examples=cfg.plot_examples,
         plot_history_steps=cfg.plot_history_steps,
         forecast_rollout_examples=cfg.forecast_rollout_examples,

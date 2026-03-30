@@ -18,11 +18,12 @@ from benchmark_current_hybrid_transformer import (
 )
 from config import AGCConfig
 from data_processing.processor import AGCDataProcessor
+from figure_layout import current_hybrid_figures_dir
 from models.transformer_hybrid_forecaster import ConditionalTransformerHybridForecaster
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-FIGURES_DIR = PROJECT_ROOT / "results" / "forecasting" / "figures"
+FIGURES_DIR = current_hybrid_figures_dir(PROJECT_ROOT / "results" / "forecasting" / "figures")
 ANALYSIS_DIR = PROJECT_ROOT / "results" / "forecasting" / "analysis"
 
 TARGET_SPECS = [

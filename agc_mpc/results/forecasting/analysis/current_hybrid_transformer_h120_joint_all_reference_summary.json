@@ -1265,5 +1265,10 @@
       ]
     ]
   },
-  "checkpoint_path": "results/forecasting/checkpoints/current_hybrid_transformer_h120_joint_all_reference.pt"
+  "checkpoint_path": "results/forecasting/checkpoints/current_hybrid_transformer_h120_joint_all_reference.pt",
+  "figure_paths": {
+    "forecast_examples": "results\\forecasting\\figures\\current_hybrid_transformer\\current_hybrid_transformer_h120_joint_all_reference_forecast_examples.png",
+    "horizon_mae": "results\\forecasting\\figures\\current_hybrid_transformer\\current_hybrid_transformer_h120_joint_all_reference_horizon_mae.png",
+    "forecast_rollout": "results\\forecasting\\figures\\current_hybrid_transformer\\current_hybrid_transformer_h120_joint_all_reference_forecast_rollout.png"
+  }
 }

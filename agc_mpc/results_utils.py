@@ -6,6 +6,12 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from figure_layout import (
+    baseline_figures_dir,
+    comparison_figures_dir,
+    current_hybrid_figures_dir,
+    residual_figures_dir,
+)
 
 def _move_if_needed(src: Path, dst: Path) -> None:
     if not src.exists():
@@ -32,6 +38,14 @@ def ensure_results_layout(cfg) -> None:
         cfg.control_figures_dir,
     ]:
         Path(path_str).mkdir(parents=True, exist_ok=True)
+
+    for subdir in [
+        baseline_figures_dir(cfg.forecast_figures_dir),
+        current_hybrid_figures_dir(cfg.forecast_figures_dir),
+        residual_figures_dir(cfg.forecast_figures_dir),
+        comparison_figures_dir(cfg.forecast_figures_dir),
+    ]:
+        subdir.mkdir(parents=True, exist_ok=True)
 
     legacy_root = Path(cfg.results_dir)
     legacy_figures = legacy_root / "figures"

@@ -18,11 +18,12 @@ from benchmark_diffmpc_style_transformer import (
 )
 from config import AGCConfig
 from data_processing.processor import AGCDataProcessor
+from figure_layout import comparison_figures_dir
 from models.diffmpc_style_transformer import DiffMPCStyleTransformerHybridForecaster
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-FIGURES_DIR = PROJECT_ROOT / "results" / "forecasting" / "figures"
+FIGURES_DIR = comparison_figures_dir(PROJECT_ROOT / "results" / "forecasting" / "figures")
 ANALYSIS_DIR = PROJECT_ROOT / "results" / "forecasting" / "analysis"
 
 
@@ -223,7 +224,7 @@ def main() -> None:
     os.chdir(PROJECT_ROOT)
     _setup_matplotlib_chinese()
 
-    old_summary = _load_json(FIGURES_DIR / "strawberry_vs_agc_dataset_switch_summary.json")
+    old_summary = _load_json(ANALYSIS_DIR / "strawberry_vs_agc_dataset_switch_summary.json")
     joint_summary = _load_json(ANALYSIS_DIR / "diffmpc_style_transformer_joint_all_reference_summary.json")
     agc_window = _load_joint_all_representative_window()
 

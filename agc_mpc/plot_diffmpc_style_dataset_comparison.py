@@ -10,10 +10,12 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
+from figure_layout import comparison_figures_dir
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 ANALYSIS_DIR = PROJECT_ROOT / "results" / "forecasting" / "analysis"
-FIGURES_DIR = PROJECT_ROOT / "results" / "forecasting" / "figures"
+FIGURES_DIR = comparison_figures_dir(PROJECT_ROOT / "results" / "forecasting" / "figures")
 
 
 def _load_json(path: Path) -> dict:
@@ -25,7 +27,7 @@ def main() -> None:
     os.chdir(PROJECT_ROOT)
     FIGURES_DIR.mkdir(parents=True, exist_ok=True)
 
-    old_summary = _load_json(FIGURES_DIR / "strawberry_vs_agc_dataset_switch_summary.json")
+    old_summary = _load_json(ANALYSIS_DIR / "strawberry_vs_agc_dataset_switch_summary.json")
     single = _load_json(ANALYSIS_DIR / "diffmpc_style_transformer_single_reference_summary.json")
     joint_all = _load_json(ANALYSIS_DIR / "diffmpc_style_transformer_joint_all_reference_summary.json")
     leave_one_out = _load_json(ANALYSIS_DIR / "diffmpc_style_transformer_leave_one_out_reference_summary.json")

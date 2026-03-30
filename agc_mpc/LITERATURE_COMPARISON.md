@@ -59,10 +59,10 @@ Old project:
 - dataset: `Strawberry Greenhouse Environmental Control Dataset(version2).csv`
 
 Direct 2 h comparison figure:
-- `results/forecasting/figures/strawberry_vs_agc_dataset_switch.png`
+- `results/forecasting/figures/comparisons/strawberry_vs_agc_dataset_switch.png`
 
 Representative forecast-window figure:
-- `results/forecasting/figures/strawberry_vs_agc_forecast_windows.png`
+- `results/forecasting/figures/comparisons/strawberry_vs_agc_forecast_windows.png`
 
 Key comparison on common variables (`Temperature / Humidity / CO2`):
 
@@ -75,15 +75,14 @@ Key comparison on common variables (`Temperature / Humidity / CO2`):
 
 Takeaway:
 - the old Strawberry setup is clearly weaker on the same 2 h horizon framing
-- AGC is not “perfect”, but it is much more suitable as a control-oriented benchmark
+- AGC is not 鈥減erfect鈥? but it is much more suitable as a control-oriented benchmark
 
 ## Comparable Forecasting Papers
 
 ### 1. Ahn et al., 2024
 
 Paper:
-- “Evaluating Time-Series Prediction of Temperature, Relative Humidity, and CO2 in the Greenhouse with Transformer-Based and RNN-Based Models”
-- Link: https://www.mdpi.com/2073-4395/14/3/417
+- 鈥淓valuating Time-Series Prediction of Temperature, Relative Humidity, and CO2 in the Greenhouse with Transformer-Based and RNN-Based Models鈥?- Link: https://www.mdpi.com/2073-4395/14/3/417
 
 Task:
 - greenhouse climate forecasting
@@ -114,8 +113,7 @@ What it suggests:
 ### 2. Mao et al., 2024
 
 Paper:
-- “A variable weight combination prediction model for climate in a greenhouse based on BiGRU-Attention and LightGBM”
-- Link: https://www.sciencedirect.com/science/article/pii/S0168169924002096
+- 鈥淎 variable weight combination prediction model for climate in a greenhouse based on BiGRU-Attention and LightGBM鈥?- Link: https://www.sciencedirect.com/science/article/pii/S0168169924002096
 
 Task:
 - forecasting `temperature / humidity / PAR`
@@ -129,7 +127,7 @@ Reported result at 120 min:
 - `R2 = 0.9586 / 0.9232 / 0.8066`
 
 Why it matters for us:
-- it is a stronger “engineered prediction stack” than our current baselines
+- it is a stronger 鈥渆ngineered prediction stack鈥?than our current baselines
 - humidity in that paper is clearly stronger than our current `Rhair`
 
 What is not directly comparable:
@@ -144,8 +142,7 @@ What it suggests:
 ### 3. Guo et al., 2024
 
 Paper:
-- “Multi-Step Prediction of Greenhouse Temperature and Humidity Based on Temporal Position Attention LSTM”
-- DOI listed in review source: `10.1007/s00477-024-02840-x`
+- 鈥淢ulti-Step Prediction of Greenhouse Temperature and Humidity Based on Temporal Position Attention LSTM鈥?- DOI listed in review source: `10.1007/s00477-024-02840-x`
 - Search preview used for numbers: https://www.researchgate.net/publication/385934141_Multi-Step_Prediction_of_Greenhouse_Temperature_and_Humidity_Based_on_Temporal_Position_Attention_LSTM
 
 Task:
@@ -171,8 +168,7 @@ What is not directly comparable:
 ### 4. Cebolla-Alemany et al., 2026
 
 Paper:
-- “Thermocast: A modular ensemble learning method for rooftop greenhouse short-term air temperature prediction”
-- Link: https://www.sciencedirect.com/science/article/pii/S2772375525009645
+- 鈥淭hermocast: A modular ensemble learning method for rooftop greenhouse short-term air temperature prediction鈥?- Link: https://www.sciencedirect.com/science/article/pii/S2772375525009645
 
 Task:
 - short-term temperature-only forecasting
@@ -183,7 +179,7 @@ Method:
 
 Reported result:
 - `R2 > 0.98`
-- `MAE` about `0.280–0.311 °C`
+- `MAE` about `0.280鈥?.311 掳C`
 
 Why it matters for us:
 - it shows what excellent short-term single-target performance can look like
@@ -201,8 +197,7 @@ Takeaway:
 ### 5. Mahmood et al., 2021
 
 Paper:
-- “Model predictive control strategy for energy efficient greenhouse climate control using machine learning models”
-- Link: https://www.sciencedirect.com/science/article/pii/S0959652621033588
+- 鈥淢odel predictive control strategy for energy efficient greenhouse climate control using machine learning models鈥?- Link: https://www.sciencedirect.com/science/article/pii/S0959652621033588
 
 Task:
 - greenhouse climate control
@@ -213,12 +208,11 @@ Method:
 - reported comparison against conventional control
 
 Reported headline result:
-- indoor temperature `RMSE` around `0.33–0.36 °C`
+- indoor temperature `RMSE` around `0.33鈥?.36 掳C`
 - energy reduction around `7.7%` and `16.57%`
 
 Why it matters for us:
-- it is a good example of “prediction quality is not the only output; control and energy also matter”
-
+- it is a good example of 鈥減rediction quality is not the only output; control and energy also matter鈥?
 Gap vs our current project:
 - we do not yet have economic/resource terms in the control cost
 - our current control benchmark is still a surrogate rollout, not a full deployment-grade greenhouse controller
@@ -226,8 +220,7 @@ Gap vs our current project:
 ### 6. Chen and You, 2022
 
 Paper:
-- “Intelligent control and energy optimization in controlled environment agriculture via nonlinear model predictive control of semi-closed greenhouse”
-- Link: https://www.sciencedirect.com/science/article/abs/pii/S0306261922006845
+- 鈥淚ntelligent control and energy optimization in controlled environment agriculture via nonlinear model predictive control of semi-closed greenhouse鈥?- Link: https://www.sciencedirect.com/science/article/abs/pii/S0306261922006845
 
 Task:
 - simultaneous control of `temperature / humidity / CO2 / light`
@@ -251,8 +244,7 @@ Gap vs our current project:
 ### 7. Kim and You, 2025
 
 Paper:
-- “Energy-efficient greenhouse climate control using Gaussian process-based stochastic model predictive control”
-- Link: https://www.sciencedirect.com/science/article/pii/S0306261925005719
+- 鈥淓nergy-efficient greenhouse climate control using Gaussian process-based stochastic model predictive control鈥?- Link: https://www.sciencedirect.com/science/article/pii/S0306261925005719
 
 Task:
 - greenhouse climate control under uncertainty
@@ -277,8 +269,7 @@ Gap vs our current project:
 ### 8. Mallick et al., 2025
 
 Paper:
-- “Reinforcement learning-based model predictive control for greenhouse climate control”
-- Link: https://www.sciencedirect.com/science/article/pii/S2772375524003551
+- 鈥淩einforcement learning-based model predictive control for greenhouse climate control鈥?- Link: https://www.sciencedirect.com/science/article/pii/S2772375524003551
 
 Task:
 - greenhouse climate control under model uncertainty
@@ -299,7 +290,7 @@ Why it matters for us:
 
 - Switching from old Strawberry to AGC is defensible.
 - `DLinear` being very strong is consistent with greenhouse forecasting literature.
-- Our current AGC forecasting numbers are not obviously “broken” or dramatically below literature.
+- Our current AGC forecasting numbers are not obviously 鈥渂roken鈥?or dramatically below literature.
 
 ### What is clearly still weak
 
@@ -323,9 +314,11 @@ Why it matters for us:
 
 Use this wording:
 
-- The current AGC results are not yet “final-paper quality”.
+- The current AGC results are not yet 鈥渇inal-paper quality鈥?
 - However, they are already within the broad performance band reported by comparable greenhouse forecasting literature.
 - The main reason to prefer AGC is not that it already gives perfect scores.
 - The main reason is that AGC matches the control-oriented task much better:
   future weather, future control plans, actuator feedback, multiple compartments, and resource signals are all available.
 - Therefore AGC is the better research platform for multi-step forecasting plus MPC, even before the modeling stack is fully optimized.
+
+
