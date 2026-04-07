@@ -583,3 +583,43 @@ python c:\repositories\strawberry\agc_mpc\control_main.py --steps 48 --start-idx
   - `itransformer_residual`
   - `transformer_hybrid_residual`
   - `patchtst_residual`
+## 15. 正式同预算 DLinear 已补齐（2026-04-01）
+
+- 之前用于和 residual 系列对比的 [dlinear_forecaster_joint_all_reference_summary.json](c:/repositories/strawberry/agc_mpc/results/forecasting/analysis/dlinear_forecaster_joint_all_reference_summary.json) 实际上是 `1 epoch` quick run，不能作为严格 fair-budget 结论。
+- 现已按与 residual 系列一致的协议正式重跑 `DLinear`：
+  - `joint_all + Reference`
+  - targets = `Tair / Rhair / CO2air`
+  - nominal budget = `200 epoch, lr=1e-4, lambda_trend=0.3, patience=15`
+  - 实际 early stop 在最佳 `epoch 10`
+- 正式同预算 DLinear 指标：
+  - `Tair`: Full MAE `0.617`, Final MAE `0.682`
+  - `Rhair`: Full MAE `3.944`, Final MAE `4.621`
+  - `CO2air`: Full MAE `58.525`, Final MAE `61.130`
+- 结果文件：
+  - [dlinear_forecaster_joint_all_reference_summary.json](c:/repositories/strawberry/agc_mpc/results/forecasting/analysis/dlinear_forecaster_joint_all_reference_summary.json)
+  - [dlinear_forecaster_joint_all_reference.pt](c:/repositories/strawberry/agc_mpc/results/forecasting/checkpoints/dlinear_forecaster_joint_all_reference.pt)
+- 标准三图已补齐：
+  - [dlinear_forecaster_joint_all_reference_forecast_examples.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/baselines/dlinear_forecaster_joint_all_reference_forecast_examples.png)
+  - [dlinear_forecaster_joint_all_reference_forecast_rollout.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/baselines/dlinear_forecaster_joint_all_reference_forecast_rollout.png)
+  - [dlinear_forecaster_joint_all_reference_horizon_mae.png](c:/repositories/strawberry/agc_mpc/results/forecasting/figures/baselines/dlinear_forecaster_joint_all_reference_horizon_mae.png)
+- 基于这个正式 fair-budget 对照，当前结论更新为：
+  - `transformer_hybrid_residual`：`Tair` 显著优于 DLinear，但 `Rhair / CO2air` 仍弱于正式 DLinear。
+  - `itransformer_residual`：`Rhair / CO2air` 与正式 DLinear 接近或略优，但 `Tair` 略差于正式 DLinear。
+  - `patchtst_residual`：整体尚未超过正式 DLinear。
+  - 因此，`线性 + Transformer residual` 方向已经证明“有明显互补性”，但还不能说“现有混合模型已经全面超过正式同预算 DLinear”。
+
+## 16. CO2 专项文献整理（2026-04-07）
+
+- 已新增独立文档：
+  - [CO2_PAPERS_AND_DIRECTION.md](c:/repositories/strawberry/agc_mpc/CO2_PAPERS_AND_DIRECTION.md)
+- 这份文档主要回答两件事：
+  - greenhouse / `CO2` 相关论文里的 `MAE` 是否归一化
+  - 如果后续要专门改进 `CO2air`，哪些论文最值得读
+- 当前从文献得到的稳定结论：
+  - `CO2` 不是简单“再换一个 generic transformer backbone”就能稳住的问题。
+  - 更常见、也更有效的方向是：
+    - `CO2` 专项 `decomposition + recurrent/attention model + dynamic fusion`
+    - `CO2 balance + photosynthesis + control` 的 gray-box 路线
+- 对当前 `agc_mpc` 最现实的两条后续路线：
+  - 路线 1：在现有 forecasting 架构内做 `CO2` 专项分支，重点尝试 decomposition 和 variable-weight fusion。
+  - 路线 2：把 greenhouse 建成 `energy + water + carbon` 的 gray-box 系统，用 `CO2 dosing / ventilation exchange / canopy uptake` 等 latent flux 辅助建模。
