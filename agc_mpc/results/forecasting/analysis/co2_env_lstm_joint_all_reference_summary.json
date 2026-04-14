@@ -1,0 +1,206 @@
+{
+  "run_name": "co2_env_lstm_joint_all_reference",
+  "dataset": "AGC",
+  "target_compartment": "Reference",
+  "regime": "joint_all",
+  "protocol": {
+    "intent": "Train standalone CO2 specialist forecasters under a fair AGC budget.",
+    "variant": "co2_env_lstm",
+    "targets": [
+      "CO2air"
+    ],
+    "seq_len_steps": 288,
+    "seq_len_minutes": 1440,
+    "horizon_steps": 24,
+    "horizon_minutes": 120,
+    "batch_size": 256,
+    "num_epochs": 200,
+    "learning_rate": 0.0001,
+    "lambda_trend": 0.3,
+    "early_stop_patience": 15,
+    "model_family": "CO2-only environmental-factor LSTM"
+  },
+  "paper_family": [
+    "Prediction of CO2 Concentration via Long Short-Term Memory Using Environmental Factors in Greenhouses",
+    "Time-serial analysis of deep neural network models for prediction of climatic conditions inside a greenhouse"
+  ],
+  "architecture": "past-state LSTM encoder + future-known decoder LSTM + scalar CO2 head",
+  "co2_idea": "Treat CO2 as a dedicated target and rely on recurrent memory to absorb greenhouse regime dynamics.",
+  "integration_hint": "Works as a clean single-target baseline or as a teacher/expert branch for CO2.",
+  "train_compartments": [
+    "AICU",
+    "Automatoes",
+    "Digilog",
+    "IUACAAS",
+    "Reference",
+    "TheAutomators"
+  ],
+  "eval_compartments": [
+    "Reference"
+  ],
+  "metrics_by_target": {
+    "CO2air": {
+      "full_r2": 0.30645841360092163,
+      "full_mae": 74.15713500976562,
+      "final_r2": -0.4851980209350586,
+      "final_mae": 118.79972076416016
+    }
+  },
+  "representative_window": {
+    "sample_idx": 3406,
+    "true": [
+      [
+        678.0
+      ],
+      [
+        633.0
+      ],
+      [
+        673.0
+      ],
+      [
+        670.0
+      ],
+      [
+        688.0
+      ],
+      [
+        679.0
+      ],
+      [
+        702.0
+      ],
+      [
+        689.0
+      ],
+      [
+        689.0
+      ],
+      [
+        691.0
+      ],
+      [
+        714.0
+      ],
+      [
+        702.0
+      ],
+      [
+        669.0
+      ],
+      [
+        710.0
+      ],
+      [
+        704.0
+      ],
+      [
+        701.0
+      ],
+      [
+        703.0
+      ],
+      [
+        698.0
+      ],
+      [
+        705.0
+      ],
+      [
+        708.0
+      ],
+      [
+        714.0
+      ],
+      [
+        720.0
+      ],
+      [
+        723.0
+      ],
+      [
+        730.0
+      ]
+    ],
+    "pred": [
+      [
+        649.7603149414062
+      ],
+      [
+        649.5331420898438
+      ],
+      [
+        649.6781005859375
+      ],
+      [
+        651.2161254882812
+      ],
+      [
+        654.4326782226562
+      ],
+      [
+        659.0468139648438
+      ],
+      [
+        664.6127319335938
+      ],
+      [
+        670.753662109375
+      ],
+      [
+        676.8174438476562
+      ],
+      [
+        682.806396484375
+      ],
+      [
+        688.6884765625
+      ],
+      [
+        694.4849853515625
+      ],
+      [
+        700.17041015625
+      ],
+      [
+        705.667724609375
+      ],
+      [
+        711.0968017578125
+      ],
+      [
+        716.5082397460938
+      ],
+      [
+        721.9760131835938
+      ],
+      [
+        727.4797973632812
+      ],
+      [
+        733.0737915039062
+      ],
+      [
+        738.9220581054688
+      ],
+      [
+        745.0897216796875
+      ],
+      [
+        751.4484252929688
+      ],
+      [
+        757.9674072265625
+      ],
+      [
+        764.6315307617188
+      ]
+    ]
+  },
+  "checkpoint_path": "results/forecasting/checkpoints/co2_env_lstm_joint_all_reference.pt",
+  "figure_paths": {
+    "forecast_examples": "results\\forecasting\\figures\\co2_specialists\\co2_env_lstm_joint_all_reference_forecast_examples.png",
+    "horizon_mae": "results\\forecasting\\figures\\co2_specialists\\co2_env_lstm_joint_all_reference_horizon_mae.png",
+    "forecast_rollout": "results\\forecasting\\figures\\co2_specialists\\co2_env_lstm_joint_all_reference_forecast_rollout.png"
+  }
+}

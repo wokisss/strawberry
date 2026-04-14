@@ -1,0 +1,205 @@
+{
+  "run_name": "co2_wavelet_gru_attn_joint_all_reference",
+  "dataset": "AGC",
+  "target_compartment": "Reference",
+  "regime": "joint_all",
+  "protocol": {
+    "intent": "Train standalone CO2 specialist forecasters under a fair AGC budget.",
+    "variant": "co2_wavelet_gru_attn",
+    "targets": [
+      "CO2air"
+    ],
+    "seq_len_steps": 288,
+    "seq_len_minutes": 1440,
+    "horizon_steps": 24,
+    "horizon_minutes": 120,
+    "batch_size": 256,
+    "num_epochs": 200,
+    "learning_rate": 0.0001,
+    "lambda_trend": 0.3,
+    "early_stop_patience": 15,
+    "model_family": "CO2-only wavelet-inspired GRU with adaptive attention"
+  },
+  "paper_family": [
+    "Wavelet-decoupled GRU with adaptive attention for multi-step carbon dioxide concentration prediction in intelligent glass greenhouse"
+  ],
+  "architecture": "multi-scale decoupling + 3 GRU encoders + horizon-aware adaptive attention fusion",
+  "co2_idea": "Model CO2 at multiple temporal bands and vary the branch weight as the forecast horizon grows.",
+  "integration_hint": "Most directly transferable to the current dynamic-gating residual line for CO2air.",
+  "train_compartments": [
+    "AICU",
+    "Automatoes",
+    "Digilog",
+    "IUACAAS",
+    "Reference",
+    "TheAutomators"
+  ],
+  "eval_compartments": [
+    "Reference"
+  ],
+  "metrics_by_target": {
+    "CO2air": {
+      "full_r2": 0.7519423961639404,
+      "full_mae": 45.20927810668945,
+      "final_r2": 0.6159411668777466,
+      "final_mae": 58.2917594909668
+    }
+  },
+  "representative_window": {
+    "sample_idx": 3406,
+    "true": [
+      [
+        678.0
+      ],
+      [
+        633.0
+      ],
+      [
+        673.0
+      ],
+      [
+        670.0
+      ],
+      [
+        688.0
+      ],
+      [
+        679.0
+      ],
+      [
+        702.0
+      ],
+      [
+        689.0
+      ],
+      [
+        689.0
+      ],
+      [
+        691.0
+      ],
+      [
+        714.0
+      ],
+      [
+        702.0
+      ],
+      [
+        669.0
+      ],
+      [
+        710.0
+      ],
+      [
+        704.0
+      ],
+      [
+        701.0
+      ],
+      [
+        703.0
+      ],
+      [
+        698.0
+      ],
+      [
+        705.0
+      ],
+      [
+        708.0
+      ],
+      [
+        714.0
+      ],
+      [
+        720.0
+      ],
+      [
+        723.0
+      ],
+      [
+        730.0
+      ]
+    ],
+    "pred": [
+      [
+        642.5413208007812
+      ],
+      [
+        643.8864135742188
+      ],
+      [
+        646.5399169921875
+      ],
+      [
+        647.856201171875
+      ],
+      [
+        649.9935913085938
+      ],
+      [
+        650.522705078125
+      ],
+      [
+        650.9563598632812
+      ],
+      [
+        651.3106689453125
+      ],
+      [
+        650.4527587890625
+      ],
+      [
+        651.2022705078125
+      ],
+      [
+        652.1210327148438
+      ],
+      [
+        653.2745361328125
+      ],
+      [
+        654.2713012695312
+      ],
+      [
+        654.8015747070312
+      ],
+      [
+        655.8026123046875
+      ],
+      [
+        657.0700073242188
+      ],
+      [
+        657.9783935546875
+      ],
+      [
+        659.0003662109375
+      ],
+      [
+        660.1651000976562
+      ],
+      [
+        662.7811889648438
+      ],
+      [
+        663.8313598632812
+      ],
+      [
+        665.2289428710938
+      ],
+      [
+        665.5817260742188
+      ],
+      [
+        666.7476806640625
+      ]
+    ]
+  },
+  "checkpoint_path": "results/forecasting/checkpoints/co2_wavelet_gru_attn_joint_all_reference.pt",
+  "figure_paths": {
+    "forecast_examples": "results\\forecasting\\figures\\co2_specialists\\co2_wavelet_gru_attn_joint_all_reference_forecast_examples.png",
+    "horizon_mae": "results\\forecasting\\figures\\co2_specialists\\co2_wavelet_gru_attn_joint_all_reference_horizon_mae.png",
+    "forecast_rollout": "results\\forecasting\\figures\\co2_specialists\\co2_wavelet_gru_attn_joint_all_reference_forecast_rollout.png"
+  }
+}

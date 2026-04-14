@@ -8,6 +8,7 @@ from pathlib import Path
 
 from figure_layout import (
     baseline_figures_dir,
+    co2_specialist_figures_dir,
     comparison_figures_dir,
     current_hybrid_figures_dir,
     residual_figures_dir,
@@ -44,6 +45,7 @@ def ensure_results_layout(cfg) -> None:
         current_hybrid_figures_dir(cfg.forecast_figures_dir),
         residual_figures_dir(cfg.forecast_figures_dir),
         comparison_figures_dir(cfg.forecast_figures_dir),
+        co2_specialist_figures_dir(cfg.forecast_figures_dir),
     ]:
         subdir.mkdir(parents=True, exist_ok=True)
 

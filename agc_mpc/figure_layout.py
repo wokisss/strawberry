@@ -10,6 +10,7 @@ BASELINES_DIRNAME = "baselines"
 CURRENT_HYBRID_DIRNAME = "current_hybrid_transformer"
 RESIDUAL_VARIANTS_DIRNAME = "residual_variants"
 COMPARISONS_DIRNAME = "comparisons"
+CO2_SPECIALISTS_DIRNAME = "co2_specialists"
 
 
 def baseline_figures_dir(root: str | Path) -> Path:
@@ -26,3 +27,7 @@ def residual_figures_dir(root: str | Path) -> Path:
 
 def comparison_figures_dir(root: str | Path) -> Path:
     return Path(root) / COMPARISONS_DIRNAME
+
+
+def co2_specialist_figures_dir(root: str | Path) -> Path:
+    return Path(root) / CO2_SPECIALISTS_DIRNAME

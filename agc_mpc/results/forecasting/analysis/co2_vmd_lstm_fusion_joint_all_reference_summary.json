@@ -1,0 +1,206 @@
+{
+  "run_name": "co2_vmd_lstm_fusion_joint_all_reference",
+  "dataset": "AGC",
+  "target_compartment": "Reference",
+  "regime": "joint_all",
+  "protocol": {
+    "intent": "Train standalone CO2 specialist forecasters under a fair AGC budget.",
+    "variant": "co2_vmd_lstm_fusion",
+    "targets": [
+      "CO2air"
+    ],
+    "seq_len_steps": 288,
+    "seq_len_minutes": 1440,
+    "horizon_steps": 24,
+    "horizon_minutes": 120,
+    "batch_size": 256,
+    "num_epochs": 200,
+    "learning_rate": 0.0001,
+    "lambda_trend": 0.3,
+    "early_stop_patience": 15,
+    "model_family": "CO2-only VMD/WT-inspired LSTM fusion"
+  },
+  "paper_family": [
+    "Multi-model fusion method for predicting CO2 concentration in greenhouse tomatoes",
+    "Prediction of CO2 concentration in mushroom greenhouse via optimized long and short term memory algorithm"
+  ],
+  "architecture": "trend/detail decomposition + dual LSTM encoders + future-query attention + dynamic fusion",
+  "co2_idea": "Separate low-frequency trend from fast fluctuation, then fuse them adaptively per horizon.",
+  "integration_hint": "Best fit for a CO2 specialist residual branch inside the existing multi-target forecaster.",
+  "train_compartments": [
+    "AICU",
+    "Automatoes",
+    "Digilog",
+    "IUACAAS",
+    "Reference",
+    "TheAutomators"
+  ],
+  "eval_compartments": [
+    "Reference"
+  ],
+  "metrics_by_target": {
+    "CO2air": {
+      "full_r2": 0.6863131523132324,
+      "full_mae": 52.29832077026367,
+      "final_r2": 0.6002932786941528,
+      "final_mae": 59.697383880615234
+    }
+  },
+  "representative_window": {
+    "sample_idx": 3406,
+    "true": [
+      [
+        678.0
+      ],
+      [
+        633.0
+      ],
+      [
+        673.0
+      ],
+      [
+        670.0
+      ],
+      [
+        688.0
+      ],
+      [
+        679.0
+      ],
+      [
+        702.0
+      ],
+      [
+        689.0
+      ],
+      [
+        689.0
+      ],
+      [
+        691.0
+      ],
+      [
+        714.0
+      ],
+      [
+        702.0
+      ],
+      [
+        669.0
+      ],
+      [
+        710.0
+      ],
+      [
+        704.0
+      ],
+      [
+        701.0
+      ],
+      [
+        703.0
+      ],
+      [
+        698.0
+      ],
+      [
+        705.0
+      ],
+      [
+        708.0
+      ],
+      [
+        714.0
+      ],
+      [
+        720.0
+      ],
+      [
+        723.0
+      ],
+      [
+        730.0
+      ]
+    ],
+    "pred": [
+      [
+        650.218505859375
+      ],
+      [
+        650.378173828125
+      ],
+      [
+        651.2424926757812
+      ],
+      [
+        651.168701171875
+      ],
+      [
+        651.4989013671875
+      ],
+      [
+        651.0946655273438
+      ],
+      [
+        650.676513671875
+      ],
+      [
+        650.3468017578125
+      ],
+      [
+        649.2916259765625
+      ],
+      [
+        649.0894775390625
+      ],
+      [
+        648.934326171875
+      ],
+      [
+        648.9381103515625
+      ],
+      [
+        648.81591796875
+      ],
+      [
+        648.4638061523438
+      ],
+      [
+        648.359619140625
+      ],
+      [
+        648.3104858398438
+      ],
+      [
+        648.20458984375
+      ],
+      [
+        648.02001953125
+      ],
+      [
+        647.9761962890625
+      ],
+      [
+        648.5347900390625
+      ],
+      [
+        648.4697875976562
+      ],
+      [
+        648.576171875
+      ],
+      [
+        648.2518920898438
+      ],
+      [
+        648.3280639648438
+      ]
+    ]
+  },
+  "checkpoint_path": "results/forecasting/checkpoints/co2_vmd_lstm_fusion_joint_all_reference.pt",
+  "figure_paths": {
+    "forecast_examples": "results\\forecasting\\figures\\co2_specialists\\co2_vmd_lstm_fusion_joint_all_reference_forecast_examples.png",
+    "horizon_mae": "results\\forecasting\\figures\\co2_specialists\\co2_vmd_lstm_fusion_joint_all_reference_horizon_mae.png",
+    "forecast_rollout": "results\\forecasting\\figures\\co2_specialists\\co2_vmd_lstm_fusion_joint_all_reference_forecast_rollout.png"
+  }
+}
