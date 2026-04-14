@@ -1,152 +1,155 @@
-﻿# CO2 专项文献与方向整理
+# CO2_PAPERS_AND_DIRECTION.md
 
-## 目的
+English canonical version.
+Mapped Chinese mirror: [CO2_PAPERS_AND_DIRECTION.zh-CN.md](c:/repositories/strawberry/agc_mpc/CO2_PAPERS_AND_DIRECTION.zh-CN.md)
+Last synchronized: `2026-04-07`
 
-这份笔记只聚焦温室里的 `CO2` 预测与控制问题。
+## Purpose
 
-它主要回答两个实际问题：
+This note only focuses on greenhouse `CO2` forecasting and control.
 
-1. 我们查到的论文里，`MAE` 到底是对归一化数据算的，还是对物理量算的？
-2. 如果后续想专门改进 `agc_mpc` 里的 `CO2air`，哪些论文最值得读，哪些思路最值得借？
+It answers two practical questions:
 
-这不是榜单。
-目标是提炼能真正迁移到当前 `AGC` 流程里的技术方向。
+1. When a paper reports `MAE`, is it computed on normalized data or on physical units?
+2. If we want to improve `CO2air` in `agc_mpc`, which papers are worth reading first and which ideas are worth borrowing first?
 
-## A. 怎么判断论文里的 MAE 是不是归一化的
+This is not a ranking for its own sake.
+The goal is to extract directions that can really transfer into the current `AGC` workflow.
 
-在温室论文里，常见情况通常有三类：
+## A. How To Judge Whether A Reported MAE Is Normalized
 
-1. 训练前做了归一化，但最终误差是在反归一化后报告的。
-   - 这类指标通常会带物理单位，例如 `ppm`、`degC`、`%RH`。
+In greenhouse papers, there are usually three common cases.
 
-2. 论文直接在归一化目标上报告误差。
-   - 这类指标往往是很小的小数，例如 `0.0117`，而且通常不带物理单位。
+1. The data are normalized for training, but the final error is reported after inverse scaling.
+   - These metrics usually carry physical units such as `ppm`, `degC`, or `%RH`.
 
-3. 公开摘要页没有给足够细节。
-   - 这种情况下，不能在没看到全文前就断言 `MAE` 是否归一化。
+2. The paper reports error directly on the normalized target.
+   - These metrics are usually very small decimals such as `0.0117`, often without physical units.
 
-实用判断规则：
+3. The public abstract page does not provide enough detail.
+   - In that case, do not claim the `MAE` is normalized or unnormalized without checking the full paper.
 
-- 如果指标写成 `ppm`，通常应该理解为物理单位误差。
-- 如果指标是很小的小数、又不带单位，而目标本身显然在几百 `ppm` 量级，那大概率是归一化误差。
-- 如果公开页面只给了 `R2`，那 `MAE` 是否归一化就是未确定状态。
+Practical rules:
 
-## B. CO2 专项论文清单
+- If the error is written in `ppm`, it is usually a physical-unit error.
+- If the number is very small and unit-free while the target itself is in the hundreds of `ppm`, it is probably normalized error.
+- If only `R2` is shown on the public page, the `MAE` status is still unknown.
 
-### B1. 直接做温室 CO2 预测的论文
+## B. CO2-Focused Paper List
 
-| 论文 | 解决什么问题 | 主方法 | 指标状态 | 能借什么 | 优先级 |
+### B1. Papers That Directly Forecast Greenhouse CO2
+
+| Paper | What problem it solves | Main method | Metric status | What we can borrow | Priority |
 | --- | --- | --- | --- | --- | --- |
-| [Prediction of CO2 Concentration via Long Short-Term Memory Using Environmental Factors in Greenhouses](https://www.kci.go.kr/kciportal/ci/sereArticleSearch/ciSereArtiView.kci?sereArticleSearchBean.artiId=ART002578287) | 用环境因子预测温室 `CO2`，`2 h` ahead | `LSTM` | 公开摘要主要给 `R2`，单靠摘要无法确认 `MAE` 是否归一化 | `CO2` 可以单独当成专门目标来建模，而不只是通用气候模型里的一个共享 head | 中 |
-| [Time-serial analysis of deep neural network models for prediction of climatic conditions inside a greenhouse](https://doi.org/10.1016/j.compag.2020.105402) | 联合预测 `temperature / humidity / CO2` | `ANN`、`NARX`、`RNN-LSTM` | 公开结果页明确给了 `CO2` 的 `ppm` 误差，因此是物理单位误差 | `CO2` 本来就比温度难；递归类模型在温室动力学里仍有价值 | 高 |
-| [Multi-model fusion method for predicting CO2 concentration in greenhouse tomatoes](https://doi.org/10.1016/j.compag.2024.109623) | 温室番茄 `CO2` 浓度预测 | `WT + VMD + LSTM + attention + fusion` | 公开摘要给 `MAE = 0.0117`、`RMSE = 0.0194`，但没有物理单位；大概率是归一化误差 | `CO2` 更适合“分解 + 融合”，而不是单一 backbone | 很高 |
-| [Prediction of CO2 concentration in mushroom greenhouse via optimized long and short term memory algorithm](https://doi.org/10.1038/s41598-025-86394-0) | 食用菌温室 `CO2` 预测 | `VMD-SSA-LSTM`、`VMD-DBO-LSTM` | 公开摘要直接给 `MAE = 2.6365 ppm`，因此是物理单位误差 | 即便 backbone 仍是 recurrent，`CO2` 也会明显受益于 decomposition 与优化 | 高 |
-| [Wavelet-decoupled GRU with adaptive attention for multi-step carbon dioxide concentration prediction in intelligent glass greenhouse](https://doi.org/10.1016/j.atech.2025.101653) | 智能玻璃温室多步 `CO2` 预测，最长到 `8 h` | wavelet 类解耦 + `GRU` + adaptive attention | 公开页给的是 `ppm` 误差；训练很可能有归一化，但最终指标是物理单位 | 强烈支持 `CO2` 应按多尺度解耦 + 自适应权重来处理 | 很高 |
+| [Prediction of CO2 Concentration via Long Short-Term Memory Using Environmental Factors in Greenhouses](https://www.kci.go.kr/kciportal/ci/sereArticleSearch/ciSereArtiView.kci?sereArticleSearchBean.artiId=ART002578287) | Forecast greenhouse `CO2` from environmental factors, `2 h` ahead | `LSTM` | Public abstract mainly reports `R2`, so `MAE` status is unclear from the abstract alone | `CO2` can be modeled as a dedicated target instead of only as one shared head in a general climate model | Medium |
+| [Time-serial analysis of deep neural network models for prediction of climatic conditions inside a greenhouse](https://doi.org/10.1016/j.compag.2020.105402) | Jointly forecast `temperature / humidity / CO2` | `ANN`, `NARX`, `RNN-LSTM` | Public results page reports `CO2` error in `ppm`, so this is a physical-unit metric | `CO2` is harder than temperature, and recurrent models still matter in greenhouse dynamics | High |
+| [Multi-model fusion method for predicting CO2 concentration in greenhouse tomatoes](https://doi.org/10.1016/j.compag.2024.109623) | Forecast greenhouse tomato `CO2` concentration | `WT + VMD + LSTM + attention + fusion` | Public abstract reports `MAE = 0.0117` and `RMSE = 0.0194` without physical units; most likely normalized error | `CO2` is better handled by decomposition and fusion than by a single backbone | Very High |
+| [Prediction of CO2 concentration in mushroom greenhouse via optimized long and short term memory algorithm](https://doi.org/10.1038/s41598-025-86394-0) | Forecast `CO2` in a mushroom greenhouse | `VMD-SSA-LSTM`, `VMD-DBO-LSTM` | Public abstract directly reports `MAE = 2.6365 ppm`, so the metric is in physical units | Even with recurrent backbones, `CO2` benefits strongly from decomposition and optimization | High |
+| [Wavelet-decoupled GRU with adaptive attention for multi-step carbon dioxide concentration prediction in intelligent glass greenhouse](https://doi.org/10.1016/j.atech.2025.101653) | Multi-step greenhouse `CO2` forecasting up to `8 h` | wavelet-like decoupling + `GRU` + adaptive attention | Public page reports `ppm` error; training likely uses scaling, but final metrics are physical-unit | Strong support for multi-scale decomposition and adaptive weighting for `CO2` | Very High |
 
-### B2. CO2 控制与优化论文
+### B2. CO2 Control And Optimization Papers
 
-| 论文 | 解决什么问题 | 主方法 | 为什么重要 |
+| Paper | What problem it solves | Main method | Why it matters |
 | --- | --- | --- | --- |
-| [Model-based control of CO2 concentration in greenhouses at ambient levels increases cucumber yield](https://doi.org/10.1016/j.agrformet.2006.12.002) | 环境浓度附近的 `CO2` 控制 | 基于作物吸收模型的 model-based control | 提醒我们最终目标不只是预测 `ppm`，还包括支持 `CO2` 供给策略和植株吸收估计 |
-| [Model predictive control of a Venlo-type greenhouse system considering electrical energy, water and carbon dioxide consumption](https://doi.org/10.1016/j.apenergy.2021.117163) | 联合考虑 energy、water、`CO2` 消耗 | `MPC` | 如果后面把 `CO2` 从纯预测目标移到控制 cost 里，这篇很重要 |
-| [Intelligent control and energy optimization in controlled environment agriculture via nonlinear model predictive control of semi-closed greenhouse](https://doi.org/10.1016/j.apenergy.2022.119334) | 联合控制 `temperature / humidity / CO2 / light` | 基于 energy 和 mass balance 的 `NMPC` | 强烈支持把温室建成耦合的 energy + mass balance，而不是纯黑盒 forecast |
-| [CO2 enrichment in greenhouse production: Towards a sustainable approach](https://doi.org/10.3389/fpls.2022.1029901) | `CO2` enrichment 策略综述 | review | 如果问题从“预测得准不准”转向“如何高效、可持续地用 CO2”，这是很好的总入口 |
+| [Model-based control of CO2 concentration in greenhouses at ambient levels increases cucumber yield](https://doi.org/10.1016/j.agrformet.2006.12.002) | `CO2` control near ambient concentration | model-based control using crop uptake modeling | Reminds us the final target is not just accurate `ppm` forecasting, but support for dosing strategy and crop uptake estimation |
+| [Model predictive control of a Venlo-type greenhouse system considering electrical energy, water and carbon dioxide consumption](https://doi.org/10.1016/j.apenergy.2021.117163) | Joint energy, water, and `CO2` consumption control | `MPC` | Important if we later move `CO2` from a pure forecast target into the control cost itself |
+| [Intelligent control and energy optimization in controlled environment agriculture via nonlinear model predictive control of semi-closed greenhouse](https://doi.org/10.1016/j.apenergy.2022.119334) | Joint control of `temperature / humidity / CO2 / light` | energy- and mass-balance-based `NMPC` | Strong support for modeling the greenhouse as a coupled energy + mass system instead of only as a black-box forecaster |
+| [CO2 enrichment in greenhouse production: Towards a sustainable approach](https://doi.org/10.3389/fpls.2022.1029901) | Review of `CO2` enrichment strategy | review | Good entry point if the question shifts from prediction accuracy to sustainable and efficient `CO2` use |
 
-### B3. 灰盒与通量模型论文
+### B3. Gray-Box And Flux-Model Papers
 
-| 论文 | 解决什么问题 | 主方法 | 为什么重要 |
+| Paper | What problem it solves | Main method | Why it matters |
 | --- | --- | --- | --- |
-| [An autocalibrating model for simulating and measuring net canopy photosynthesis using a standard greenhouse climate computer](https://doi.org/10.1016/0168-1699(91)90019-6) | 温室内冠层净光合估计 | `CO2` balance model + black-box photosynthesis model | 这是最清晰的 `CO2 balance + black-box` 灰盒路线先例 |
-| [Estimation of net photosynthesis of a greenhouse canopy using a mass balance method and mechanistic models](https://doi.org/10.1016/0168-1923(94)90106-6) | 用温室 `CO2` balance 估计冠层光合 | mass balance + mechanistic models | 支持把 `CO2` 与冠层吸收、通风交换联系起来，而不是只把它当作普通标量时序 |
-| [Validation of a Photosynthesis Model through the Use of the CO2 Balance of a Greenhouse Tomato Canopy](https://doi.org/10.1006/anbo.1999.0938) | 用温室 `CO2` balance 验证光合模型 | `CO2` balance + 生理模型 | 再次强化了 `CO2` 应与作物吸收过程联合建模的思路 |
+| [An autocalibrating model for simulating and measuring net canopy photosynthesis using a standard greenhouse climate computer](https://doi.org/10.1016/0168-1699(91)90019-6) | Estimate net canopy photosynthesis inside a greenhouse | `CO2` balance model + black-box photosynthesis model | This is one of the clearest precedents for a `CO2 balance + black-box` gray-box route |
+| [Estimation of net photosynthesis of a greenhouse canopy using a mass balance method and mechanistic models](https://doi.org/10.1016/0168-1923(94)90106-6) | Estimate canopy photosynthesis from greenhouse `CO2` balance | mass balance + mechanistic models | Supports modeling `CO2` together with canopy uptake and ventilation exchange instead of as an ordinary scalar time series |
+| [Validation of a Photosynthesis Model through the Use of the CO2 Balance of a Greenhouse Tomato Canopy](https://doi.org/10.1006/anbo.1999.0938) | Validate a photosynthesis model using greenhouse `CO2` balance | `CO2` balance + plant-physiology model | Reinforces the idea that `CO2` should be linked to plant uptake processes |
 
-## C. 这些论文共同指向什么
+## C. What These Papers Jointly Suggest
 
-从直接做 `CO2` 预测的论文里，可以稳定看出两点：
+Across direct `CO2` forecasting papers, two patterns are stable.
 
-1. `CO2` 比 `Tair` 更非平稳，也更依赖具体 regime。
-2. 对 `CO2` 有效的方法，通常都会加入以下至少一种：
-   - 分解 / 去噪 / 多尺度处理
-   - 动态融合 / 自适应加权
+1. `CO2` is more non-stationary than `Tair` and more regime-dependent.
+2. Methods that work well for `CO2` usually add at least one of the following:
+   - decomposition / denoising / multi-scale processing
+   - dynamic fusion / adaptive weighting
 
-这和当前 `AGC` 里的观察是一致的：
+This is consistent with what we already see in `AGC`:
 
-- `CO2air` 在全局平均指标上可能还行
-- 但局部 rollout 窗口里仍然可能漂得很严重
+- `CO2air` may look acceptable on global average metrics
+- but local rollout windows can still drift badly
 
-所以，下一步不应该只是“换一个更大的 generic transformer”。
-更合理的是下面两条路线之一。
+So the next step should not be just "swap in a bigger generic transformer." A more realistic choice is one of the two routes below.
 
-## D. 对 `agc_mpc` 最现实的两条路线
+## D. Two Practical Routes For `agc_mpc`
 
-### 路线 1：CO2 专项 forecasting 分支
+### Route 1: A CO2-Specialized Forecasting Branch
 
-保留当前 3-target 设定，但为 `CO2` 增加一个比现有 residual variant 更专门的分支。
+Keep the current multi-target setup, but add a more specialized branch for `CO2` than the current residual variants.
 
-从文献看，最合理的组成包括：
+The most reasonable ingredients from the literature are:
 
-1. 序列建模前先做 decomposition
+1. decomposition before sequence modeling
    - `WT`
    - `VMD`
-   - 或其他多尺度拆分
+   - or other multi-scale splits
 
-2. 为 `CO2` 分支选更合适的时间 backbone
+2. a more suitable backbone for the `CO2` branch
    - `GRU`
    - `LSTM`
    - `GRU/LSTM + attention`
 
-3. 做 variable-weight fusion
-   - 按目标变量加权
-   - 按 horizon 加权
-   - 按上下文加权
+3. variable-weight fusion
+   - weighting by target variable
+   - weighting by horizon
+   - weighting by context
 
-这条路线最容易接到当前 forecasting 代码里。
+This route is the easiest one to integrate into the current forecasting codebase.
 
-### 路线 2：energy-water-carbon 灰盒模型
+### Route 2: An Energy-Water-Carbon Gray-Box Model
 
-不要只把 `CO2air` 当成另一个输出通道，而是把温室动力学定义为一个耦合系统：
+Instead of treating `CO2air` as just another output channel, define the greenhouse as a coupled system of:
 
 - energy flow
 - water flow
 - carbon flow
 
-然后做灰盒 predictor：
+Then build a gray-box predictor:
 
-- 能写清楚的部分用机理平衡方程
-- 写不清楚的部分用 black-box residual 去补
+- use mechanistic balance equations where they are known
+- use a black-box residual model where the physics is incomplete
 
-对 `CO2` 来说，最自然的 latent 量包括：
+For `CO2`, natural latent quantities include:
 
 - `CO2 dosing`
 - ventilation exchange
 - canopy net uptake / photosynthesis
-- respiration 等项
+- respiration terms
 
-这条路线研究味更强，也更贴近温室真实过程。
+This route is more research-oriented and more greenhouse-native.
 
-## E. 建议阅读顺序
+## E. Suggested Reading Order
 
-如果当前目标是尽快改进 `CO2air` forecasting：
+If the current goal is to improve `CO2air` forecasting quickly:
 
 1. [Multi-model fusion method for predicting CO2 concentration in greenhouse tomatoes](https://doi.org/10.1016/j.compag.2024.109623)
 2. [Wavelet-decoupled GRU with adaptive attention for multi-step carbon dioxide concentration prediction in intelligent glass greenhouse](https://doi.org/10.1016/j.atech.2025.101653)
 3. [Prediction of CO2 concentration in mushroom greenhouse via optimized long and short term memory algorithm](https://doi.org/10.1038/s41598-025-86394-0)
 4. [Time-serial analysis of deep neural network models for prediction of climatic conditions inside a greenhouse](https://doi.org/10.1016/j.compag.2020.105402)
 
-如果目标是往更像论文主线的 `CO2` 建模方向走：
+If the goal is to move toward a stronger greenhouse-native CO2 modeling line:
 
 1. [An autocalibrating model for simulating and measuring net canopy photosynthesis using a standard greenhouse climate computer](https://doi.org/10.1016/0168-1699(91)90019-6)
 2. [Model-based control of CO2 concentration in greenhouses at ambient levels increases cucumber yield](https://doi.org/10.1016/j.agrformet.2006.12.002)
 3. [Intelligent control and energy optimization in controlled environment agriculture via nonlinear model predictive control of semi-closed greenhouse](https://doi.org/10.1016/j.apenergy.2022.119334)
 
-## 总结
+## Summary
 
-对于 `CO2air`，现有文献并不支持“再换一个 generic backbone 就能解决问题”。
+For `CO2air`, the literature does not support the claim that another generic backbone swap will solve the problem.
 
-更强的方向是：
+The stronger directions are:
 
-1. `CO2` 专项 `decomposition + sequence model + dynamic fusion`
-2. `CO2 balance + photosynthesis + control` 的 gray-box 建模
+1. `CO2`-specialized `decomposition + sequence model + dynamic fusion`
+2. `CO2 balance + photosynthesis + control` gray-box modeling
 
-如果继续沿用当前 `agc_mpc` 架构，最快的下一步是路线 1。
-如果想做更原创、更温室原生的研究线，路线 2 更强。
+If we keep the current `agc_mpc` architecture, the fastest next step is Route 1.
+If the goal is a more original and greenhouse-native research line, Route 2 is stronger.
