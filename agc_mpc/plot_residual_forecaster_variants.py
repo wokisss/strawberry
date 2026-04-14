@@ -16,7 +16,13 @@ from data_processing.processor import AGCDataProcessor
 from evaluation.evaluator import ForecasterEvaluator
 from figure_layout import residual_figures_dir
 from models.hybrid_residual_forecaster import ConditionalHybridResidualForecaster
-from models.itransformer_residual_forecaster import ConditionalITransformerResidualForecaster
+from models.itransformer_residual_forecaster import (
+    ConditionalITransformerCO2LateResidualForecaster,
+    ConditionalITransformerCO2ResidualForecaster,
+    ConditionalITransformerCO2WaveletBlendForecaster,
+    ConditionalITransformerCO2WaveletResidualForecaster,
+    ConditionalITransformerResidualForecaster,
+)
 from models.patchtst_residual_forecaster import ConditionalPatchTSTResidualForecaster
 from results_utils import ensure_results_layout
 
@@ -24,6 +30,10 @@ from results_utils import ensure_results_layout
 MODEL_REGISTRY = {
     "transformer_hybrid_residual": ConditionalHybridResidualForecaster,
     "itransformer_residual": ConditionalITransformerResidualForecaster,
+    "itransformer_co2_residual": ConditionalITransformerCO2ResidualForecaster,
+    "itransformer_co2_late_residual": ConditionalITransformerCO2LateResidualForecaster,
+    "itransformer_co2_wavelet_residual": ConditionalITransformerCO2WaveletResidualForecaster,
+    "itransformer_co2_wavelet_blend": ConditionalITransformerCO2WaveletBlendForecaster,
     "patchtst_residual": ConditionalPatchTSTResidualForecaster,
 }
 

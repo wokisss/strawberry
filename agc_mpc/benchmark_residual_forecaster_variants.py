@@ -17,7 +17,13 @@ from sklearn.metrics import mean_absolute_error, r2_score
 from config import AGCConfig
 from data_processing.processor import AGCDataProcessor
 from models.hybrid_residual_forecaster import ConditionalHybridResidualForecaster
-from models.itransformer_residual_forecaster import ConditionalITransformerResidualForecaster
+from models.itransformer_residual_forecaster import (
+    ConditionalITransformerCO2LateResidualForecaster,
+    ConditionalITransformerCO2ResidualForecaster,
+    ConditionalITransformerCO2WaveletBlendForecaster,
+    ConditionalITransformerCO2WaveletResidualForecaster,
+    ConditionalITransformerResidualForecaster,
+)
 from models.patchtst_residual_forecaster import ConditionalPatchTSTResidualForecaster
 from results_utils import ensure_results_layout
 from training.trainer import Trainer
@@ -31,6 +37,22 @@ MODEL_REGISTRY = {
     "itransformer_residual": {
         "builder": ConditionalITransformerResidualForecaster,
         "label": "dlinear main path + itransformer residual",
+    },
+    "itransformer_co2_residual": {
+        "builder": ConditionalITransformerCO2ResidualForecaster,
+        "label": "dlinear main path + itransformer residual + co2 specialist",
+    },
+    "itransformer_co2_late_residual": {
+        "builder": ConditionalITransformerCO2LateResidualForecaster,
+        "label": "dlinear main path + itransformer residual + late-horizon co2 adapter",
+    },
+    "itransformer_co2_wavelet_residual": {
+        "builder": ConditionalITransformerCO2WaveletResidualForecaster,
+        "label": "dlinear main path + itransformer residual + wavelet-style co2 adapter",
+    },
+    "itransformer_co2_wavelet_blend": {
+        "builder": ConditionalITransformerCO2WaveletBlendForecaster,
+        "label": "dlinear main path + itransformer residual + wavelet-style co2 blend expert",
     },
     "patchtst_residual": {
         "builder": ConditionalPatchTSTResidualForecaster,

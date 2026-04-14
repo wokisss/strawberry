@@ -24,7 +24,13 @@ from control.simulator import AGCClosedLoopSimulator
 from data_processing.processor import AGCDataProcessor
 from models.dlinear_forecaster import ConditionalDLinearForecaster
 from models.hybrid_residual_forecaster import ConditionalHybridResidualForecaster
-from models.itransformer_residual_forecaster import ConditionalITransformerResidualForecaster
+from models.itransformer_residual_forecaster import (
+    ConditionalITransformerCO2LateResidualForecaster,
+    ConditionalITransformerCO2ResidualForecaster,
+    ConditionalITransformerCO2WaveletBlendForecaster,
+    ConditionalITransformerCO2WaveletResidualForecaster,
+    ConditionalITransformerResidualForecaster,
+)
 from models.patchtst_residual_forecaster import ConditionalPatchTSTResidualForecaster
 from models.transformer_forecaster import ConditionalTransformerForecaster
 from models.transformer_hybrid_forecaster import ConditionalTransformerHybridForecaster
@@ -154,6 +160,70 @@ def _build_model_specs(bundle, cfg):
                 ff_dim=cfg.transformer_ff_dim,
             ),
             "checkpoint": f"itransformer_residual_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "itransformer_co2_residual": {
+            "builder": lambda: ConditionalITransformerCO2ResidualForecaster(
+                seq_len=cfg.seq_len,
+                horizon=cfg.horizon,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                nhead=cfg.transformer_heads,
+                ff_dim=cfg.transformer_ff_dim,
+            ),
+            "checkpoint": f"itransformer_co2_residual_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "itransformer_co2_late_residual": {
+            "builder": lambda: ConditionalITransformerCO2LateResidualForecaster(
+                seq_len=cfg.seq_len,
+                horizon=cfg.horizon,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                nhead=cfg.transformer_heads,
+                ff_dim=cfg.transformer_ff_dim,
+            ),
+            "checkpoint": f"itransformer_co2_late_residual_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "itransformer_co2_wavelet_residual": {
+            "builder": lambda: ConditionalITransformerCO2WaveletResidualForecaster(
+                seq_len=cfg.seq_len,
+                horizon=cfg.horizon,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                nhead=cfg.transformer_heads,
+                ff_dim=cfg.transformer_ff_dim,
+            ),
+            "checkpoint": f"itransformer_co2_wavelet_residual_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "itransformer_co2_wavelet_blend": {
+            "builder": lambda: ConditionalITransformerCO2WaveletBlendForecaster(
+                seq_len=cfg.seq_len,
+                horizon=cfg.horizon,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                nhead=cfg.transformer_heads,
+                ff_dim=cfg.transformer_ff_dim,
+            ),
+            "checkpoint": f"itransformer_co2_wavelet_blend_joint_all_{cfg.control_compartment.lower()}.pt",
         },
         "patchtst_residual": {
             "builder": lambda: ConditionalPatchTSTResidualForecaster(
@@ -299,6 +369,10 @@ def parse_args() -> argparse.Namespace:
             "dlinear_baseline",
             "transformer_hybrid_baseline",
             "transformer_baseline",
+            "itransformer_co2_residual",
+            "itransformer_co2_late_residual",
+            "itransformer_co2_wavelet_residual",
+            "itransformer_co2_wavelet_blend",
             *LATEST_PREDICTORS,
         ],
         help="Forecast predictors to benchmark in closed loop.",
