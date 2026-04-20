@@ -70,6 +70,9 @@ class Trainer:
                 else:
                     loss_trend = 0.0
                 loss = loss_mse + self.cfg.lambda_trend * loss_trend
+                if hasattr(self.model, "compute_auxiliary_loss"):
+                    aux_loss = self.model.compute_auxiliary_loss(xb, wb, ub, yb, pred, criterion)
+                    loss = loss + self.cfg.lambda_auxiliary * aux_loss
                 loss.backward()
                 optimizer.step()
                 train_loss += loss.item()
@@ -112,4 +115,3 @@ class Trainer:
         self.model.eval()
         print(f"---> Restored best checkpoint from epoch {best_epoch}.")
         return self.model
-

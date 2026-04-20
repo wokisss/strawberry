@@ -42,6 +42,7 @@ class AGCConfig:
     num_epochs: int = 12
     early_stop_patience: int = 4
     lambda_trend: float = 0.1
+    lambda_auxiliary: float = 0.0
     model_save_path: str = "results/forecasting/checkpoints/best_gru_baseline.pt"
 
     # ------------------------ Model ------------------------

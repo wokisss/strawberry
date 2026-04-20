@@ -18,7 +18,15 @@ from figure_layout import residual_figures_dir
 from models.hybrid_residual_forecaster import ConditionalHybridResidualForecaster
 from models.itransformer_residual_forecaster import (
     ConditionalITransformerCO2LateResidualForecaster,
+    ConditionalITransformerCO2LateFrozenExpertForecaster,
+    ConditionalITransformerCO2FrozenBackboneHorizonMixtureForecaster,
+    ConditionalITransformerCO2HorizonMixtureForecaster,
+    ConditionalITransformerCO2ProtectedExpertForecaster,
+    ConditionalITransformerCO2ProtectedTerminalForecaster,
+    ConditionalITransformerCO2RecoupledExpertForecaster,
+    ConditionalITransformerCO2FrozenExpertForecaster,
     ConditionalITransformerCO2ResidualForecaster,
+    ConditionalITransformerCO2TeacherDistillForecaster,
     ConditionalITransformerCO2WaveletBlendForecaster,
     ConditionalITransformerCO2WaveletResidualForecaster,
     ConditionalITransformerResidualForecaster,
@@ -32,6 +40,14 @@ MODEL_REGISTRY = {
     "itransformer_residual": ConditionalITransformerResidualForecaster,
     "itransformer_co2_residual": ConditionalITransformerCO2ResidualForecaster,
     "itransformer_co2_late_residual": ConditionalITransformerCO2LateResidualForecaster,
+    "itransformer_co2_frozen_expert": ConditionalITransformerCO2FrozenExpertForecaster,
+    "itransformer_co2_late_frozen_expert": ConditionalITransformerCO2LateFrozenExpertForecaster,
+    "itransformer_co2_teacher_distill": ConditionalITransformerCO2TeacherDistillForecaster,
+    "itransformer_co2_recoupled_expert": ConditionalITransformerCO2RecoupledExpertForecaster,
+    "itransformer_co2_protected_expert": ConditionalITransformerCO2ProtectedExpertForecaster,
+    "itransformer_co2_protected_terminal": ConditionalITransformerCO2ProtectedTerminalForecaster,
+    "itransformer_co2_horizon_mixture": ConditionalITransformerCO2HorizonMixtureForecaster,
+    "itransformer_co2_frozen_backbone_horizon_mixture": ConditionalITransformerCO2FrozenBackboneHorizonMixtureForecaster,
     "itransformer_co2_wavelet_residual": ConditionalITransformerCO2WaveletResidualForecaster,
     "itransformer_co2_wavelet_blend": ConditionalITransformerCO2WaveletBlendForecaster,
     "patchtst_residual": ConditionalPatchTSTResidualForecaster,
@@ -78,6 +94,40 @@ def _run_name(model_name: str, cfg: AGCConfig, regime: str, target_compartment: 
     return f"{model_name}{horizon_suffix}_{regime}_{target_compartment.lower()}"
 
 
+def _load_frozen_expert_if_needed(model, model_name: str, cfg: AGCConfig, regime: str, target_compartment: str, device) -> None:
+    if model_name not in {
+        "itransformer_co2_frozen_expert",
+        "itransformer_co2_late_frozen_expert",
+        "itransformer_co2_teacher_distill",
+        "itransformer_co2_recoupled_expert",
+        "itransformer_co2_protected_expert",
+        "itransformer_co2_protected_terminal",
+        "itransformer_co2_horizon_mixture",
+        "itransformer_co2_frozen_backbone_horizon_mixture",
+    }:
+        return
+    horizon_suffix = f"_h{cfg.horizon}" if cfg.horizon != 24 else ""
+    checkpoint_name = f"co2_wavelet_gru_attn{horizon_suffix}_{regime}_{target_compartment.lower()}.pt"
+    checkpoint_path = Path(cfg.forecast_checkpoints_dir) / checkpoint_name
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(
+            f"Missing standalone CO2 expert checkpoint: {checkpoint_path}. "
+            "Run benchmark_co2_specialist_forecasters.py for co2_wavelet_gru_attn first."
+        )
+    model.load_frozen_expert_checkpoint(str(checkpoint_path), map_location=device)
+
+
+def _load_main_if_needed(model, model_name: str, cfg: AGCConfig, regime: str, target_compartment: str, device) -> None:
+    if model_name not in {"itransformer_co2_frozen_backbone_horizon_mixture"}:
+        return
+    horizon_suffix = f"_h{cfg.horizon}" if cfg.horizon != 24 else ""
+    checkpoint_name = f"itransformer_co2_late_residual{horizon_suffix}_{regime}_{target_compartment.lower()}.pt"
+    checkpoint_path = Path(cfg.forecast_checkpoints_dir) / checkpoint_name
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"Missing main late-residual checkpoint: {checkpoint_path}")
+    model.load_main_checkpoint(str(checkpoint_path), map_location=device)
+
+
 def _load_summary(summary_path: Path) -> dict | None:
     if not summary_path.exists():
         return None
@@ -92,6 +142,8 @@ def _plot_one(model_name: str, cfg: AGCConfig, bundle, device: torch.device, reg
         raise FileNotFoundError(f"Missing checkpoint for {model_name}: {checkpoint_path}")
 
     model = _build_model(model_name, cfg, bundle)
+    _load_frozen_expert_if_needed(model, model_name, cfg, regime, target_compartment, device)
+    _load_main_if_needed(model, model_name, cfg, regime, target_compartment, device)
     state = torch.load(checkpoint_path, map_location=device)
     model.load_state_dict(state)
     model.to(device)

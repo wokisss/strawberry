@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from models.co2_specialist_forecasters import ConditionalCO2WaveletGRUAttnForecaster
 from models.dlinear_forecaster import ConditionalDLinearForecaster
 from models.itransformer_forecaster import ConditionalITransformerForecaster
 
@@ -751,4 +752,761 @@ class ConditionalITransformerCO2WaveletBlendForecaster(nn.Module):
         blend = self.blend_gate(blend_input).squeeze(-1)
         prediction = prediction.clone()
         prediction[..., self.co2_target_idx] = (1.0 - blend) * main_co2 + blend * expert_co2
+        return prediction
+
+
+class ConditionalITransformerCO2FrozenExpertForecaster(nn.Module):
+    """Blend a multi-target backbone with a frozen standalone CO2 wavelet expert."""
+
+    def __init__(
+        self,
+        seq_len: int,
+        horizon: int,
+        past_dim: int,
+        weather_dim: int,
+        control_dim: int,
+        target_dim: int,
+        hidden_dim: int = 96,
+        num_layers: int = 2,
+        dropout: float = 0.1,
+        nhead: int = 4,
+        ff_dim: int = 192,
+        kernel_size: int = 25,
+        co2_target_idx: int = 2,
+    ):
+        super().__init__()
+        self.co2_target_idx = min(co2_target_idx, target_dim - 1)
+        self.main_model = ConditionalITransformerResidualForecaster(
+            seq_len=seq_len,
+            horizon=horizon,
+            past_dim=past_dim,
+            weather_dim=weather_dim,
+            control_dim=control_dim,
+            target_dim=target_dim,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+            nhead=nhead,
+            ff_dim=ff_dim,
+            kernel_size=kernel_size,
+        )
+        self.co2_expert = ConditionalCO2WaveletGRUAttnForecaster(
+            past_dim=past_dim,
+            weather_dim=weather_dim,
+            control_dim=control_dim,
+            target_dim=1,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+            nhead=nhead,
+            co2_past_idx=min(2, past_dim - 1),
+        )
+        self._freeze_expert()
+        gate_in_dim = past_dim + weather_dim + control_dim + target_dim + 2
+        self.blend_gate = nn.Sequential(
+            nn.Linear(gate_in_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, 1),
+            nn.Sigmoid(),
+        )
+        # Start from the backbone and let the gate earn trust in the frozen expert.
+        nn.init.constant_(self.blend_gate[-2].bias, -2.0)
+
+    def _freeze_expert(self) -> None:
+        for parameter in self.co2_expert.parameters():
+            parameter.requires_grad_(False)
+        self.co2_expert.eval()
+
+    def load_frozen_expert_checkpoint(self, checkpoint_path: str, map_location=None) -> None:
+        state = torch.load(checkpoint_path, map_location=map_location)
+        self.co2_expert.load_state_dict(state)
+        self._freeze_expert()
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        self.co2_expert.eval()
+        return self
+
+    def forward(self, x_past: torch.Tensor, w_future: torch.Tensor, u_future: torch.Tensor) -> torch.Tensor:
+        prediction = self.main_model(x_past, w_future, u_future)
+        main_co2 = prediction[..., self.co2_target_idx]
+        with torch.no_grad():
+            expert_co2 = self.co2_expert(x_past, w_future, u_future).squeeze(-1)
+        past_summary = x_past.mean(dim=1, keepdim=True).expand(-1, prediction.size(1), -1)
+        gate_input = torch.cat(
+            [
+                past_summary,
+                w_future,
+                u_future,
+                prediction,
+                (expert_co2 - main_co2).unsqueeze(-1),
+                expert_co2.unsqueeze(-1),
+            ],
+            dim=-1,
+        )
+        blend = self.blend_gate(gate_input).squeeze(-1)
+        prediction = prediction.clone()
+        prediction[..., self.co2_target_idx] = main_co2 + blend * (expert_co2 - main_co2)
+        return prediction
+
+
+class ConditionalITransformerCO2LateFrozenExpertForecaster(nn.Module):
+    """Use a frozen CO2 expert, but only trust it progressively toward later horizons."""
+
+    def __init__(
+        self,
+        seq_len: int,
+        horizon: int,
+        past_dim: int,
+        weather_dim: int,
+        control_dim: int,
+        target_dim: int,
+        hidden_dim: int = 96,
+        num_layers: int = 2,
+        dropout: float = 0.1,
+        nhead: int = 4,
+        ff_dim: int = 192,
+        kernel_size: int = 25,
+        co2_target_idx: int = 2,
+    ):
+        super().__init__()
+        self.co2_target_idx = min(co2_target_idx, target_dim - 1)
+        self.main_model = ConditionalITransformerResidualForecaster(
+            seq_len=seq_len,
+            horizon=horizon,
+            past_dim=past_dim,
+            weather_dim=weather_dim,
+            control_dim=control_dim,
+            target_dim=target_dim,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+            nhead=nhead,
+            ff_dim=ff_dim,
+            kernel_size=kernel_size,
+        )
+        self.co2_expert = ConditionalCO2WaveletGRUAttnForecaster(
+            past_dim=past_dim,
+            weather_dim=weather_dim,
+            control_dim=control_dim,
+            target_dim=1,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+            nhead=nhead,
+            co2_past_idx=min(2, past_dim - 1),
+        )
+        self._freeze_expert()
+        gate_in_dim = past_dim + weather_dim + control_dim + target_dim + 2
+        self.blend_gate = nn.Sequential(
+            nn.Linear(gate_in_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, 1),
+            nn.Sigmoid(),
+        )
+        nn.init.constant_(self.blend_gate[-2].bias, -2.2)
+        self.late_power = 2.0
+
+    def _freeze_expert(self) -> None:
+        for parameter in self.co2_expert.parameters():
+            parameter.requires_grad_(False)
+        self.co2_expert.eval()
+
+    def load_frozen_expert_checkpoint(self, checkpoint_path: str, map_location=None) -> None:
+        state = torch.load(checkpoint_path, map_location=map_location)
+        self.co2_expert.load_state_dict(state)
+        self._freeze_expert()
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        self.co2_expert.eval()
+        return self
+
+    def forward(self, x_past: torch.Tensor, w_future: torch.Tensor, u_future: torch.Tensor) -> torch.Tensor:
+        prediction = self.main_model(x_past, w_future, u_future)
+        main_co2 = prediction[..., self.co2_target_idx]
+        with torch.no_grad():
+            expert_co2 = self.co2_expert(x_past, w_future, u_future).squeeze(-1)
+        horizon_ratio = torch.linspace(
+            0.0,
+            1.0,
+            steps=prediction.size(1),
+            device=prediction.device,
+            dtype=prediction.dtype,
+        ).view(1, -1)
+        past_summary = x_past.mean(dim=1, keepdim=True).expand(-1, prediction.size(1), -1)
+        gate_input = torch.cat(
+            [
+                past_summary,
+                w_future,
+                u_future,
+                prediction,
+                (expert_co2 - main_co2).unsqueeze(-1),
+                expert_co2.unsqueeze(-1),
+            ],
+            dim=-1,
+        )
+        base_gate = self.blend_gate(gate_input).squeeze(-1)
+        late_gate = base_gate * horizon_ratio.pow(self.late_power)
+        prediction = prediction.clone()
+        prediction[..., self.co2_target_idx] = main_co2 + late_gate * (expert_co2 - main_co2)
+        return prediction
+
+
+class ConditionalITransformerCO2TeacherDistillForecaster(nn.Module):
+    """Student forecaster trained with a frozen standalone CO2 teacher."""
+
+    def __init__(
+        self,
+        seq_len: int,
+        horizon: int,
+        past_dim: int,
+        weather_dim: int,
+        control_dim: int,
+        target_dim: int,
+        hidden_dim: int = 96,
+        num_layers: int = 2,
+        dropout: float = 0.1,
+        nhead: int = 4,
+        ff_dim: int = 192,
+        kernel_size: int = 25,
+        co2_target_idx: int = 2,
+    ):
+        super().__init__()
+        self.co2_target_idx = min(co2_target_idx, target_dim - 1)
+        self.student = ConditionalITransformerResidualForecaster(
+            seq_len=seq_len,
+            horizon=horizon,
+            past_dim=past_dim,
+            weather_dim=weather_dim,
+            control_dim=control_dim,
+            target_dim=target_dim,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+            nhead=nhead,
+            ff_dim=ff_dim,
+            kernel_size=kernel_size,
+        )
+        self.teacher = ConditionalCO2WaveletGRUAttnForecaster(
+            past_dim=past_dim,
+            weather_dim=weather_dim,
+            control_dim=control_dim,
+            target_dim=1,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+            nhead=nhead,
+            co2_past_idx=min(2, past_dim - 1),
+        )
+        self._freeze_teacher()
+        self.late_power = 2.0
+
+    def _freeze_teacher(self) -> None:
+        for parameter in self.teacher.parameters():
+            parameter.requires_grad_(False)
+        self.teacher.eval()
+
+    def load_frozen_expert_checkpoint(self, checkpoint_path: str, map_location=None) -> None:
+        state = torch.load(checkpoint_path, map_location=map_location)
+        self.teacher.load_state_dict(state)
+        self._freeze_teacher()
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        self.teacher.eval()
+        return self
+
+    def compute_auxiliary_loss(
+        self,
+        x_past: torch.Tensor,
+        w_future: torch.Tensor,
+        u_future: torch.Tensor,
+        y_true: torch.Tensor,
+        prediction: torch.Tensor,
+        criterion,
+    ) -> torch.Tensor:
+        with torch.no_grad():
+            teacher_co2 = self.teacher(x_past, w_future, u_future).squeeze(-1)
+        student_co2 = prediction[..., self.co2_target_idx]
+        horizon_ratio = torch.linspace(
+            0.0,
+            1.0,
+            steps=prediction.size(1),
+            device=prediction.device,
+            dtype=prediction.dtype,
+        ).view(1, -1)
+        weights = 0.35 + 0.65 * horizon_ratio.pow(self.late_power)
+        return ((student_co2 - teacher_co2) ** 2 * weights).mean()
+
+    def forward(self, x_past: torch.Tensor, w_future: torch.Tensor, u_future: torch.Tensor) -> torch.Tensor:
+        return self.student(x_past, w_future, u_future)
+
+
+class ConditionalITransformerCO2RecoupledExpertForecaster(nn.Module):
+    """Late frozen CO2 expert with explicit variable recoupling and confidence-guided distillation."""
+
+    def __init__(
+        self,
+        seq_len: int,
+        horizon: int,
+        past_dim: int,
+        weather_dim: int,
+        control_dim: int,
+        target_dim: int,
+        hidden_dim: int = 96,
+        num_layers: int = 2,
+        dropout: float = 0.1,
+        nhead: int = 4,
+        ff_dim: int = 192,
+        kernel_size: int = 25,
+        co2_target_idx: int = 2,
+    ):
+        super().__init__()
+        self.co2_target_idx = min(co2_target_idx, target_dim - 1)
+        self.target_dim = target_dim
+        self.main_model = ConditionalITransformerResidualForecaster(
+            seq_len=seq_len,
+            horizon=horizon,
+            past_dim=past_dim,
+            weather_dim=weather_dim,
+            control_dim=control_dim,
+            target_dim=target_dim,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+            nhead=nhead,
+            ff_dim=ff_dim,
+            kernel_size=kernel_size,
+        )
+        self.co2_expert = ConditionalCO2WaveletGRUAttnForecaster(
+            past_dim=past_dim,
+            weather_dim=weather_dim,
+            control_dim=control_dim,
+            target_dim=1,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+            nhead=nhead,
+            co2_past_idx=min(2, past_dim - 1),
+        )
+        self._freeze_expert()
+        self.context_proj = nn.Sequential(
+            nn.Linear(weather_dim + control_dim + 2, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+        self.node_proj = nn.Sequential(
+            nn.Linear(3, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+        )
+        self.q_proj = nn.Linear(hidden_dim, hidden_dim)
+        self.k_proj = nn.Linear(hidden_dim, hidden_dim)
+        self.v_proj = nn.Linear(hidden_dim, hidden_dim)
+        self.co2_gate = nn.Sequential(
+            nn.Linear(hidden_dim * 2 + 2, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, 1),
+            nn.Sigmoid(),
+        )
+        self.co2_recoupling = nn.Sequential(
+            nn.Linear(hidden_dim * 2, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1),
+        )
+        self.recoupling_scale = nn.Parameter(torch.tensor(0.05))
+        self.late_power = 2.0
+        self.teacher_scale = 60.0
+
+    def _freeze_expert(self) -> None:
+        for parameter in self.co2_expert.parameters():
+            parameter.requires_grad_(False)
+        self.co2_expert.eval()
+
+    def load_frozen_expert_checkpoint(self, checkpoint_path: str, map_location=None) -> None:
+        state = torch.load(checkpoint_path, map_location=map_location)
+        self.co2_expert.load_state_dict(state)
+        self._freeze_expert()
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        self.co2_expert.eval()
+        return self
+
+    def _horizon_ratio(self, prediction: torch.Tensor) -> torch.Tensor:
+        return torch.linspace(
+            0.0,
+            1.0,
+            steps=prediction.size(1),
+            device=prediction.device,
+            dtype=prediction.dtype,
+        ).view(1, -1)
+
+    def _recouple(
+        self,
+        x_past: torch.Tensor,
+        w_future: torch.Tensor,
+        u_future: torch.Tensor,
+        main_pred: torch.Tensor,
+        expert_co2: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        horizon_ratio = self._horizon_ratio(main_pred)
+        main_co2 = main_pred[..., self.co2_target_idx]
+        delta = expert_co2 - main_co2
+        context = self.context_proj(
+            torch.cat(
+                [
+                    w_future,
+                    u_future,
+                    delta.unsqueeze(-1),
+                    horizon_ratio.unsqueeze(-1).expand(main_pred.size(0), -1, -1),
+                ],
+                dim=-1,
+            )
+        )
+        target_past = x_past[:, :, : self.target_dim]
+        past_last = target_past[:, -1, :]
+        past_mean = target_past.mean(dim=1)
+        node_features = torch.stack(
+            [
+                main_pred,
+                past_last.unsqueeze(1).expand(-1, main_pred.size(1), -1),
+                past_mean.unsqueeze(1).expand(-1, main_pred.size(1), -1),
+            ],
+            dim=-1,
+        )
+        node_embed = self.node_proj(node_features) + context.unsqueeze(2)
+        q = self.q_proj(node_embed)
+        k = self.k_proj(node_embed)
+        v = self.v_proj(node_embed)
+        attn_scores = torch.einsum("bthd,btkd->bthk", q, k) / (q.size(-1) ** 0.5)
+        attn = torch.softmax(attn_scores, dim=-1)
+        mixed = torch.einsum("bthk,btkd->bthd", attn, v)
+        co2_node = mixed[:, :, self.co2_target_idx, :]
+        gate_input = torch.cat(
+            [
+                co2_node,
+                context,
+                main_co2.unsqueeze(-1),
+                expert_co2.unsqueeze(-1),
+            ],
+            dim=-1,
+        )
+        late_gate = self.co2_gate(gate_input).squeeze(-1) * horizon_ratio.pow(self.late_power)
+        recoupling = self.recoupling_scale * self.co2_recoupling(torch.cat([co2_node, context], dim=-1)).squeeze(-1)
+        return late_gate, recoupling
+
+    def compute_auxiliary_loss(
+        self,
+        x_past: torch.Tensor,
+        w_future: torch.Tensor,
+        u_future: torch.Tensor,
+        y_true: torch.Tensor,
+        prediction: torch.Tensor,
+        criterion,
+    ) -> torch.Tensor:
+        with torch.no_grad():
+            teacher_co2 = self.co2_expert(x_past, w_future, u_future).squeeze(-1)
+        student_co2 = prediction[..., self.co2_target_idx]
+        true_co2 = y_true[..., self.co2_target_idx]
+        horizon_ratio = self._horizon_ratio(prediction)
+        teacher_err = torch.abs(teacher_co2 - true_co2)
+        student_err = torch.abs(student_co2 - true_co2)
+        teacher_conf = torch.exp(-teacher_err / self.teacher_scale)
+        teacher_advantage = torch.relu(student_err - teacher_err)
+        teacher_advantage = teacher_advantage / (teacher_advantage.mean().detach() + 1e-6)
+        weights = (0.25 + 0.75 * horizon_ratio.pow(self.late_power)) * teacher_conf * teacher_advantage.clamp(max=3.0)
+        return ((student_co2 - teacher_co2) ** 2 * weights.detach()).mean()
+
+    def forward(self, x_past: torch.Tensor, w_future: torch.Tensor, u_future: torch.Tensor) -> torch.Tensor:
+        prediction = self.main_model(x_past, w_future, u_future)
+        main_co2 = prediction[..., self.co2_target_idx]
+        with torch.no_grad():
+            expert_co2 = self.co2_expert(x_past, w_future, u_future).squeeze(-1)
+        late_gate, recoupling = self._recouple(x_past, w_future, u_future, prediction, expert_co2)
+        prediction = prediction.clone()
+        prediction[..., self.co2_target_idx] = main_co2 + late_gate * (expert_co2 - main_co2) + recoupling
+        return prediction
+
+
+class ConditionalITransformerCO2ProtectedExpertForecaster(nn.Module):
+    """Use the strong late-residual model as the main predictor and apply a cautious frozen-expert correction."""
+
+    def __init__(
+        self,
+        seq_len: int,
+        horizon: int,
+        past_dim: int,
+        weather_dim: int,
+        control_dim: int,
+        target_dim: int,
+        hidden_dim: int = 96,
+        num_layers: int = 2,
+        dropout: float = 0.1,
+        nhead: int = 4,
+        ff_dim: int = 192,
+        kernel_size: int = 25,
+        co2_target_idx: int = 2,
+    ):
+        super().__init__()
+        self.co2_target_idx = min(co2_target_idx, target_dim - 1)
+        self.main_model = ConditionalITransformerCO2LateResidualForecaster(
+            seq_len=seq_len,
+            horizon=horizon,
+            past_dim=past_dim,
+            weather_dim=weather_dim,
+            control_dim=control_dim,
+            target_dim=target_dim,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+            nhead=nhead,
+            ff_dim=ff_dim,
+            kernel_size=kernel_size,
+            co2_target_idx=self.co2_target_idx,
+        )
+        self.co2_expert = ConditionalCO2WaveletGRUAttnForecaster(
+            past_dim=past_dim,
+            weather_dim=weather_dim,
+            control_dim=control_dim,
+            target_dim=1,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+            nhead=nhead,
+            co2_past_idx=min(2, past_dim - 1),
+        )
+        self._freeze_expert()
+        gate_in_dim = past_dim + weather_dim + control_dim + target_dim + 2
+        self.blend_gate = nn.Sequential(
+            nn.Linear(gate_in_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, 1),
+            nn.Sigmoid(),
+        )
+        nn.init.constant_(self.blend_gate[-2].bias, -2.8)
+        self.delta_temperature = nn.Parameter(torch.tensor(45.0))
+        self.late_power = 2.0
+
+    def _freeze_expert(self) -> None:
+        for parameter in self.co2_expert.parameters():
+            parameter.requires_grad_(False)
+        self.co2_expert.eval()
+
+    def load_frozen_expert_checkpoint(self, checkpoint_path: str, map_location=None) -> None:
+        state = torch.load(checkpoint_path, map_location=map_location)
+        self.co2_expert.load_state_dict(state)
+        self._freeze_expert()
+
+    def train(self, mode: bool = True):
+        super().train(mode)
+        self.co2_expert.eval()
+        return self
+
+    def forward(self, x_past: torch.Tensor, w_future: torch.Tensor, u_future: torch.Tensor) -> torch.Tensor:
+        prediction = self.main_model(x_past, w_future, u_future)
+        main_co2 = prediction[..., self.co2_target_idx]
+        with torch.no_grad():
+            expert_co2 = self.co2_expert(x_past, w_future, u_future).squeeze(-1)
+
+        horizon_ratio = torch.linspace(
+            0.0,
+            1.0,
+            steps=prediction.size(1),
+            device=prediction.device,
+            dtype=prediction.dtype,
+        ).view(1, -1)
+        delta = expert_co2 - main_co2
+        delta_scale = torch.clamp(self.delta_temperature.abs(), min=10.0)
+        agreement = torch.exp(-torch.abs(delta) / delta_scale)
+        past_summary = x_past.mean(dim=1, keepdim=True).expand(-1, prediction.size(1), -1)
+        gate_input = torch.cat(
+            [
+                past_summary,
+                w_future,
+                u_future,
+                prediction,
+                delta.unsqueeze(-1),
+                expert_co2.unsqueeze(-1),
+            ],
+            dim=-1,
+        )
+        learned_gate = self.blend_gate(gate_input).squeeze(-1)
+        late_gate = learned_gate * agreement * horizon_ratio.pow(self.late_power)
+        prediction = prediction.clone()
+        prediction[..., self.co2_target_idx] = main_co2 + late_gate * delta
+        return prediction
+
+
+class ConditionalITransformerCO2ProtectedTerminalForecaster(ConditionalITransformerCO2ProtectedExpertForecaster):
+    """Protected expert variant with explicit late/terminal CO2 training pressure."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.terminal_power = 3.0
+
+    def compute_auxiliary_loss(
+        self,
+        x_past: torch.Tensor,
+        w_future: torch.Tensor,
+        u_future: torch.Tensor,
+        y_true: torch.Tensor,
+        prediction: torch.Tensor,
+        criterion,
+    ) -> torch.Tensor:
+        pred_co2 = prediction[..., self.co2_target_idx]
+        true_co2 = y_true[..., self.co2_target_idx]
+        horizon_ratio = torch.linspace(
+            0.0,
+            1.0,
+            steps=prediction.size(1),
+            device=prediction.device,
+            dtype=prediction.dtype,
+        ).view(1, -1)
+        weights = 0.2 + 0.8 * horizon_ratio.pow(self.terminal_power)
+        weighted_mse = ((pred_co2 - true_co2) ** 2 * weights).mean()
+        final_mse = ((pred_co2[:, -1] - true_co2[:, -1]) ** 2).mean()
+        return weighted_mse + final_mse
+
+
+class ConditionalITransformerCO2HorizonMixtureForecaster(ConditionalITransformerCO2ProtectedExpertForecaster):
+    """Use protected expert correction early, then pull terminal CO2 back toward late-residual."""
+
+    def __init__(
+        self,
+        *args,
+        terminal_start: float = 0.72,
+        terminal_power: float = 2.0,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.terminal_start = terminal_start
+        self.terminal_power = terminal_power
+        self.auxiliary_power = 3.0
+
+    def _horizon_ratio(self, prediction: torch.Tensor) -> torch.Tensor:
+        return torch.linspace(
+            0.0,
+            1.0,
+            steps=prediction.size(1),
+            device=prediction.device,
+            dtype=prediction.dtype,
+        ).view(1, -1)
+
+    def _terminal_pullback(self, prediction: torch.Tensor) -> torch.Tensor:
+        horizon_ratio = self._horizon_ratio(prediction)
+        denominator = max(1.0 - self.terminal_start, 1e-6)
+        terminal_ratio = torch.clamp((horizon_ratio - self.terminal_start) / denominator, min=0.0, max=1.0)
+        return terminal_ratio.pow(self.terminal_power)
+
+    def compute_auxiliary_loss(
+        self,
+        x_past: torch.Tensor,
+        w_future: torch.Tensor,
+        u_future: torch.Tensor,
+        y_true: torch.Tensor,
+        prediction: torch.Tensor,
+        criterion,
+    ) -> torch.Tensor:
+        pred_co2 = prediction[..., self.co2_target_idx]
+        true_co2 = y_true[..., self.co2_target_idx]
+        horizon_ratio = self._horizon_ratio(prediction)
+        weights = 0.15 + 0.85 * horizon_ratio.pow(self.auxiliary_power)
+        weighted_mse = ((pred_co2 - true_co2) ** 2 * weights).mean()
+        final_mse = ((pred_co2[:, -1] - true_co2[:, -1]) ** 2).mean()
+        return 0.5 * weighted_mse + final_mse
+
+    def forward(self, x_past: torch.Tensor, w_future: torch.Tensor, u_future: torch.Tensor) -> torch.Tensor:
+        prediction = self.main_model(x_past, w_future, u_future)
+        main_co2 = prediction[..., self.co2_target_idx]
+        with torch.no_grad():
+            expert_co2 = self.co2_expert(x_past, w_future, u_future).squeeze(-1)
+
+        horizon_ratio = self._horizon_ratio(prediction)
+        terminal_pullback = self._terminal_pullback(prediction)
+        delta = expert_co2 - main_co2
+        delta_scale = torch.clamp(self.delta_temperature.abs(), min=10.0)
+        agreement = torch.exp(-torch.abs(delta) / delta_scale)
+        past_summary = x_past.mean(dim=1, keepdim=True).expand(-1, prediction.size(1), -1)
+        gate_input = torch.cat(
+            [
+                past_summary,
+                w_future,
+                u_future,
+                prediction,
+                delta.unsqueeze(-1),
+                expert_co2.unsqueeze(-1),
+            ],
+            dim=-1,
+        )
+        learned_gate = self.blend_gate(gate_input).squeeze(-1)
+        protected_gate = learned_gate * agreement * horizon_ratio.pow(self.late_power)
+        correction = protected_gate * (1.0 - terminal_pullback) * delta
+        prediction = prediction.clone()
+        prediction[..., self.co2_target_idx] = main_co2 + correction
+        return prediction
+
+
+class ConditionalITransformerCO2FrozenBackboneHorizonMixtureForecaster(
+    ConditionalITransformerCO2HorizonMixtureForecaster
+):
+    """Train only the horizon gate while keeping the late-residual backbone fixed."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._freeze_main_model()
+
+    def _freeze_main_model(self) -> None:
+        for parameter in self.main_model.parameters():
+            parameter.requires_grad_(False)
+        self.main_model.eval()
+
+    def load_main_checkpoint(self, checkpoint_path: str, map_location=None) -> None:
+        state = torch.load(checkpoint_path, map_location=map_location)
+        self.main_model.load_state_dict(state)
+        self._freeze_main_model()
+
+    def train(self, mode: bool = True):
+        nn.Module.train(self, mode)
+        self.main_model.eval()
+        self.co2_expert.eval()
+        return self
+
+    def forward(self, x_past: torch.Tensor, w_future: torch.Tensor, u_future: torch.Tensor) -> torch.Tensor:
+        prediction = self.main_model(x_past, w_future, u_future)
+        expert_co2 = self.co2_expert(x_past, w_future, u_future).squeeze(-1)
+        main_co2 = prediction[..., self.co2_target_idx]
+
+        horizon_ratio = self._horizon_ratio(prediction)
+        terminal_pullback = self._terminal_pullback(prediction)
+        delta = expert_co2 - main_co2
+        delta_scale = torch.clamp(self.delta_temperature.abs(), min=10.0)
+        agreement = torch.exp(-torch.abs(delta) / delta_scale)
+        past_summary = x_past.mean(dim=1, keepdim=True).expand(-1, prediction.size(1), -1)
+        gate_input = torch.cat(
+            [
+                past_summary,
+                w_future,
+                u_future,
+                prediction,
+                delta.unsqueeze(-1),
+                expert_co2.unsqueeze(-1),
+            ],
+            dim=-1,
+        )
+        learned_gate = self.blend_gate(gate_input).squeeze(-1)
+        protected_gate = learned_gate * agreement * horizon_ratio.pow(self.late_power)
+        correction = protected_gate * (1.0 - terminal_pullback) * delta
+        prediction = prediction.clone()
+        prediction[..., self.co2_target_idx] = main_co2 + correction
         return prediction

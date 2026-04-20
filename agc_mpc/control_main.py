@@ -26,7 +26,15 @@ from models.dlinear_forecaster import ConditionalDLinearForecaster
 from models.hybrid_residual_forecaster import ConditionalHybridResidualForecaster
 from models.itransformer_residual_forecaster import (
     ConditionalITransformerCO2LateResidualForecaster,
+    ConditionalITransformerCO2LateFrozenExpertForecaster,
+    ConditionalITransformerCO2FrozenBackboneHorizonMixtureForecaster,
+    ConditionalITransformerCO2HorizonMixtureForecaster,
+    ConditionalITransformerCO2ProtectedExpertForecaster,
+    ConditionalITransformerCO2ProtectedTerminalForecaster,
+    ConditionalITransformerCO2RecoupledExpertForecaster,
+    ConditionalITransformerCO2FrozenExpertForecaster,
     ConditionalITransformerCO2ResidualForecaster,
+    ConditionalITransformerCO2TeacherDistillForecaster,
     ConditionalITransformerCO2WaveletBlendForecaster,
     ConditionalITransformerCO2WaveletResidualForecaster,
     ConditionalITransformerResidualForecaster,
@@ -193,6 +201,134 @@ def _build_model_specs(bundle, cfg):
             ),
             "checkpoint": f"itransformer_co2_late_residual_joint_all_{cfg.control_compartment.lower()}.pt",
         },
+        "itransformer_co2_frozen_expert": {
+            "builder": lambda: ConditionalITransformerCO2FrozenExpertForecaster(
+                seq_len=cfg.seq_len,
+                horizon=cfg.horizon,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                nhead=cfg.transformer_heads,
+                ff_dim=cfg.transformer_ff_dim,
+            ),
+            "checkpoint": f"itransformer_co2_frozen_expert_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "itransformer_co2_late_frozen_expert": {
+            "builder": lambda: ConditionalITransformerCO2LateFrozenExpertForecaster(
+                seq_len=cfg.seq_len,
+                horizon=cfg.horizon,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                nhead=cfg.transformer_heads,
+                ff_dim=cfg.transformer_ff_dim,
+            ),
+            "checkpoint": f"itransformer_co2_late_frozen_expert_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "itransformer_co2_teacher_distill": {
+            "builder": lambda: ConditionalITransformerCO2TeacherDistillForecaster(
+                seq_len=cfg.seq_len,
+                horizon=cfg.horizon,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                nhead=cfg.transformer_heads,
+                ff_dim=cfg.transformer_ff_dim,
+            ),
+            "checkpoint": f"itransformer_co2_teacher_distill_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "itransformer_co2_recoupled_expert": {
+            "builder": lambda: ConditionalITransformerCO2RecoupledExpertForecaster(
+                seq_len=cfg.seq_len,
+                horizon=cfg.horizon,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                nhead=cfg.transformer_heads,
+                ff_dim=cfg.transformer_ff_dim,
+            ),
+            "checkpoint": f"itransformer_co2_recoupled_expert_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "itransformer_co2_protected_expert": {
+            "builder": lambda: ConditionalITransformerCO2ProtectedExpertForecaster(
+                seq_len=cfg.seq_len,
+                horizon=cfg.horizon,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                nhead=cfg.transformer_heads,
+                ff_dim=cfg.transformer_ff_dim,
+            ),
+            "checkpoint": f"itransformer_co2_protected_expert_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "itransformer_co2_protected_terminal": {
+            "builder": lambda: ConditionalITransformerCO2ProtectedTerminalForecaster(
+                seq_len=cfg.seq_len,
+                horizon=cfg.horizon,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                nhead=cfg.transformer_heads,
+                ff_dim=cfg.transformer_ff_dim,
+            ),
+            "checkpoint": f"itransformer_co2_protected_terminal_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "itransformer_co2_horizon_mixture": {
+            "builder": lambda: ConditionalITransformerCO2HorizonMixtureForecaster(
+                seq_len=cfg.seq_len,
+                horizon=cfg.horizon,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                nhead=cfg.transformer_heads,
+                ff_dim=cfg.transformer_ff_dim,
+            ),
+            "checkpoint": f"itransformer_co2_horizon_mixture_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "itransformer_co2_frozen_backbone_horizon_mixture": {
+            "builder": lambda: ConditionalITransformerCO2FrozenBackboneHorizonMixtureForecaster(
+                seq_len=cfg.seq_len,
+                horizon=cfg.horizon,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                nhead=cfg.transformer_heads,
+                ff_dim=cfg.transformer_ff_dim,
+            ),
+            "checkpoint": f"itransformer_co2_frozen_backbone_horizon_mixture_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
         "itransformer_co2_wavelet_residual": {
             "builder": lambda: ConditionalITransformerCO2WaveletResidualForecaster(
                 seq_len=cfg.seq_len,
@@ -259,6 +395,38 @@ def _load_checkpoint(model, ckpt_path: Path, device) -> None:
     model.eval()
 
 
+def _load_frozen_expert_if_needed(model, predictor_name: str, cfg: AGCConfig, device) -> None:
+    if predictor_name not in {
+        "itransformer_co2_frozen_expert",
+        "itransformer_co2_late_frozen_expert",
+        "itransformer_co2_teacher_distill",
+        "itransformer_co2_recoupled_expert",
+        "itransformer_co2_protected_expert",
+        "itransformer_co2_protected_terminal",
+        "itransformer_co2_horizon_mixture",
+        "itransformer_co2_frozen_backbone_horizon_mixture",
+    }:
+        return
+    checkpoint_name = f"co2_wavelet_gru_attn_joint_all_{cfg.control_compartment.lower()}.pt"
+    checkpoint_path = Path(cfg.forecast_checkpoints_dir) / checkpoint_name
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(
+            f"Missing standalone CO2 expert checkpoint: {checkpoint_path}. "
+            "Run benchmark_co2_specialist_forecasters.py for co2_wavelet_gru_attn first."
+        )
+    model.load_frozen_expert_checkpoint(str(checkpoint_path), map_location=device)
+
+
+def _load_main_if_needed(model, predictor_name: str, cfg: AGCConfig, device) -> None:
+    if predictor_name not in {"itransformer_co2_frozen_backbone_horizon_mixture"}:
+        return
+    checkpoint_name = f"itransformer_co2_late_residual_joint_all_{cfg.control_compartment.lower()}.pt"
+    checkpoint_path = Path(cfg.forecast_checkpoints_dir) / checkpoint_name
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"Missing main late-residual checkpoint: {checkpoint_path}")
+    model.load_main_checkpoint(str(checkpoint_path), map_location=device)
+
+
 def _print_summary(summary) -> None:
     print(
         f"    {summary.controller:<8} | "
@@ -269,6 +437,15 @@ def _print_summary(summary) -> None:
     for target, mae in summary.target_mae.items():
         print(f"        {target:<10} MAE={mae:.3f}")
     print(f"        figure={summary.figure_path}")
+
+
+def _suite_name(cfg: AGCConfig, predictors: list[str]) -> str:
+    if predictors == LATEST_PREDICTORS:
+        return f"latest_predictor_suite_{cfg.control_compartment.lower()}_{cfg.control_eval_steps}steps"
+    if len(predictors) == 1:
+        return f"{predictors[0]}_{cfg.control_compartment.lower()}_{cfg.control_eval_steps}steps_control_suite"
+    joined = "_".join(predictors)
+    return f"predictor_suite_{joined}_{cfg.control_compartment.lower()}_{cfg.control_eval_steps}steps"
 
 
 def run_control_benchmarks(cfg: AGCConfig, predictors: list[str]) -> None:
@@ -300,6 +477,8 @@ def run_control_benchmarks(cfg: AGCConfig, predictors: list[str]) -> None:
     suite_records = []
     for name in predictors:
         model = model_specs[name]["builder"]()
+        _load_frozen_expert_if_needed(model, name, cfg, device)
+        _load_main_if_needed(model, name, cfg, device)
         _load_checkpoint(
             model,
             project_root / "results" / "forecasting" / "checkpoints" / model_specs[name]["checkpoint"],
@@ -327,7 +506,7 @@ def run_control_benchmarks(cfg: AGCConfig, predictors: list[str]) -> None:
             _print_summary(summary)
             suite_records.append(asdict(summary))
 
-    suite_name = f"latest_predictor_suite_{cfg.control_compartment.lower()}_{cfg.control_eval_steps}steps"
+    suite_name = _suite_name(cfg, predictors)
     suite_path = Path(cfg.control_summaries_dir) / f"{suite_name}.json"
     suite_path.write_text(
         json.dumps(
@@ -371,6 +550,14 @@ def parse_args() -> argparse.Namespace:
             "transformer_baseline",
             "itransformer_co2_residual",
             "itransformer_co2_late_residual",
+            "itransformer_co2_frozen_expert",
+            "itransformer_co2_late_frozen_expert",
+            "itransformer_co2_teacher_distill",
+            "itransformer_co2_recoupled_expert",
+            "itransformer_co2_protected_expert",
+            "itransformer_co2_protected_terminal",
+            "itransformer_co2_horizon_mixture",
+            "itransformer_co2_frozen_backbone_horizon_mixture",
             "itransformer_co2_wavelet_residual",
             "itransformer_co2_wavelet_blend",
             *LATEST_PREDICTORS,

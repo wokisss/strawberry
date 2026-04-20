@@ -19,7 +19,15 @@ from data_processing.processor import AGCDataProcessor
 from models.hybrid_residual_forecaster import ConditionalHybridResidualForecaster
 from models.itransformer_residual_forecaster import (
     ConditionalITransformerCO2LateResidualForecaster,
+    ConditionalITransformerCO2LateFrozenExpertForecaster,
+    ConditionalITransformerCO2FrozenBackboneHorizonMixtureForecaster,
+    ConditionalITransformerCO2HorizonMixtureForecaster,
+    ConditionalITransformerCO2ProtectedExpertForecaster,
+    ConditionalITransformerCO2ProtectedTerminalForecaster,
+    ConditionalITransformerCO2RecoupledExpertForecaster,
+    ConditionalITransformerCO2FrozenExpertForecaster,
     ConditionalITransformerCO2ResidualForecaster,
+    ConditionalITransformerCO2TeacherDistillForecaster,
     ConditionalITransformerCO2WaveletBlendForecaster,
     ConditionalITransformerCO2WaveletResidualForecaster,
     ConditionalITransformerResidualForecaster,
@@ -46,6 +54,38 @@ MODEL_REGISTRY = {
         "builder": ConditionalITransformerCO2LateResidualForecaster,
         "label": "dlinear main path + itransformer residual + late-horizon co2 adapter",
     },
+    "itransformer_co2_frozen_expert": {
+        "builder": ConditionalITransformerCO2FrozenExpertForecaster,
+        "label": "dlinear main path + itransformer residual + frozen wavelet co2 expert",
+    },
+    "itransformer_co2_late_frozen_expert": {
+        "builder": ConditionalITransformerCO2LateFrozenExpertForecaster,
+        "label": "dlinear main path + itransformer residual + late-horizon frozen wavelet co2 expert",
+    },
+    "itransformer_co2_teacher_distill": {
+        "builder": ConditionalITransformerCO2TeacherDistillForecaster,
+        "label": "dlinear main path + itransformer residual + frozen wavelet teacher distillation",
+    },
+    "itransformer_co2_recoupled_expert": {
+        "builder": ConditionalITransformerCO2RecoupledExpertForecaster,
+        "label": "dlinear main path + itransformer residual + recoupled late frozen co2 expert",
+    },
+    "itransformer_co2_protected_expert": {
+        "builder": ConditionalITransformerCO2ProtectedExpertForecaster,
+        "label": "late-residual main path + protected late frozen co2 expert",
+    },
+    "itransformer_co2_protected_terminal": {
+        "builder": ConditionalITransformerCO2ProtectedTerminalForecaster,
+        "label": "late-residual main path + protected late frozen co2 expert + terminal-aware loss",
+    },
+    "itransformer_co2_horizon_mixture": {
+        "builder": ConditionalITransformerCO2HorizonMixtureForecaster,
+        "label": "late-residual main path + protected frozen co2 expert + terminal pullback",
+    },
+    "itransformer_co2_frozen_backbone_horizon_mixture": {
+        "builder": ConditionalITransformerCO2FrozenBackboneHorizonMixtureForecaster,
+        "label": "frozen late-residual backbone + protected frozen co2 expert + terminal pullback",
+    },
     "itransformer_co2_wavelet_residual": {
         "builder": ConditionalITransformerCO2WaveletResidualForecaster,
         "label": "dlinear main path + itransformer residual + wavelet-style co2 adapter",
@@ -58,6 +98,14 @@ MODEL_REGISTRY = {
         "builder": ConditionalPatchTSTResidualForecaster,
         "label": "dlinear main path + patchtst residual",
     },
+}
+
+AUXILIARY_WEIGHTS = {
+    "itransformer_co2_teacher_distill": 0.2,
+    "itransformer_co2_recoupled_expert": 0.15,
+    "itransformer_co2_protected_terminal": 0.08,
+    "itransformer_co2_horizon_mixture": 0.05,
+    "itransformer_co2_frozen_backbone_horizon_mixture": 0.05,
 }
 
 
@@ -80,6 +128,7 @@ def _apply_fair_budget_overrides(cfg: AGCConfig) -> AGCConfig:
     run_cfg.num_epochs = 200
     run_cfg.learning_rate = 1e-4
     run_cfg.lambda_trend = 0.3
+    run_cfg.lambda_auxiliary = 0.0
     run_cfg.early_stop_patience = 15
     run_cfg.target_cols = ["Tair", "Rhair", "CO2air"]
     return run_cfg
@@ -174,7 +223,47 @@ def _build_model(model_name: str, cfg: AGCConfig, bundle):
     )
 
 
+def _maybe_load_frozen_expert(model, model_name: str, cfg: AGCConfig, bundle, regime: str, device: torch.device) -> None:
+    if model_name not in {
+        "itransformer_co2_frozen_expert",
+        "itransformer_co2_late_frozen_expert",
+        "itransformer_co2_teacher_distill",
+        "itransformer_co2_recoupled_expert",
+        "itransformer_co2_protected_expert",
+        "itransformer_co2_protected_terminal",
+        "itransformer_co2_horizon_mixture",
+        "itransformer_co2_frozen_backbone_horizon_mixture",
+    }:
+        return
+    horizon_suffix = f"_h{cfg.horizon}" if cfg.horizon != 24 else ""
+    checkpoint_name = f"co2_wavelet_gru_attn{horizon_suffix}_{regime}_{bundle['eval_compartments'][0].lower()}.pt"
+    checkpoint_path = Path(cfg.forecast_checkpoints_dir) / checkpoint_name
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(
+            f"Missing standalone CO2 expert checkpoint: {checkpoint_path}. "
+            "Run benchmark_co2_specialist_forecasters.py for co2_wavelet_gru_attn first."
+        )
+    model.load_frozen_expert_checkpoint(str(checkpoint_path), map_location=device)
+
+
+def _maybe_load_main_checkpoint(model, model_name: str, cfg: AGCConfig, bundle, regime: str, device: torch.device) -> None:
+    if model_name not in {"itransformer_co2_frozen_backbone_horizon_mixture"}:
+        return
+    horizon_suffix = f"_h{cfg.horizon}" if cfg.horizon != 24 else ""
+    checkpoint_name = f"itransformer_co2_late_residual{horizon_suffix}_{regime}_{bundle['eval_compartments'][0].lower()}.pt"
+    checkpoint_path = Path(cfg.forecast_checkpoints_dir) / checkpoint_name
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(
+            f"Missing main late-residual checkpoint: {checkpoint_path}. "
+            "Run benchmark_residual_forecaster_variants.py for itransformer_co2_late_residual first."
+        )
+    model.load_main_checkpoint(str(checkpoint_path), map_location=device)
+
+
 def _run_one_model(model_name: str, cfg: AGCConfig, bundle, device: torch.device, regime: str, describe_only: bool) -> None:
+    cfg = copy.deepcopy(cfg)
+    cfg.lambda_auxiliary = AUXILIARY_WEIGHTS.get(model_name, cfg.lambda_auxiliary)
+
     print("\n" + "=" * 72)
     print(f"Residual Variant: {model_name}")
     print("=" * 72)
@@ -183,12 +272,17 @@ def _run_one_model(model_name: str, cfg: AGCConfig, bundle, device: torch.device
     print(f"seq_len = {cfg.seq_len} ({cfg.seq_len * 5} min)")
     print(f"horizon = {cfg.horizon} ({cfg.horizon * 5} min)")
     print(f"batch_size = {cfg.batch_size}, epochs = {cfg.num_epochs}, lr = {cfg.learning_rate}")
-    print(f"lambda_trend = {cfg.lambda_trend}, patience = {cfg.early_stop_patience}")
+    print(
+        f"lambda_trend = {cfg.lambda_trend}, lambda_auxiliary = {cfg.lambda_auxiliary}, "
+        f"patience = {cfg.early_stop_patience}"
+    )
     if describe_only:
         print("---> Describe only mode, no training executed.")
         return
 
     model = _build_model(model_name, cfg, bundle)
+    _maybe_load_frozen_expert(model, model_name, cfg, bundle, regime, device)
+    _maybe_load_main_checkpoint(model, model_name, cfg, bundle, regime, device)
     horizon_suffix = f"_h{cfg.horizon}" if cfg.horizon != 24 else ""
     run_name = f"{model_name}{horizon_suffix}_{regime}_{bundle['eval_compartments'][0].lower()}"
     cfg.model_save_path = f"{cfg.forecast_checkpoints_dir}/{run_name}.pt"
@@ -222,6 +316,7 @@ def _run_one_model(model_name: str, cfg: AGCConfig, bundle, device: torch.device
             "num_epochs": cfg.num_epochs,
             "learning_rate": cfg.learning_rate,
             "lambda_trend": cfg.lambda_trend,
+            "lambda_auxiliary": cfg.lambda_auxiliary,
             "early_stop_patience": cfg.early_stop_patience,
             "model_family": MODEL_REGISTRY[model_name]["label"],
         },
@@ -276,6 +371,12 @@ def main() -> None:
         cfg.num_epochs = args.epochs
     if args.horizon is not None:
         cfg.horizon = args.horizon
+    if args.model == "itransformer_co2_teacher_distill":
+        cfg.lambda_auxiliary = 0.2
+    if args.model == "itransformer_co2_recoupled_expert":
+        cfg.lambda_auxiliary = 0.15
+    if args.model == "itransformer_co2_protected_terminal":
+        cfg.lambda_auxiliary = 0.08
 
     ensure_results_layout(cfg)
     _set_global_seed(cfg.seed)

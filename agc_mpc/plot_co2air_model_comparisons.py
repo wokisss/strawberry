@@ -17,6 +17,14 @@ ITRANSFORMER_SUITE = [
     "itransformer_residual",
     "itransformer_co2_residual",
     "itransformer_co2_late_residual",
+    "itransformer_co2_frozen_expert",
+    "itransformer_co2_late_frozen_expert",
+    "itransformer_co2_teacher_distill",
+    "itransformer_co2_recoupled_expert",
+    "itransformer_co2_protected_expert",
+    "itransformer_co2_protected_terminal",
+    "itransformer_co2_horizon_mixture",
+    "itransformer_co2_frozen_backbone_horizon_mixture",
 ]
 
 CO2_SPECIALIST_SUITE = [
@@ -29,6 +37,14 @@ MODEL_LABELS = {
     "itransformer_residual": "iTransformer Residual",
     "itransformer_co2_residual": "iTransformer + CO2 v1",
     "itransformer_co2_late_residual": "iTransformer + CO2 v2",
+    "itransformer_co2_frozen_expert": "iTransformer + Frozen CO2",
+    "itransformer_co2_late_frozen_expert": "iTransformer + Late Frozen CO2",
+    "itransformer_co2_teacher_distill": "iTransformer + CO2 Distill",
+    "itransformer_co2_recoupled_expert": "iTransformer + Recoupled CO2",
+    "itransformer_co2_protected_expert": "iTransformer + Protected CO2",
+    "itransformer_co2_protected_terminal": "iTransformer + Protected CO2 v2",
+    "itransformer_co2_horizon_mixture": "iTransformer + Horizon Mix",
+    "itransformer_co2_frozen_backbone_horizon_mixture": "iTransformer + Safe Horizon Mix",
     "co2_env_lstm": "CO2 LSTM",
     "co2_vmd_lstm_fusion": "CO2 VMD-LSTM",
     "co2_wavelet_gru_attn": "CO2 Wavelet-GRU",
@@ -38,6 +54,14 @@ MODEL_COLORS = {
     "itransformer_residual": "#1f77b4",
     "itransformer_co2_residual": "#ff7f0e",
     "itransformer_co2_late_residual": "#2ca02c",
+    "itransformer_co2_frozen_expert": "#9467bd",
+    "itransformer_co2_late_frozen_expert": "#8c564b",
+    "itransformer_co2_teacher_distill": "#e377c2",
+    "itransformer_co2_recoupled_expert": "#bcbd22",
+    "itransformer_co2_protected_expert": "#17a589",
+    "itransformer_co2_protected_terminal": "#f39c12",
+    "itransformer_co2_horizon_mixture": "#34495e",
+    "itransformer_co2_frozen_backbone_horizon_mixture": "#c0392b",
     "co2_env_lstm": "#7f7f7f",
     "co2_vmd_lstm_fusion": "#d62728",
     "co2_wavelet_gru_attn": "#17becf",
@@ -92,14 +116,14 @@ def _plot_itransformer_metrics(summaries: list[dict], out_path: Path) -> Path:
         ("final_mae", "Final-Step MAE"),
     ]
     x = np.arange(len(targets))
-    width = 0.22
+    width = 0.075
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
     axes = np.atleast_1d(axes)
     for ax, (metric_name, title) in zip(axes, metric_specs):
         for idx, summary in enumerate(summaries):
             model_name = summary["protocol"]["variant"]
-            offset = (idx - 1) * width
+            offset = (idx - (len(summaries) - 1) / 2) * width
             values = [summary["metrics_by_target"][target][metric_name] for target in targets]
             bars = ax.bar(
                 x + offset,
@@ -114,7 +138,7 @@ def _plot_itransformer_metrics(summaries: list[dict], out_path: Path) -> Path:
         ax.set_ylabel("MAE")
         ax.grid(True, axis="y", alpha=0.25)
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=3, frameon=False, bbox_to_anchor=(0.5, 1.02))
+    fig.legend(handles, labels, loc="upper center", ncol=4, frameon=False, bbox_to_anchor=(0.5, 1.1))
     fig.suptitle("iTransformer CO2 Branch Comparison", fontsize=14, y=1.05)
     fig.tight_layout(rect=(0, 0, 1, 0.98))
     out_path.parent.mkdir(parents=True, exist_ok=True)
