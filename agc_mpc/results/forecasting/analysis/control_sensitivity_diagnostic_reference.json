@@ -1,0 +1,241 @@
+{
+  "compartment": "Reference",
+  "control_horizon": 6,
+  "forecast_horizon": 24,
+  "sample_count": 96,
+  "sample_stride": 1,
+  "sample_indices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    88,
+    89,
+    90,
+    91,
+    92,
+    93,
+    94,
+    95
+  ],
+  "predictors": {
+    "itransformer_co2_frozen_backbone_horizon_mixture": {
+      "logged_forecast_metrics": {
+        "first_step_mae": {
+          "Tair": 0.48580220341682434,
+          "Rhair": 1.684951663017273,
+          "CO2air": 27.350862503051758
+        },
+        "full_horizon_mae": {
+          "Tair": 0.4559130072593689,
+          "Rhair": 2.641205310821533,
+          "CO2air": 36.35634994506836
+        },
+        "final_step_mae": {
+          "Tair": 0.48639431595802307,
+          "Rhair": 3.5323619842529297,
+          "CO2air": 30.574094772338867
+        }
+      },
+      "gradient_diagnostics": {
+        "baseline_control_cost_mean": 0.11366844503208995,
+        "baseline_control_cost_std": 0.043949779928429765,
+        "cost_gradient": {
+          "mean_abs_grad": 0.019151870161294937,
+          "max_abs_grad": 1.4138776063919067,
+          "by_control": {
+            "t_heat_sp": 0.010738846845924854,
+            "t_vent_sp": 0.09097961336374283,
+            "co2_sp": 0.03281444311141968,
+            "dx_sp": 5.285086444928311e-06,
+            "assim_sp": 0.014191501773893833,
+            "scr_enrg_sp": 0.002770582679659128,
+            "scr_blck_sp": 0.006421187426894903,
+            "window_pos_lee_sp": 0.007498617749661207,
+            "water_sup_intervals_sp_min": 0.006946808658540249
+          },
+          "top_controls": [
+            {
+              "control": "t_vent_sp",
+              "mean_abs_grad": 0.09097961336374283
+            },
+            {
+              "control": "co2_sp",
+              "mean_abs_grad": 0.03281444311141968
+            },
+            {
+              "control": "assim_sp",
+              "mean_abs_grad": 0.014191501773893833
+            },
+            {
+              "control": "t_heat_sp",
+              "mean_abs_grad": 0.010738846845924854
+            },
+            {
+              "control": "window_pos_lee_sp",
+              "mean_abs_grad": 0.007498617749661207
+            }
+          ]
+        },
+        "co2_mean_gradient": {
+          "mean_abs_grad": 0.06940052658319473,
+          "max_abs_grad": 2.2824313640594482,
+          "by_control": {
+            "t_heat_sp": 0.019040685147047043,
+            "t_vent_sp": 0.22196616232395172,
+            "co2_sp": 0.27674269676208496,
+            "dx_sp": 1.7354326701024547e-05,
+            "assim_sp": 0.044172320514917374,
+            "scr_enrg_sp": 0.007258718833327293,
+            "scr_blck_sp": 0.012725449167191982,
+            "window_pos_lee_sp": 0.028010215610265732,
+            "water_sup_intervals_sp_min": 0.014671183191239834
+          },
+          "top_controls": [
+            {
+              "control": "co2_sp",
+              "mean_abs_grad": 0.27674269676208496
+            },
+            {
+              "control": "t_vent_sp",
+              "mean_abs_grad": 0.22196616232395172
+            },
+            {
+              "control": "assim_sp",
+              "mean_abs_grad": 0.044172320514917374
+            },
+            {
+              "control": "window_pos_lee_sp",
+              "mean_abs_grad": 0.028010215610265732
+            },
+            {
+              "control": "t_heat_sp",
+              "mean_abs_grad": 0.019040685147047043
+            }
+          ]
+        },
+        "co2_first_step_gradient": {
+          "mean_abs_grad": 0.06191019341349602,
+          "max_abs_grad": 3.3143157958984375,
+          "by_control": {
+            "t_heat_sp": 0.03409435227513313,
+            "t_vent_sp": 0.22328074276447296,
+            "co2_sp": 0.193945050239563,
+            "dx_sp": 1.2046576557622757e-05,
+            "assim_sp": 0.0404830127954483,
+            "scr_enrg_sp": 0.009611661545932293,
+            "scr_blck_sp": 0.014087001793086529,
+            "window_pos_lee_sp": 0.024991445243358612,
+            "water_sup_intervals_sp_min": 0.016686350107192993
+          },
+          "top_controls": [
+            {
+              "control": "t_vent_sp",
+              "mean_abs_grad": 0.22328074276447296
+            },
+            {
+              "control": "co2_sp",
+              "mean_abs_grad": 0.193945050239563
+            },
+            {
+              "control": "assim_sp",
+              "mean_abs_grad": 0.0404830127954483
+            },
+            {
+              "control": "t_heat_sp",
+              "mean_abs_grad": 0.03409435227513313
+            },
+            {
+              "control": "window_pos_lee_sp",
+              "mean_abs_grad": 0.024991445243358612
+            }
+          ]
+        }
+      }
+    }
+  }
+}
