@@ -2,7 +2,7 @@
 
 English canonical version.
 Mapped Chinese mirror: [CO2_SPECIALIST_REPORT.zh-CN.md](c:/repositories/strawberry/agc_mpc/CO2_SPECIALIST_REPORT.zh-CN.md)
-Last synchronized: `2026-04-07`
+Last synchronized: `2026-04-14`
 
 ## 1. What This Report Covers
 
@@ -48,6 +48,9 @@ Direct interpretation:
 - `CO2` benefits from multi-scale decomposition and adaptive fusion.
 - This matches the literature.
 - The best current standalone direction is `wavelet / multi-scale + GRU + adaptive attention`.
+- Direct end-to-end multi-target transfer failed, but a more decoupled horizon-wise frozen-expert integration has now succeeded.
+- The current strongest multi-target CO2 result is `itransformer_co2_horizon_mixture`, with Full `CO2air MAE = 43.910` and Final `CO2air MAE = 47.661`.
+- The first closed-loop transfer of that offline leader failed; a frozen-backbone follow-up restored control gradients and produced a safer MPC-facing compromise.
 
 ## 3. Implemented Files
 
@@ -430,18 +433,40 @@ Completed:
 2. `co2_vmd_lstm_fusion`
 3. `co2_wavelet_gru_attn`
 
-### Batch 2: Highest Priority Next Step
+### Batch 2: Multi-Target Integration
 
 Goal:
 
 - merge the strongest standalone CO2 idea back into the multi-target mainline
 
-Recommended order:
+What happened:
 
-1. use `co2_wavelet_gru_attn` as the template for a new multi-target CO2 residual branch
-2. apply the specialist correction only to the `CO2air` channel
-3. make the fusion explicitly horizon-aware
-4. validate whether `GradientMPC` also benefits on the control benchmark
+1. direct wavelet residual integration failed
+2. direct wavelet blend integration failed
+3. frozen-expert integration improved CO2 but left split full/final error profiles
+4. horizon-wise protected fusion succeeded
+5. frozen-backbone horizon-wise fusion restored control-safe short-step behavior
+
+Current best integration:
+
+- `itransformer_co2_horizon_mixture`
+- Full `CO2air MAE = 43.910`
+- Final `CO2air MAE = 47.661`
+
+Why this worked better:
+
+- it keeps the standalone wavelet-GRU expert frozen
+- it applies correction only to the `CO2air` channel
+- it lets early/mid horizons use protected expert correction
+- it pulls terminal horizons back toward the stronger late-residual tail behavior
+
+Control-transfer validation:
+
+- `itransformer_co2_horizon_mixture` is the offline leader but transferred poorly to MPC, with `GradientMPC` `CO2air MAE = 28.696`.
+- The main reason is first-step behavior: the simulator advances state with the first predicted step, and the offline leader improved full/final metrics while hurting the control-aligned first-step error.
+- `itransformer_co2_frozen_backbone_horizon_mixture` keeps the late-residual backbone frozen, trains only the horizon gate, and preserves input gradients for MPC.
+- After removing `torch.no_grad()` from the frozen-backbone forward path, `GradientMPC` gradients were restored.
+- The frozen-backbone variant reached `GradientMPC` `CO2air MAE = 10.000`, close to `late_residual` and far safer than the offline leader, but still worse than `late_frozen_expert` on CO2 control.
 
 ### Batch 3: High Priority
 
@@ -483,6 +508,14 @@ The cleanest weekly-report version is:
 - The strongest current method is `wavelet-inspired + GRU + adaptive attention`.
 - That line reaches Full `CO2air MAE = 45.209` under the current fair-budget AGC benchmark.
 - Therefore, the next step should be to merge this standalone CO2 specialist logic back into the current multi-target mainline, rather than continuing to swap generic backbones.
+
+Updated after multi-target integration:
+
+- Naive end-to-end integration of the standalone wavelet expert failed.
+- Decoupled integration worked: frozen expert + protected horizon-wise correction + terminal pullback now gives the best offline `CO2air` results.
+- The current strongest report line is `itransformer_co2_horizon_mixture`: Full `CO2air MAE = 43.910`, Final `CO2air MAE = 47.661`.
+- For control-oriented reporting, separate that from the safer follow-up: `itransformer_co2_frozen_backbone_horizon_mixture` reached `GradientMPC` `CO2air MAE = 10.000` after preserving input gradients through the frozen modules.
+
 ## 8. 2026-04-07 Multi-Target Integration Note
 
 After the standalone CO2 specialist benchmark, two direct multi-target integration attempts were tested:
@@ -508,3 +541,42 @@ Current takeaway:
 - the standalone specialist is strong
 - but naive end-to-end integration into the multi-target model breaks its advantage
 - the next more reasonable route is not another immediate branch rewrite, but a more decoupled transfer method such as frozen-expert fusion, distillation, or teacher-guided auxiliary loss
+
+## 9. 2026-04-14 Successful Decoupled Integration
+
+After the failed direct integrations, several decoupled variants were tested:
+
+- `itransformer_co2_frozen_expert`
+- `itransformer_co2_late_frozen_expert`
+- `itransformer_co2_teacher_distill`
+- `itransformer_co2_recoupled_expert`
+- `itransformer_co2_protected_expert`
+- `itransformer_co2_protected_terminal`
+- `itransformer_co2_horizon_mixture`
+- `itransformer_co2_frozen_backbone_horizon_mixture`
+
+Best result:
+
+- `itransformer_co2_horizon_mixture`
+  - `Tair`: Full `R2=0.9508`, MAE `0.604`; Final `R2=0.9374`, MAE `0.689`
+  - `Rhair`: Full `R2=0.8958`, MAE `3.882`; Final `R2=0.8615`, MAE `4.568`
+  - `CO2air`: Full `R2=0.7868`, MAE `43.910`; Final `R2=0.7468`, MAE `47.661`
+
+Interpretation:
+
+- This is the first current fair-budget model to unify the previous `CO2air` full-horizon and final-step leaders.
+- It improves the standalone `co2_wavelet_gru_attn` Full MAE `45.209` after transfer into the multi-target setting.
+- It also improves the prior multi-target best Full MAE `44.727` and Final MAE `50.139`.
+- The main remaining weakness is that `Rhair` is still slightly behind `itransformer_residual`.
+- The first closed-loop check did not transfer well: `GradientMPC` with `itransformer_co2_horizon_mixture` reached `CO2air MAE = 28.696`, far worse than the earlier `late_frozen_expert` control-side CO2 result.
+- A frozen-backbone follow-up reached Full `CO2air MAE = 46.334` and Final `CO2air MAE = 50.139`, so it is not the offline leader.
+- Its value is control safety: after keeping input gradients through the frozen backbone and expert, `GradientMPC` reached objective `0.0718`, `Tair MAE=1.158`, `Rhair MAE=1.615`, and `CO2air MAE=10.000`.
+- This slightly improves `late_residual` CO2 control (`10.125` to `10.000`) but does not beat `late_frozen_expert` CO2 control (`6.298`).
+
+Research takeaway:
+
+- The useful literature idea was not "use a wavelet expert directly inside the whole end-to-end model".
+- The useful idea was "preserve the specialist as a stable CO2 teacher/expert, then control where and when it is trusted".
+- Horizon-dependent trust is now the strongest validated transfer mechanism.
+- Offline horizon-dependent trust is not automatically control-safe.
+- The next research step is control-aware CO2 fusion: keep `late_frozen_expert` short-horizon controllability while preserving the horizon-mixture family's offline terminal gains.

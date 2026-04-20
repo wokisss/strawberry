@@ -2,7 +2,7 @@
 
 English canonical version.
 Mapped Chinese mirror: [CONTEXT.zh-CN.md](c:/repositories/strawberry/CONTEXT.zh-CN.md)
-Last synchronized: `2026-04-07`
+Last synchronized: `2026-04-20`
 
 ## 0. Purpose And Maintenance Policy
 
@@ -14,6 +14,7 @@ From `2026-04-07` onward, the documentation policy is:
 - `*.zh-CN.md` is the synchronized Chinese mirror.
 - When a maintained bilingual document changes, both versions must be updated in the same work turn.
 - If any maintained document shows mojibake, encoding corruption, or suspicious characters, report it immediately before continuing.
+- On Windows PowerShell, Chinese markdown can appear corrupted if read with the default `Get-Content` encoding. Before declaring a Chinese mirror damaged, re-read it explicitly with `Get-Content -Raw -Encoding UTF8 <path>` and distinguish terminal decoding issues from real file corruption.
 - Do not silently overwrite a corrupted document without stating what happened.
 
 This policy currently applies to:
@@ -241,38 +242,58 @@ Maintenance rules:
 - Completed the latest predictor suite control comparison.
 - Consolidated the CO2 literature direction.
 
-### Last Week: 2026-03-30 ~ 2026-04-05
+#### 2026-04-06 ~ 2026-04-12
 
-- Formal fair-budget `DLinear` benchmark.
-- Latest predictor suite control comparison.
-- CO2 literature and direction consolidation.
+- Completed the `iTransformer` hybrid line through residual and CO2-specialized variants.
+- Implemented and benchmarked standalone CO2 specialist models.
+- Completed first multi-target wavelet CO2 integration attempts and recorded the failed-transfer conclusion.
 
-### This Week: 2026-04-06 ~ 2026-04-12
+#### 2026-04-13 ~ 2026-04-19
 
-- Complete the `iTransformer` hybrid line and formalize the benchmarkable implementation.
-  - Status: largely done through residual variants and CO2-specialized variants.
-- Land usable CO2 specialist branches.
-  - Status: standalone CO2 line is implemented and benchmarked.
-  - Remaining subtask: integrate the best standalone CO2 idea back into the multi-target mainline and test control impact.
+- Implemented and formally benchmarked the frozen, late-frozen, distillation, recoupled, protected, protected-terminal, horizon-mixture, and frozen-backbone horizon-mixture CO2 expert variants.
+- Established `itransformer_co2_horizon_mixture` as the current offline `CO2air` forecasting leader.
+- Ran the first `96-step` closed-loop control checks for the new CO2 variants.
+- Added control-sensitivity diagnostics and trace-based pair comparison plots.
+- Recorded the key conclusion that generic offline forecasting metrics do not automatically transfer to MPC control performance.
 
-### Next Week: 2026-04-13 ~ 2026-04-19
+### Last Week: 2026-04-13 ~ 2026-04-19
 
-- Integrate `co2_wavelet_gru_attn` ideas into the multi-target CO2 residual line.
-- Run fair-budget comparison against `itransformer_residual` and `itransformer_co2_late_residual`.
-- Run closed-loop control comparison for the upgraded CO2-specialized predictor.
-- Extend the bilingual document policy to additional maintained project markdown files if needed.
+- Implemented and formally benchmarked the latest CO2 expert fusion variants.
+- Completed the `itransformer_co2_horizon_mixture` forecasting push.
+- Diagnosed the poor MPC transfer of the offline forecasting leader.
+- Implemented the `itransformer_co2_frozen_backbone_horizon_mixture` control-safe diagnostic variant.
+- Generated trace-based control comparison figures against `late_frozen_expert` and `recoupled_expert`.
+
+### This Week: 2026-04-20 ~ 2026-04-26
+
+- Do not keep adding unrelated new predictors by default.
+- Primary task candidate 1: build a standardized control-relevant validation suite.
+- Primary task candidate 2: converge the model story around `Protected Horizon Fusion` / `PHF-iTransformer`.
+- High-risk/high-reward task candidate: build a control-aware CO2 fusion model that combines `late_frozen_expert` short-horizon controllability with `horizon_mixture` offline terminal gains.
+- Supporting task candidate: consolidate the PHF ablation table and figures from existing variants.
+- Supporting task candidate: prepare a literature benchmark table across `Tair`, `Rhair`, and `CO2air`.
+- Recommended weekly pair unless redirected by the user:
+  - control-relevant validation
+  - PHF mainline/story convergence
+
+### Next Week: 2026-04-27 ~ 2026-05-03
+
+- If this week finishes validation and story convergence, implement only one control-aware CO2 fusion candidate.
+- If the user chooses performance over writing/story, prioritize the control-aware mixture and rerun formal forecasting + `96-step` control.
+- If the user chooses paper preparation, prioritize PHF ablation, method diagram, and literature comparison.
 
 ## 8. Current Priorities
 
 Priority 1:
 
-- strengthen `CO2air` in a control-relevant way
+- strengthen offline `CO2air` forecasting first
+- resolve the split between full-horizon and final-step CO2 leaders
 - prefer targeted CO2 branches over generic backbone swapping
 
 Priority 2:
 
-- preserve control-side validation
-- keep `GradientMPC vs CEMMPC` comparisons
+- return to control-side validation after the forecasting leader is stronger
+- keep `GradientMPC vs CEMMPC` comparisons when control is rerun
 - verify whether offline forecasting gains transfer to closed-loop gains
 
 Priority 3:
@@ -299,6 +320,7 @@ Priority 3:
    - Can the architecture be explained as control-oriented design?
 5. For CO2 work, prefer specialized modeling over blind generic backbone expansion.
 6. If a maintained bilingual document is changed, update both the English canonical file and the Chinese mirror in the same turn.
+
 ## 10. 2026-04-07 CO2 Wavelet Integration Update
 
 Two multi-target integration attempts were completed for the standalone `co2_wavelet_gru_attn` idea.
@@ -319,3 +341,357 @@ Interpretation:
 - The standalone wavelet CO2 expert is strong by itself, but it did not transfer cleanly into end-to-end multi-target training.
 - Both the direct residual-integration route and the direct blend-expert route degraded `CO2air` relative to `itransformer_residual` and `itransformer_co2_late_residual`.
 - The current evidence suggests that the standalone CO2 specialist should probably be integrated through a more decoupled mechanism such as freezing, distillation, or offline teacher guidance rather than naive end-to-end joint training.
+
+## 11. 2026-04-14 Handoff Update: Forecasting-Only CO2 Push
+
+The short-term project focus has changed:
+
+- Do not prioritize closed-loop control yet.
+- First make offline forecasting clearly stronger.
+- Only after the predictor is consistently stronger should control be used as the next story step.
+
+New multi-target CO2 variants implemented after the previous push:
+
+- `itransformer_co2_frozen_expert`
+- `itransformer_co2_late_frozen_expert`
+- `itransformer_co2_teacher_distill`
+- `itransformer_co2_recoupled_expert`
+- `itransformer_co2_protected_expert`
+- `itransformer_co2_protected_terminal`
+- `itransformer_co2_horizon_mixture`
+- `itransformer_co2_frozen_backbone_horizon_mixture`
+
+Implementation notes:
+
+- `training/trainer.py` now supports optional model-provided `compute_auxiliary_loss`.
+- `config.py` now has `lambda_auxiliary`.
+- Frozen-expert variants load the standalone `co2_wavelet_gru_attn` checkpoint and keep that expert frozen.
+
+Latest fair-budget forecasting results:
+
+- `itransformer_co2_frozen_expert`
+  - `Tair`: Full `R2=0.9463`, MAE `0.601`
+  - `Rhair`: Full `R2=0.7949`, MAE `5.471`
+  - `CO2air`: Full `R2=0.7427`, MAE `46.966`
+  - `CO2air`: Final `R2=0.6105`, MAE `59.247`
+- `itransformer_co2_late_frozen_expert`
+  - `Tair`: Full `R2=0.9460`, MAE `0.632`
+  - `Rhair`: Full `R2=0.8908`, MAE `4.117`
+  - `CO2air`: Full `R2=0.7757`, MAE `44.727`
+  - `CO2air`: Final `R2=0.6292`, MAE `57.193`
+- `itransformer_co2_teacher_distill`
+  - `Tair`: Full `R2=0.9464`, MAE `0.611`
+  - `Rhair`: Full `R2=0.8730`, MAE `4.179`
+  - `CO2air`: Full `R2=0.6551`, MAE `56.018`
+  - `CO2air`: Final `R2=0.6407`, MAE `57.294`
+- `itransformer_co2_recoupled_expert`
+  - `Tair`: Full `R2=0.9339`, MAE `0.687`
+  - `Rhair`: Full `R2=0.8591`, MAE `4.522`
+  - `CO2air`: Full `R2=0.7533`, MAE `47.585`
+  - `CO2air`: Final `R2=0.6416`, MAE `58.054`
+- `itransformer_co2_protected_expert`
+  - `Tair`: Full `R2=0.9431`, MAE `0.660`
+  - `Rhair`: Full `R2=0.8829`, MAE `4.197`
+  - `CO2air`: Full `R2=0.7765`, MAE `45.190`
+  - `CO2air`: Final `R2=0.6410`, MAE `55.984`
+- `itransformer_co2_protected_terminal`
+  - `Tair`: Full `R2=0.9489`, MAE `0.614`
+  - `Rhair`: Full `R2=0.8620`, MAE `4.324`
+  - `CO2air`: Full `R2=0.7404`, MAE `48.055`
+  - `CO2air`: Final `R2=0.7069`, MAE `52.056`
+- `itransformer_co2_horizon_mixture`
+  - `Tair`: Full `R2=0.9508`, MAE `0.604`
+  - `Rhair`: Full `R2=0.8958`, MAE `3.882`
+  - `CO2air`: Full `R2=0.7868`, MAE `43.910`
+  - `CO2air`: Final `R2=0.7468`, MAE `47.661`
+- `itransformer_co2_frozen_backbone_horizon_mixture`
+  - `Tair`: Full `R2=0.9503`, MAE `0.595`
+  - `Rhair`: Full `R2=0.8849`, MAE `4.172`
+  - `CO2air`: Full `R2=0.7727`, MAE `46.334`
+  - `CO2air`: Final `R2=0.7312`, MAE `50.139`
+
+Current forecasting frontier:
+
+- Best `CO2air` Full MAE:
+  - `itransformer_co2_horizon_mixture`: `43.910`
+- Best `CO2air` Final MAE:
+  - `itransformer_co2_horizon_mixture`: `47.661`
+- Best practical CO2-focused compromise:
+  - `itransformer_co2_horizon_mixture`: `Tair` Full MAE `0.604`, `Rhair` Full MAE `3.882`, `CO2air` Full MAE `43.910`, `CO2air` Final MAE `47.661`
+- Best non-CO2 balance:
+  - `itransformer_residual` remains strongest on `Rhair`
+  - `itransformer_co2_late_residual` remains a strong broad multi-target balance
+
+Important conclusion:
+
+- `itransformer_co2_horizon_mixture` is the first current fair-budget model to unify the previous split between full-horizon and final-step CO2 leaders.
+- It does not strictly dominate every non-CO2 metric; `itransformer_residual` is still stronger on `Rhair`.
+- The forecasting bottleneck has moved from "can CO2 be improved?" to "can the new CO2 leader preserve or recover the last bit of humidity balance?"
+
+Recommended next forecasting-only direction:
+
+- Treat `itransformer_co2_horizon_mixture` as the new forecasting leader.
+- Inspect horizon-wise error and forecast examples to confirm the terminal pullback behaves as intended.
+- If the figures look stable, rerun closed-loop control only for `itransformer_co2_horizon_mixture` before spending more time on control-side tuning.
+- If humidity balance becomes the limiting issue, tune the horizon gate or auxiliary loss without adding a heavier backbone.
+
+## 12. 2026-04-14 Closed-Loop Check, Now Deprioritized
+
+A `96-step` closed-loop control suite was run for context, but control is no longer the immediate priority.
+
+`GradientMPC` results:
+
+- `itransformer_residual`
+  - objective `0.1924`
+  - `Tair MAE=2.216`
+  - `Rhair MAE=5.675`
+  - `CO2air MAE=11.532`
+- `itransformer_co2_late_residual`
+  - objective `0.0705`
+  - `Tair MAE=1.153`
+  - `Rhair MAE=1.618`
+  - `CO2air MAE=10.125`
+- `itransformer_co2_late_frozen_expert`
+  - objective `0.1533`
+  - `Tair MAE=2.192`
+  - `Rhair MAE=4.316`
+  - `CO2air MAE=6.298`
+- `itransformer_co2_recoupled_expert`
+  - objective `0.0651`
+  - `Tair MAE=0.826`
+  - `Rhair MAE=2.692`
+  - `CO2air MAE=16.749`
+- `itransformer_co2_horizon_mixture`
+  - objective `0.3713`
+  - `Tair MAE=3.313`
+  - `Rhair MAE=5.696`
+  - `CO2air MAE=28.696`
+
+Interpretation:
+
+- `late_frozen_expert` converts CO2 forecasting strength into the best closed-loop `CO2air` control among the compared models.
+- `late_residual` and `recoupled_expert` are better on overall objective.
+- `horizon_mixture` is the new offline CO2 leader, but its first `96-step` control transfer is poor and should not be treated as the control leader.
+- The immediate control-side question is why the terminal-pullback forecast improves offline metrics but destabilizes MPC rollout.
+- A follow-up frozen-backbone mixture restores the `late_residual` first-step behavior and control gradients, but remains a control-safe compromise rather than a new control leader.
+
+## 13. Current Weekly Task Update
+
+Current week: `2026-04-13 ~ 2026-04-19`
+
+This week's priority:
+
+- Forecasting-only priority: make `CO2air` prediction clearly stronger before returning to control.
+- Completed: implemented and formally benchmarked `itransformer_co2_horizon_mixture`.
+- Completed: diagnosed the failed control transfer and implemented `itransformer_co2_frozen_backbone_horizon_mixture`.
+- Current best full-horizon CO2 model: `itransformer_co2_horizon_mixture`.
+- Current best final-step CO2 model: `itransformer_co2_horizon_mixture`.
+- Current best CO2-focused compromise model: `itransformer_co2_horizon_mixture`.
+- Completed first closed-loop check for `itransformer_co2_horizon_mixture`; offline gains did not transfer to MPC.
+- Current control-safe mixture candidate: `itransformer_co2_frozen_backbone_horizon_mixture`.
+- Immediate next subtask: build a control-aware mixture or validation metric that favors first-step and short-horizon sensitivity, not only full/final offline MAE.
+
+Next week: `2026-04-20 ~ 2026-04-26`
+
+- If forecasting frontier improves, rerun closed-loop control only for the new forecasting leader.
+- If forecasting remains split between full-horizon and final-step leaders, analyze horizon-wise error and build a more explicit horizon-conditioned gate.
+- Update CO2 specialist report with the successful and failed integration patterns.
+
+## 14. Current Repository Change Status
+
+As of `2026-04-20`, the recent code and result changes were pushed to `origin/main` in segmented commits:
+
+- `f5aa3f6` - CO2 specialist fusion models and control diagnostic tools
+- `ac98b66` - CO2 specialist forecasting result artifacts
+- `86dc2e7` - CO2 control diagnostics, comparison figures, and trace JSON results
+
+Remaining documentation maintenance is tracked in the current context/report updates.
+
+Before switching branches, still check `git status` because documentation may have been updated after the latest result pushes.
+
+## 15. 2026-04-14 Horizon Mixture Forecasting Result
+
+Implemented `itransformer_co2_horizon_mixture`.
+
+Design:
+
+- base predictor: `itransformer_co2_late_residual`
+- protected correction: frozen standalone `co2_wavelet_gru_attn` expert
+- horizon behavior:
+  - early/mid horizons keep protected expert correction
+  - terminal horizons are pulled back toward the late-residual predictor
+- training: fair budget with `lambda_auxiliary = 0.05`
+
+Formal `joint_all + Reference` result:
+
+- `Tair`: Full `R2=0.9508`, MAE `0.604`; Final `R2=0.9374`, MAE `0.689`
+- `Rhair`: Full `R2=0.8958`, MAE `3.882`; Final `R2=0.8615`, MAE `4.568`
+- `CO2air`: Full `R2=0.7868`, MAE `43.910`; Final `R2=0.7468`, MAE `47.661`
+
+Interpretation:
+
+- This is now the strongest offline CO2 model in the current fair-budget suite on both Full MAE and Final MAE.
+- It improves the previous best `CO2air` Full MAE from `44.727` to `43.910`.
+- It improves the previous best `CO2air` Final MAE from `50.139` to `47.661`.
+- `Rhair` remains slightly behind the strongest `itransformer_residual` balance, so the result is a clear CO2-frontier improvement rather than a strict all-target domination.
+
+Generated artifacts:
+
+- summary: `results/forecasting/analysis/itransformer_co2_horizon_mixture_joint_all_reference_summary.json`
+- checkpoint: `results/forecasting/checkpoints/itransformer_co2_horizon_mixture_joint_all_reference.pt`
+- figures under `results/forecasting/figures/residual_variants/`
+- updated comparison figure: `results/forecasting/figures/comparisons/itransformer_co2_branch_comparison_metrics.png`
+
+Closed-loop transfer check:
+
+- `96-step` `GradientMPC` with `itransformer_co2_horizon_mixture`:
+  - objective `0.3713`
+  - `Tair MAE=3.313`
+  - `Rhair MAE=5.696`
+  - `CO2air MAE=28.696`
+- `CEMMPC` with `itransformer_co2_horizon_mixture`:
+  - objective `0.4903`
+  - `Tair MAE=4.426`
+  - `Rhair MAE=7.355`
+  - `CO2air MAE=31.294`
+
+Control interpretation:
+
+- Offline `CO2air` improvement did not transfer to the current MPC loop.
+- Keep `itransformer_co2_horizon_mixture` as the offline forecasting leader only.
+- Do not replace the current control-side leaders with it until the rollout mismatch is understood.
+- Next likely diagnostic: compare action sensitivity and horizon-wise forecast gradients against `late_frozen_expert` and `late_residual`.
+
+## 16. 2026-04-14 Control Sensitivity Diagnosis And Frozen-Backbone Mixture
+
+A control-sensitivity diagnostic was added after the poor `horizon_mixture` closed-loop transfer.
+
+Diagnostic file:
+
+- [diagnose_control_sensitivity.py](c:/repositories/strawberry/agc_mpc/diagnose_control_sensitivity.py)
+
+Comparison plotting file:
+
+- [plot_control_pair_comparison.py](c:/repositories/strawberry/agc_mpc/plot_control_pair_comparison.py)
+- [plot_control_pair_trace_comparison.py](c:/repositories/strawberry/agc_mpc/plot_control_pair_trace_comparison.py)
+- Primary generated figure: `results/control/figures/comparison_itransformer_co2_horizon_mixture_vs_itransformer_co2_late_frozen_expert_gradient_mpc.png`
+- Secondary generated figure for the overall-objective leader: `results/control/figures/comparison_itransformer_co2_horizon_mixture_vs_itransformer_co2_recoupled_expert_gradient_mpc.png`
+- Trace JSONs are saved under `results/control/summaries/trace_comparison_*_gradient_mpc.json`.
+
+Main diagnosis:
+
+- The current simulator advances state with the first-step prediction.
+- `itransformer_co2_horizon_mixture` improved full/final offline `CO2air` metrics, but worsened the control-aligned first-step `CO2air` error.
+- This explains why the offline leader failed to transfer into MPC rollout.
+
+Follow-up model:
+
+- `itransformer_co2_frozen_backbone_horizon_mixture`
+
+Design:
+
+- freeze the proven `itransformer_co2_late_residual` main backbone
+- freeze the standalone `co2_wavelet_gru_attn` expert
+- train only the small horizon gate
+- keep gradients through the frozen backbone and expert inputs for MPC
+
+Important implementation detail:
+
+- Do not wrap the frozen backbone or expert forward pass in `torch.no_grad()` during MPC-facing inference.
+- Parameters stay frozen via `requires_grad_(False)`, but input gradients must remain available for `GradientMPC`.
+- An earlier `no_grad()` version preserved prediction values but cut off control gradients and made `GradientMPC` nearly inactive.
+
+Formal `joint_all + Reference` forecasting result:
+
+- `Tair`: Full `R2=0.9503`, MAE `0.595`; Final `R2=0.9375`, MAE `0.674`
+- `Rhair`: Full `R2=0.8849`, MAE `4.172`; Final `R2=0.8531`, MAE `4.774`
+- `CO2air`: Full `R2=0.7727`, MAE `46.334`; Final `R2=0.7312`, MAE `50.139`
+
+Control-aligned diagnostic after the gradient fix:
+
+- first-step `CO2air MAE = 27.351`
+- full-horizon `CO2air MAE = 36.356`
+- final-step `CO2air MAE = 30.574`
+- mean absolute control-cost gradient `0.01915`
+- strongest cost-gradient controls: `t_vent_sp`, `co2_sp`, `assim_sp`
+
+`96-step` closed-loop control result:
+
+- `GradientMPC`
+  - objective `0.0718`
+  - `Tair MAE=1.158`
+  - `Rhair MAE=1.615`
+  - `CO2air MAE=10.000`
+- `CEMMPC`
+  - objective `0.1632`
+  - `Tair MAE=2.631`
+  - `Rhair MAE=4.351`
+  - `CO2air MAE=25.263`
+
+Interpretation:
+
+- `itransformer_co2_frozen_backbone_horizon_mixture` is not the offline CO2 leader; `itransformer_co2_horizon_mixture` remains stronger offline.
+- It is a more control-safe mixture because it preserves short-step behavior and usable control gradients.
+- It roughly matches `itransformer_co2_late_residual + GradientMPC` and slightly improves its `CO2air MAE` from `10.125` to `10.000`.
+- It still does not beat `itransformer_co2_late_frozen_expert + GradientMPC` on `CO2air`, which previously reached `6.298`.
+- The next mainline should be control-aware CO2 fusion: preserve `late_frozen_expert` short-horizon CO2 controllability while keeping the offline terminal gains of the horizon-mixture family.
+
+## 17. 2026-04-20 Story Convergence And Current Week Task Candidates
+
+The latest discussion identified a narrative risk:
+
+- The project has too many recent predictor variants to present all of them as independent main contributions.
+- If written as a model-by-model chronology, the story will look like trial-and-error architecture stacking.
+- The paper/mainline should now converge around one method family and use the other models as baselines, ablations, or diagnostics.
+
+Recommended method framing:
+
+- Main method name: `Protected Horizon Fusion` / `PHF-iTransformer`.
+- Main technical chain:
+  - `CO2-WGA` standalone expert
+  - protected expert correction
+  - horizon-dependent trust
+  - terminal pullback
+  - MPC-relevant validation
+- Do not present every variant as a standalone contribution.
+
+Recommended model roles:
+
+- `itransformer_co2_horizon_mixture`: main offline forecasting method / PHF representative.
+- `itransformer_co2_late_frozen_expert`: strongest current CO2 control baseline.
+- `itransformer_co2_recoupled_expert`: strongest current overall objective baseline.
+- `itransformer_co2_frozen_backbone_horizon_mixture`: control-safety diagnostic variant.
+- `frozen_expert`, `teacher_distill`, `protected_terminal`: ablation or appendix material.
+
+Current week task candidates, ranked by value:
+
+1. Control-relevant validation suite
+   - first-step MAE
+   - first `6`-step control-horizon MAE
+   - horizon-weighted MAE
+   - control-input sensitivity
+   - `GradientMPC` activity metrics
+   - standard JSON/table/figure outputs
+2. PHF story and method convergence
+   - rename and frame the main method
+   - write a clean method diagram
+   - define which models are main method, baselines, ablations, and diagnostics
+3. Control-aware CO2 fusion
+   - combine `late_frozen_expert` short-horizon controllability with `horizon_mixture` terminal forecasting gains
+   - keep input gradients available for `GradientMPC`
+4. PHF ablation consolidation
+   - organize existing variant results into one controlled table
+   - avoid further architecture sprawl
+5. Literature benchmark table
+   - compare `Tair`, `Rhair`, and `CO2air`
+   - distinguish pure forecasting papers from control-oriented validation
+
+Recommended two-task pair unless the user chooses otherwise:
+
+- control-relevant validation suite
+- PHF story and method convergence
+
+Reason:
+
+- The bottleneck is no longer just model capacity.
+- The current bottleneck is model-selection logic: the project must explain why an offline forecasting leader is not automatically the control leader, and then use that explanation to justify the next model.

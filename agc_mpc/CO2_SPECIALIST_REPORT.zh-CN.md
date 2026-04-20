@@ -2,7 +2,7 @@
 
 中文对齐翻译版本。
 英文主版本： [CO2_SPECIALIST_REPORT.md](c:/repositories/strawberry/agc_mpc/CO2_SPECIALIST_REPORT.md)
-最近同步时间：`2026-04-07`
+最近同步时间：`2026-04-14`
 
 ## 1. 这份报告覆盖什么
 
@@ -48,6 +48,9 @@
 - `CO2` 更适合多尺度分解和自适应融合。
 - 这与文献结论一致。
 - 当前最强的独立 CO2 方向是 `wavelet / multi-scale + GRU + adaptive attention`。
+- 直接端到端多目标迁移失败了，但更解耦的 horizon-wise frozen-expert 并回已经成功。
+- 当前最强多目标 CO2 结果是 `itransformer_co2_horizon_mixture`，Full `CO2air MAE = 43.910`，Final `CO2air MAE = 47.661`。
+- 这个离线 leader 的第一次闭环转化失败了；后续 frozen-backbone 版本恢复了控制梯度，形成了更适合 MPC 的安全折中。
 
 ## 3. 已落地文件
 
@@ -431,18 +434,40 @@
 2. `co2_vmd_lstm_fusion`
 3. `co2_wavelet_gru_attn`
 
-### 第二批：当前最高优先级
+### 第二批：多目标并回
 
 目标：
 
 - 把当前最强的独立 CO2 思路并回多目标主线
 
-建议顺序：
+实际进展：
 
-1. 用 `co2_wavelet_gru_attn` 作为模板，做新的多目标 CO2 residual 分支
-2. 只对 `CO2air` 通道施加专项校正
-3. 让融合机制显式依赖 horizon
-4. 验证 `GradientMPC` 下控制侧是否也受益
+1. 直接 wavelet residual integration 失败
+2. 直接 wavelet blend integration 失败
+3. frozen-expert integration 改善了 CO2，但 full/final error profile 仍然分裂
+4. horizon-wise protected fusion 成功
+5. frozen-backbone horizon-wise fusion 恢复了控制安全的短步行为
+
+当前最好并回方案：
+
+- `itransformer_co2_horizon_mixture`
+- Full `CO2air MAE = 43.910`
+- Final `CO2air MAE = 47.661`
+
+为什么这个方案更有效：
+
+- 保持独立 wavelet-GRU expert 冻结
+- 只对 `CO2air` 通道做修正
+- 早中段使用受保护的 expert correction
+- 末端 horizon 回拉到 late-residual 的更强尾部行为
+
+控制转化验证：
+
+- `itransformer_co2_horizon_mixture` 是离线 leader，但转化到 MPC 很差，`GradientMPC` 的 `CO2air MAE = 28.696`。
+- 主要原因是第一步行为：simulator 用第一步预测推进状态，而这个离线 leader 虽然改善了 full/final 指标，却伤害了控制对齐窗口里的第一步误差。
+- `itransformer_co2_frozen_backbone_horizon_mixture` 冻结 late-residual backbone，只训练 horizon gate，并为 MPC 保留输入梯度。
+- 从 frozen-backbone forward 路径移除 `torch.no_grad()` 后，`GradientMPC` 梯度恢复。
+- frozen-backbone 版本达到 `GradientMPC` `CO2air MAE = 10.000`，接近 `late_residual`，比离线 leader 控制安全得多，但 CO2 控制仍然弱于 `late_frozen_expert`。
 
 ### 第三批：高优先级
 
@@ -484,6 +509,14 @@
 - 当前最强的方法是 `wavelet-inspired + GRU + adaptive attention`。
 - 这条线在当前 fair-budget AGC benchmark 下达到 Full `CO2air MAE = 45.209`。
 - 因此下一步应该优先把这条独立 CO2 专项逻辑并回当前多目标主线，而不是继续盲目更换 generic backbone。
+
+多目标并回后的更新：
+
+- 朴素端到端并回 standalone wavelet expert 失败了。
+- 解耦并回成功了：frozen expert + protected horizon-wise correction + terminal pullback 目前给出了最强离线 `CO2air` 结果。
+- 当前最强汇报线是 `itransformer_co2_horizon_mixture`：Full `CO2air MAE = 43.910`，Final `CO2air MAE = 47.661`。
+- 面向控制汇报时，要把它和更安全的后续版本分开：`itransformer_co2_frozen_backbone_horizon_mixture` 在保留冻结模块输入梯度后，达到 `GradientMPC` `CO2air MAE = 10.000`。
+
 ## 8. 2026-04-07 多目标并回说明
 
 在独立 CO2 specialist benchmark 之后，又测试了两种直接并回多目标主线的方案：
@@ -509,3 +542,42 @@
 - 独立 specialist 本身是强的
 - 但朴素的端到端多目标并回会破坏它的优势
 - 下一步更合理的方向，不是继续马上改另一版分支，而是尝试更解耦的迁移方式，例如 frozen-expert fusion、蒸馏，或 teacher-guided auxiliary loss
+
+## 9. 2026-04-14 成功的解耦并回
+
+在直接并回失败后，又测试了多种解耦变体：
+
+- `itransformer_co2_frozen_expert`
+- `itransformer_co2_late_frozen_expert`
+- `itransformer_co2_teacher_distill`
+- `itransformer_co2_recoupled_expert`
+- `itransformer_co2_protected_expert`
+- `itransformer_co2_protected_terminal`
+- `itransformer_co2_horizon_mixture`
+- `itransformer_co2_frozen_backbone_horizon_mixture`
+
+最佳结果：
+
+- `itransformer_co2_horizon_mixture`
+  - `Tair`: Full `R2=0.9508`, MAE `0.604`; Final `R2=0.9374`, MAE `0.689`
+  - `Rhair`: Full `R2=0.8958`, MAE `3.882`; Final `R2=0.8615`, MAE `4.568`
+  - `CO2air`: Full `R2=0.7868`, MAE `43.910`; Final `R2=0.7468`, MAE `47.661`
+
+解读：
+
+- 这是当前 fair-budget 下第一个统一 `CO2air` 全时域 leader 和末步 leader 的模型。
+- 它把 standalone `co2_wavelet_gru_attn` 的 Full MAE `45.209` 成功迁移并进一步提升到了多目标场景。
+- 它也刷新了之前多目标最强 Full MAE `44.727` 和 Final MAE `50.139`。
+- 主要剩余弱点是 `Rhair` 仍然略弱于 `itransformer_residual`。
+- 第一轮闭环检查没有顺利转化：`GradientMPC` + `itransformer_co2_horizon_mixture` 的 `CO2air MAE = 28.696`，明显差于之前 `late_frozen_expert` 的控制侧 CO2 结果。
+- 后续 frozen-backbone 版本的 Full `CO2air MAE = 46.334`，Final `CO2air MAE = 50.139`，所以它不是离线 leader。
+- 它的价值是控制安全性：保留穿过冻结 backbone 和 expert 的输入梯度后，`GradientMPC` 达到 objective `0.0718`，`Tair MAE=1.158`，`Rhair MAE=1.615`，`CO2air MAE=10.000`。
+- 这比 `late_residual` 的 CO2 控制略好一点（`10.125` 到 `10.000`），但仍然没有超过 `late_frozen_expert` 的 CO2 控制（`6.298`）。
+
+研究结论：
+
+- 文献中真正有效的思路不是“把 wavelet expert 直接塞进整个端到端模型”。
+- 真正有效的是“保留 specialist 作为稳定 CO2 teacher/expert，再控制何时、何处信任它”。
+- horizon-dependent trust 现在是已经验证的最强迁移机制。
+- 但离线 horizon-dependent trust 不会自动变成 control-safe。
+- 下一步研究是 control-aware CO2 fusion：保留 `late_frozen_expert` 的短时域可控性，同时保留 horizon-mixture 家族的离线末端收益。

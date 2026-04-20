@@ -174,42 +174,59 @@ Design choice:
 - it does not generate a large comparison figure automatically
 - the intention is to lock the protocol first, then compare datasets with controlled variables
 
-杩欐槸鐙珛浜?`diffmpc` 鐨勬柊椤圭洰鐩綍锛岀敤浜庡熀浜?`Autonomous Greenhouse Challenge, Second Edition (2019)` 鏁版嵁闆嗛噸寤洪娴嬫帶鍒朵富绾裤€?
-褰撳墠宸茬粡鍏峰锛?
-- AGC 鏁版嵁璇诲彇涓庡瓧娈垫爣鍑嗗寲
-- `sp/vip` 缂哄け鍥炲～
-- `x_past / w_future / u_future / y_future` 鏍锋湰鏋勯€?- 鍗曢殧闂翠笌澶氶殧闂磋仈鍚堣缁?- leak-free 鏃堕棿鍒囧垎涓庡叏灞€鏍囧噯鍖?- `GRU / DLinear / SegRNN / Transformer / Transformer-hybrid` 浜斾釜棰勬祴 baseline
-- 鑷姩淇濆瓨 forecasting / control 缁撴灉鍒板垎灞傚悗鐨?`results` 鐩綍
+## Main Runtime Entry Points
 
-杩愯鏂瑰紡锛?
+General smoke entry point:
+
 ```bash
 conda activate strawberry_env
 python c:\repositories\strawberry\agc_mpc\main.py
 ```
 
-缁撴灉杈撳嚭锛?
-- 妯″瀷鏉冮噸锛歚agc_mpc/results/forecasting/checkpoints/*.pt`
-- 棰勬祴绀轰緥鍥撅細`agc_mpc/results/forecasting/figures/*_forecast_examples.png`
-- Horizon MAE 鍥撅細`agc_mpc/results/forecasting/figures/*_horizon_mae.png`
-- Rolling multi-step forecast windows锛歚agc_mpc/results/forecasting/figures/*_forecast_rollout.png`
-- 鎺у埗闂幆鍥撅細`agc_mpc/results/control/figures/*_closed_loop.png`
-- 鎺у埗 summary锛歚agc_mpc/results/control/summaries/*_summary.json`
+Current fair-budget residual forecaster benchmark:
 
-褰撳墠榛樿璁剧疆锛?
-- 鏁版嵁闆嗭細`AutonomousGreenhouseChallenge_edition2`
-- 闅旈棿锛? 涓?compartment 鑱斿悎璁粌
-- 鍘嗗彶绐楀彛锛歚seq_len = 288`锛?4 灏忔椂锛?- 棰勬祴绐楀彛锛歚horizon = 24`锛? 灏忔椂锛?- 鐩爣锛歚Tair / Rhair / CO2air / Tot_PAR`
+```bash
+conda activate strawberry_env
+python c:\repositories\strawberry\agc_mpc\benchmark_residual_forecaster_variants.py --model itransformer_co2_horizon_mixture --regime joint_all --target-compartment Reference
+```
 
-褰撳墠缁撴灉姒傝锛?
-- `DLinear` 褰撳墠鏁翠綋鏈€寮猴紝灏ゅ叾鏄?`Tair / Rhair`
-- `Transformer-hybrid` 鍦?`Tot_PAR` 鏈€缁堟鏈€濂斤紝涔熷湪 `CO2air` 涓婃帴杩戞渶浼?- `GRU` 褰撳墠涓嶅啀鏄暣浣撴渶浼橈紝浣嗕粛鐒舵槸閲嶈鐨勬椂搴?baseline
-- `SegRNN` 褰撳墠琛ㄧ幇涓嶅鍓嶄笁鑰咃紝浠嶄繚鐣欎綔缁撴瀯鍖?RNN 瀵圭収
+Standalone CO2 specialist benchmark:
 
-涓嬩竴姝ヤ富绾匡細
+```bash
+conda activate strawberry_env
+python c:\repositories\strawberry\agc_mpc\benchmark_co2_specialist_forecasters.py --model co2_wavelet_gru_attn --regime joint_all --target-compartment Reference
+```
 
-1. 鍒嗘瀽鍝被棰勬祴鍣ㄦ洿閫傚悎鍚庣画鎺у埗
-2. 鎶婇娴嬫ā鍨嬫帴鍏?AGC 涓婄殑 MPC
-   褰撳墠鍖哄垎鐨勬槸涓ょ MPC 姹傝В鍣細gradient-based MPC 鍜?CEM-based MPC
-3. 鍐嶅紩鍏ヨ祫婧愭垚鏈拰缁忔祹鎸囨爣
-- forecasting 鍥剧幇鍦ㄤ細鐩存帴鍦ㄥ浘鍐呮爣娉?`R2 / MAE` 绛夊叧閿寚鏍?- control 鍥剧幇鍦ㄤ細鍚屾椂灞曠ず鐘舵€佽窡韪€佹帶鍒朵唬浠?鍔ㄤ綔鍋忕Щ锛屼互鍙婂綊涓€鍖栧姩浣滆建杩?- 鏂囩尞涓庨」鐩鐓ф枃妗ｏ細`agc_mpc/LITERATURE_COMPARISON.md`
+## Result Outputs
+
+Forecasting outputs:
+
+- checkpoints: `agc_mpc/results/forecasting/checkpoints/*.pt`
+- summary JSON files: `agc_mpc/results/forecasting/analysis/*_summary.json`
+- example figures: `agc_mpc/results/forecasting/figures/**/*_forecast_examples.png`
+- horizon MAE figures: `agc_mpc/results/forecasting/figures/**/*_horizon_mae.png`
+- rollout figures: `agc_mpc/results/forecasting/figures/**/*_forecast_rollout.png`
+
+Control outputs:
+
+- closed-loop figures: `agc_mpc/results/control/figures/*_closed_loop.png`
+- summary JSON files: `agc_mpc/results/control/summaries/*_summary.json`
+
+## Current Forecasting Priority
+
+The current short-term priority is forecasting first, not control tuning.
+
+The active CO2 problem is no longer whether `CO2air` can be improved. Recent variants already improved it, but the best error profile is split:
+
+- `itransformer_co2_late_frozen_expert` is strongest on full-horizon `CO2air` MAE.
+- `itransformer_co2_late_residual` is strongest on final-step `CO2air` MAE.
+- `itransformer_co2_protected_expert` is the best current compromise.
+
+The next mainline direction is a horizon-wise mixture:
+
+- keep early and middle horizons close to the protected frozen-expert correction
+- pull the final horizon back toward the late-residual predictor
+- keep the correction narrow so `Tair` and `Rhair` are not destabilized
+
+After the forecasting frontier is clearly stronger, rerun closed-loop control only for the new forecasting leader.
 
