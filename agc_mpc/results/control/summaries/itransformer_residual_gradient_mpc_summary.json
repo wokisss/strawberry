@@ -3,14 +3,14 @@
   "controller": "gradient_mpc",
   "compartment": "Reference",
   "reference_mode": "trajectory",
-  "steps": 48,
-  "objective_mean": 0.06047135036593924,
-  "control_delta_mae": 9.682724952697754,
-  "action_tv": 4.736369469358276,
+  "steps": 96,
+  "objective_mean": 0.19244779120587432,
+  "control_delta_mae": 18.796566009521484,
+  "action_tv": 5.345652793146049,
   "target_mae": {
-    "Tair": 0.3358800411224365,
-    "Rhair": 2.5874016284942627,
-    "CO2air": 5.950181484222412
+    "Tair": 2.2164032459259033,
+    "Rhair": 5.675436496734619,
+    "CO2air": 11.531888008117676
   },
   "figure_path": "results\\control\\figures\\itransformer_residual_gradient_mpc_closed_loop.png"
 }

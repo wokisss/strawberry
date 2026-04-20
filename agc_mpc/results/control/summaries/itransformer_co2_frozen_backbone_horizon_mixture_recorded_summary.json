@@ -1,0 +1,16 @@
+{
+  "predictor": "itransformer_co2_frozen_backbone_horizon_mixture",
+  "controller": "recorded",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 96,
+  "objective_mean": 0.0,
+  "control_delta_mae": 0.0,
+  "action_tv": 0.16307871144575378,
+  "target_mae": {
+    "Tair": 2.2342007160186768,
+    "Rhair": 9.183690071105957,
+    "CO2air": 54.1959342956543
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_frozen_backbone_horizon_mixture_recorded_closed_loop.png"
+}

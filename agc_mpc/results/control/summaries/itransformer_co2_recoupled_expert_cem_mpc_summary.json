@@ -1,0 +1,16 @@
+{
+  "predictor": "itransformer_co2_recoupled_expert",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 96,
+  "objective_mean": 0.1339870877757979,
+  "control_delta_mae": 20.675155639648438,
+  "action_tv": 14.742181195567051,
+  "target_mae": {
+    "Tair": 2.0774896144866943,
+    "Rhair": 5.1793060302734375,
+    "CO2air": 12.758885383605957
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_recoupled_expert_cem_mpc_closed_loop.png"
+}

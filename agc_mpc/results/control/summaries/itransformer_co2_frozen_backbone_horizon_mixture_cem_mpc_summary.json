@@ -1,0 +1,16 @@
+{
+  "predictor": "itransformer_co2_frozen_backbone_horizon_mixture",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 96,
+  "objective_mean": 0.16316756355809048,
+  "control_delta_mae": 26.816926956176758,
+  "action_tv": 21.49136458088954,
+  "target_mae": {
+    "Tair": 2.6309916973114014,
+    "Rhair": 4.35121488571167,
+    "CO2air": 25.26313018798828
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_frozen_backbone_horizon_mixture_cem_mpc_closed_loop.png"
+}

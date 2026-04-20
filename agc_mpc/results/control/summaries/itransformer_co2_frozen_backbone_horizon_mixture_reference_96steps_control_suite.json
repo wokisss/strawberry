@@ -1,0 +1,69 @@
+{
+  "predictors": [
+    "itransformer_co2_frozen_backbone_horizon_mixture"
+  ],
+  "controllers": [
+    "recorded",
+    "gradient_mpc",
+    "cem_mpc"
+  ],
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "rollout_mode": "surrogate",
+  "steps": 96,
+  "target_cols": [
+    "Tair",
+    "Rhair",
+    "CO2air"
+  ],
+  "records": [
+    {
+      "predictor": "itransformer_co2_frozen_backbone_horizon_mixture",
+      "controller": "recorded",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 96,
+      "objective_mean": 0.0,
+      "control_delta_mae": 0.0,
+      "action_tv": 0.16307871144575378,
+      "target_mae": {
+        "Tair": 2.2342007160186768,
+        "Rhair": 9.183690071105957,
+        "CO2air": 54.1959342956543
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_frozen_backbone_horizon_mixture_recorded_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_frozen_backbone_horizon_mixture",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 96,
+      "objective_mean": 0.071759055989484,
+      "control_delta_mae": 12.075699806213379,
+      "action_tv": 5.699217197485268,
+      "target_mae": {
+        "Tair": 1.1583455801010132,
+        "Rhair": 1.6153751611709595,
+        "CO2air": 9.999581336975098
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_frozen_backbone_horizon_mixture_gradient_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_frozen_backbone_horizon_mixture",
+      "controller": "cem_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 96,
+      "objective_mean": 0.16316756355809048,
+      "control_delta_mae": 26.816926956176758,
+      "action_tv": 21.49136458088954,
+      "target_mae": {
+        "Tair": 2.6309916973114014,
+        "Rhair": 4.35121488571167,
+        "CO2air": 25.26313018798828
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_frozen_backbone_horizon_mixture_cem_mpc_closed_loop.png"
+    }
+  ]
+}

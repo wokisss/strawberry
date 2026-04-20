@@ -3,14 +3,14 @@
   "controller": "cem_mpc",
   "compartment": "Reference",
   "reference_mode": "trajectory",
-  "steps": 48,
-  "objective_mean": 0.11760227052339663,
-  "control_delta_mae": 22.124488830566406,
-  "action_tv": 12.777524704734484,
+  "steps": 96,
+  "objective_mean": 0.2910486775411603,
+  "control_delta_mae": 27.62232208251953,
+  "action_tv": 16.752031855285168,
   "target_mae": {
-    "Tair": 1.193825364112854,
-    "Rhair": 4.906114101409912,
-    "CO2air": 14.603373527526855
+    "Tair": 3.206892251968384,
+    "Rhair": 7.692668914794922,
+    "CO2air": 16.99641990661621
   },
   "figure_path": "results\\control\\figures\\itransformer_residual_cem_mpc_closed_loop.png"
 }

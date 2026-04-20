@@ -1,0 +1,16 @@
+{
+  "predictor": "itransformer_co2_horizon_mixture",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 96,
+  "objective_mean": 0.4902983152035934,
+  "control_delta_mae": 20.00192642211914,
+  "action_tv": 15.204121937354406,
+  "target_mae": {
+    "Tair": 4.426164627075195,
+    "Rhair": 7.355284214019775,
+    "CO2air": 31.294219970703125
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_horizon_mixture_cem_mpc_closed_loop.png"
+}
