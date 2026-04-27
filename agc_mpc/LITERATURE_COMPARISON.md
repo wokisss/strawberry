@@ -1,5 +1,13 @@
 # AGC Literature Comparison
 
+## Status Note
+
+- This file is an older snapshot and contains some mojibake from a previous encoding issue.
+- The clean, maintained, thesis-facing literature library is now:
+  - [THESIS_LITERATURE_LIBRARY.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.md)
+  - [THESIS_LITERATURE_LIBRARY.zh-CN.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.zh-CN.md)
+- The useful AGC-vs-literature positioning content from this file has been migrated there.
+
 ## Purpose
 
 This note compares the current `agc_mpc` baseline-first implementation with recent greenhouse forecasting and control papers.

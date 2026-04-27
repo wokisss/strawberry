@@ -1,5 +1,13 @@
 ﻿# Recent Papers Survey
 
+## Status Note
+
+- This file is kept as the original recent-paper survey snapshot.
+- The thesis-facing, bilingual, maintained literature library is now:
+  - [THESIS_LITERATURE_LIBRARY.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.md)
+  - [THESIS_LITERATURE_LIBRARY.zh-CN.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.zh-CN.md)
+- The greenhouse forecasting, greenhouse control, and general time-series content from this file has been reorganized into that thesis literature library.
+
 ## Purpose
 
 This note organizes recent forecasting and control papers that are relevant to the current `agc_mpc` project.

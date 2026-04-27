@@ -2,7 +2,7 @@
 
 English canonical version.
 Mapped Chinese mirror: [CONTEXT.zh-CN.md](c:/repositories/strawberry/CONTEXT.zh-CN.md)
-Last synchronized: `2026-04-20`
+Last synchronized: `2026-04-21`
 
 ## 0. Purpose And Maintenance Policy
 
@@ -22,6 +22,8 @@ This policy currently applies to:
 - [CONTEXT.md](c:/repositories/strawberry/CONTEXT.md) and [CONTEXT.zh-CN.md](c:/repositories/strawberry/CONTEXT.zh-CN.md)
 - [CO2_PAPERS_AND_DIRECTION.md](c:/repositories/strawberry/agc_mpc/CO2_PAPERS_AND_DIRECTION.md) and [CO2_PAPERS_AND_DIRECTION.zh-CN.md](c:/repositories/strawberry/agc_mpc/CO2_PAPERS_AND_DIRECTION.zh-CN.md)
 - [CO2_SPECIALIST_REPORT.md](c:/repositories/strawberry/agc_mpc/CO2_SPECIALIST_REPORT.md) and [CO2_SPECIALIST_REPORT.zh-CN.md](c:/repositories/strawberry/agc_mpc/CO2_SPECIALIST_REPORT.zh-CN.md)
+- [PHF_MAINLINE.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.md) and [PHF_MAINLINE.zh-CN.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.zh-CN.md)
+- [THESIS_LITERATURE_LIBRARY.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.md) and [THESIS_LITERATURE_LIBRARY.zh-CN.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.zh-CN.md)
 
 ## 1. Project Mainline
 
@@ -223,6 +225,8 @@ Reference documents:
 
 - [CO2_PAPERS_AND_DIRECTION.md](c:/repositories/strawberry/agc_mpc/CO2_PAPERS_AND_DIRECTION.md)
 - [CO2_SPECIALIST_REPORT.md](c:/repositories/strawberry/agc_mpc/CO2_SPECIALIST_REPORT.md)
+- [PHF_MAINLINE.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.md)
+- [THESIS_LITERATURE_LIBRARY.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.md)
 
 ## 7. Weekly Task Board
 
@@ -270,6 +274,9 @@ Maintenance rules:
 - Primary task candidate 1: build a standardized control-relevant validation suite.
 - Primary task candidate 2: converge the model story around `Protected Horizon Fusion` / `PHF-iTransformer`.
 - High-risk/high-reward task candidate: build a control-aware CO2 fusion model that combines `late_frozen_expert` short-horizon controllability with `horizon_mixture` offline terminal gains.
+- Completed: implemented and formally benchmarked one `control-aware fusion` candidate.
+- Completed: reran control-relevant validation and `GradientMPC 96-step` for the new candidate.
+- Next action: only tune the existing control-aware fusion gate / tail schedule; do not expand to a new model family.
 - Supporting task candidate: consolidate the PHF ablation table and figures from existing variants.
 - Supporting task candidate: prepare a literature benchmark table across `Tair`, `Rhair`, and `CO2air`.
 - Recommended weekly pair unless redirected by the user:
@@ -695,3 +702,144 @@ Reason:
 
 - The bottleneck is no longer just model capacity.
 - The current bottleneck is model-selection logic: the project must explain why an offline forecasting leader is not automatically the control leader, and then use that explanation to justify the next model.
+
+Work started for the selected pair:
+
+- Added [control_relevant_validation.py](c:/repositories/strawberry/agc_mpc/control_relevant_validation.py).
+- Generated:
+  - `results/forecasting/analysis/control_relevant_validation_reference.json`
+  - `results/forecasting/analysis/control_relevant_validation_reference.csv`
+  - `results/forecasting/analysis/control_relevant_validation_reference.md`
+  - `results/forecasting/figures/comparisons/control_relevant_validation_reference.png`
+- Added [PHF_MAINLINE.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.md) and [PHF_MAINLINE.zh-CN.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.zh-CN.md).
+- Added [THESIS_LITERATURE_LIBRARY.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.md) and [THESIS_LITERATURE_LIBRARY.zh-CN.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.zh-CN.md) as the broad paper-facing literature library. It now consolidates the former control-relevant MPC note with the content from [RECENT_PAPERS_SURVEY.md](c:/repositories/strawberry/agc_mpc/RECENT_PAPERS_SURVEY.md) and [LITERATURE_COMPARISON.md](c:/repositories/strawberry/agc_mpc/LITERATURE_COMPARISON.md), covering greenhouse forecasting, greenhouse control, CO2-specific modeling, general time-series architectures, AGC-vs-literature positioning, prediction-control correlation, and citation-ready thesis paragraphs.
+- Upgraded [control_relevant_validation.py](c:/repositories/strawberry/agc_mpc/control_relevant_validation.py) to v2 with signed CO2 bias, constraint-near proxy MAE, signed/flat gradient diagnostics, recorded-policy CO2 improvement, and action-activity diagnostics.
+- Added [summarize_phf_ablation.py](c:/repositories/strawberry/agc_mpc/summarize_phf_ablation.py) and generated the PHF ablation JSON/CSV/Markdown/figure outputs.
+
+Initial validation conclusion:
+
+- `itransformer_co2_late_residual`, `itransformer_co2_late_frozen_expert`, and `itransformer_co2_frozen_backbone_horizon_mixture` rank best on the initial control-relevant validation aggregate.
+- `itransformer_co2_horizon_mixture` remains the offline full/final CO2 forecasting leader, but ranks poorly on first-step, first-6-step, and closed-loop CO2 validation.
+- This supports the current PHF story: `horizon_mixture` is the offline PHF representative, while MPC selection needs separate control-relevant validation.
+
+## 18. 2026-04-21 Control-Relevant Validation v2 And PHF Ablation
+
+New generated validation outputs:
+
+- `results/forecasting/analysis/control_relevant_validation_reference.json`
+- `results/forecasting/analysis/control_relevant_validation_reference.csv`
+- `results/forecasting/analysis/control_relevant_validation_reference.md`
+- `results/forecasting/figures/comparisons/control_relevant_validation_reference.png`
+
+Validation v2 adds:
+
+- signed CO2 bias
+- constraint-near proxy MAE
+- signed and flat gradient diagnostics
+- recorded-policy CO2 improvement
+- action-activity diagnostics
+
+Current control-relevant mean rank:
+
+1. `itransformer_co2_late_frozen_expert`: `2.250`
+2. `itransformer_co2_late_residual`: `2.500`
+3. `itransformer_residual`: `3.250`
+4. `itransformer_co2_frozen_backbone_horizon_mixture`: `3.375`
+5. `itransformer_co2_horizon_mixture`: `4.500`
+6. `itransformer_co2_recoupled_expert`: `5.125`
+
+New PHF ablation outputs:
+
+- `results/forecasting/analysis/phf_ablation_reference.json`
+- `results/forecasting/analysis/phf_ablation_reference.csv`
+- `results/forecasting/analysis/phf_ablation_reference.md`
+- `results/forecasting/figures/comparisons/phf_ablation_reference.png`
+
+PHF ablation conclusion:
+
+- `itransformer_co2_horizon_mixture` remains the offline PHF representative and CO2 forecasting leader.
+- `itransformer_co2_late_frozen_expert` remains the strongest CO2 closed-loop control baseline.
+- `itransformer_co2_recoupled_expert` remains the strongest overall closed-loop objective baseline.
+- `itransformer_co2_frozen_backbone_horizon_mixture` remains a control-safety diagnostic, not the main offline method.
+
+Next recommended technical step:
+
+- Add only one control-aware fusion candidate after this validation/story layer is committed.
+- It should preserve the short-horizon controllability of `late_frozen_expert` while trying to recover the terminal offline gains of `horizon_mixture`.
+
+## 19. 2026-04-21 Control-Aware Fusion Candidate
+
+Implemented `itransformer_co2_control_aware_fusion`.
+
+Design:
+
+- freeze `itransformer_co2_late_frozen_expert` as the short-horizon anchor
+- freeze `itransformer_co2_horizon_mixture` as the terminal-gain reference
+- train only a CO2 fusion gate that stays near the late-frozen anchor in the first `6` control steps and opens mainly in the later half of the horizon
+- current promoted revision smooths the imported terminal delta after the control horizon instead of increasing tail trust directly
+- add auxiliary protection for:
+  - first-step `CO2air`
+  - first `6`-step `CO2air`
+  - `co2_sp` first-step gradient matching against the late-frozen anchor
+
+Formal `joint_all + Reference` forecasting result:
+
+- `Tair`: Full `R2=0.9460`, MAE `0.632`; Final `R2=0.9326`, MAE `0.713`
+- `Rhair`: Full `R2=0.8908`, MAE `4.117`; Final `R2=0.8580`, MAE `4.762`
+- `CO2air`: Full `R2=0.7858`, MAE `43.983`; Final `R2=0.7393`, MAE `49.069`
+
+Control-relevant validation result:
+
+- new best mean rank: `1.750`
+- first-step `CO2air MAE = 24.468`
+- first `6`-step `CO2air MAE = 26.742`
+- final-step `CO2air MAE = 26.601`
+- constraint-near proxy `CO2air MAE = 29.392`
+- first-step `co2_sp` gradient magnitude `0.3040`
+
+Closed-loop `96-step` result:
+
+- `GradientMPC`
+  - objective `0.1491`
+  - `Tair MAE=2.202`
+  - `Rhair MAE=4.267`
+  - `CO2air MAE=6.415`
+- `CEMMPC`
+  - objective `0.2475`
+  - `CO2air MAE=16.045`
+
+Interpretation:
+
+- This candidate preserves the short-horizon control behavior of `late_frozen_expert` almost exactly on the validation suite.
+- It recovers most of the offline CO2 gains of `horizon_mixture`:
+  - compared with `late_frozen_expert`, Full `CO2air MAE` improves from `44.727` to `43.983`
+  - compared with `late_frozen_expert`, Final `CO2air MAE` improves from `57.193` to `49.069`
+- The promoted delta-smoothing revision improves closed-loop transfer relative to the previous control-aware fusion checkpoint:
+  - `GradientMPC CO2air` improves from `6.521` to `6.415`
+  - objective improves from `0.1504` to `0.1491`
+- It still does not beat `late_frozen_expert` on closed-loop CO2 (`6.415` vs `6.298`), but it remains close and still ranks first in the current control-relevant validation aggregate.
+- It is worth keeping as the main control-aware follow-up, not deleting.
+
+Next step after this candidate:
+
+- do not add another new architecture family
+- only tune the existing fusion gate conservatism / late-start schedule / auxiliary weight
+- target: keep the current first-step and first `6`-step behavior while trying to close the remaining gap to `late_frozen_expert` on `GradientMPC CO2air`
+
+Additional tuning note:
+
+- A more conservative tail-trust pilot was tested and archived under:
+  - `results/forecasting/analysis/itransformer_co2_control_aware_fusion_conservative_tune_holdout_reference_summary.json`
+  - `results/control/summaries/itransformer_co2_control_aware_fusion_conservative_tune_holdout_gradient_mpc_summary.json`
+- That pilot improved offline CO2 to Full `43.817` / Final `46.784`, but did not improve control transfer enough to justify replacing the current main candidate.
+- Current conclusion: pushing terminal trust further upward is not the best next move; the next tuning should instead focus on keeping the current tail gains while shaving the remaining closed-loop gap.
+
+- A gate-shape pilot with extra monotonic/smoothness regularization was also tested and archived under:
+  - `results/forecasting/analysis/itransformer_co2_control_aware_fusion_gate_shape_tune_holdout_reference_summary.json`
+  - `results/control/summaries/itransformer_co2_control_aware_fusion_gate_shape_tune_holdout_gradient_mpc_summary.json`
+- That pilot improved offline CO2 to Full `43.779` / Final `46.916`, but worsened `GradientMPC CO2air` to `6.885`.
+- Current conclusion: simply smoothing or monotonizing the late gate is also not the right next move.
+
+- A delta-smoothing selector revision was then tested and promoted into the current main candidate.
+- Its key behavior is to smooth the imported `late_frozen_expert -> horizon_mixture` terminal delta after the control horizon, instead of only changing gate timing.
+- Current conclusion: selecting a smoother terminal delta is more promising than further changing the gate schedule alone.

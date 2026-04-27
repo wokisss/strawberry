@@ -2,7 +2,7 @@
 
 中文对齐翻译版本。
 英文主版本： [CONTEXT.md](c:/repositories/strawberry/CONTEXT.md)
-最近同步时间：`2026-04-20`
+最近同步时间：`2026-04-21`
 
 ## 0. 目的与维护规则
 
@@ -22,6 +22,8 @@
 - [CONTEXT.md](c:/repositories/strawberry/CONTEXT.md) 与 [CONTEXT.zh-CN.md](c:/repositories/strawberry/CONTEXT.zh-CN.md)
 - [CO2_PAPERS_AND_DIRECTION.md](c:/repositories/strawberry/agc_mpc/CO2_PAPERS_AND_DIRECTION.md) 与 [CO2_PAPERS_AND_DIRECTION.zh-CN.md](c:/repositories/strawberry/agc_mpc/CO2_PAPERS_AND_DIRECTION.zh-CN.md)
 - [CO2_SPECIALIST_REPORT.md](c:/repositories/strawberry/agc_mpc/CO2_SPECIALIST_REPORT.md) 与 [CO2_SPECIALIST_REPORT.zh-CN.md](c:/repositories/strawberry/agc_mpc/CO2_SPECIALIST_REPORT.zh-CN.md)
+- [PHF_MAINLINE.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.md) 与 [PHF_MAINLINE.zh-CN.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.zh-CN.md)
+- [THESIS_LITERATURE_LIBRARY.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.md) 与 [THESIS_LITERATURE_LIBRARY.zh-CN.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.zh-CN.md)
 
 ## 1. 项目主线
 
@@ -223,6 +225,8 @@ latest predictor suite 中已知的汇总结论：
 
 - [CO2_PAPERS_AND_DIRECTION.md](c:/repositories/strawberry/agc_mpc/CO2_PAPERS_AND_DIRECTION.md)
 - [CO2_SPECIALIST_REPORT.md](c:/repositories/strawberry/agc_mpc/CO2_SPECIALIST_REPORT.md)
+- [PHF_MAINLINE.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.md)
+- [THESIS_LITERATURE_LIBRARY.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.md)
 
 ## 7. 周任务看板
 
@@ -270,6 +274,9 @@ latest predictor suite 中已知的汇总结论：
 - 主任务候选 1：建立标准化 control-relevant validation suite。
 - 主任务候选 2：把模型故事收敛到 `Protected Horizon Fusion` / `PHF-iTransformer`。
 - 高风险高收益候选：构建 control-aware CO2 fusion，把 `late_frozen_expert` 的短时域可控性和 `horizon_mixture` 的离线末端收益结合起来。
+- 已完成：实现并正式 benchmark 了 1 个 `control-aware fusion` 候选。
+- 已完成：对该候选重跑 control-relevant validation 和 `GradientMPC 96-step`。
+- 下一动作：只继续调现有 control-aware fusion 的 gate / tail schedule，不再扩成新的模型族。
 - 支撑任务候选：整理 PHF 消融表和已有变体图。
 - 支撑任务候选：整理跨 `Tair`、`Rhair`、`CO2air` 的文献 benchmark 表。
 - 除非用户另行选择，本周推荐组合：
@@ -695,3 +702,144 @@ latest predictor suite 中已知的汇总结论：
 
 - 当前瓶颈已经不只是模型容量。
 - 当前瓶颈是模型选择逻辑：项目必须解释为什么离线 forecasting leader 不会自动成为 control leader，然后用这个解释指导下一版模型。
+
+已为用户选择的两个任务开始落地：
+
+- 新增 [control_relevant_validation.py](c:/repositories/strawberry/agc_mpc/control_relevant_validation.py)。
+- 已生成：
+  - `results/forecasting/analysis/control_relevant_validation_reference.json`
+  - `results/forecasting/analysis/control_relevant_validation_reference.csv`
+  - `results/forecasting/analysis/control_relevant_validation_reference.md`
+  - `results/forecasting/figures/comparisons/control_relevant_validation_reference.png`
+- 新增 [PHF_MAINLINE.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.md) 与 [PHF_MAINLINE.zh-CN.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.zh-CN.md)。
+- 新增 [THESIS_LITERATURE_LIBRARY.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.md) 与 [THESIS_LITERATURE_LIBRARY.zh-CN.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.zh-CN.md)，作为更宽的论文文献库。它已经合并原 control-relevant MPC 文献笔记、[RECENT_PAPERS_SURVEY.md](c:/repositories/strawberry/agc_mpc/RECENT_PAPERS_SURVEY.md) 和 [LITERATURE_COMPARISON.md](c:/repositories/strawberry/agc_mpc/LITERATURE_COMPARISON.md) 的内容，覆盖温室 forecasting、温室控制、CO2 专项建模、通用时序架构、AGC 与文献定位、预测-控制相关性和可直接写进论文的段落。
+- 将 [control_relevant_validation.py](c:/repositories/strawberry/agc_mpc/control_relevant_validation.py) 升级到 v2，新增 signed CO2 bias、constraint-near proxy MAE、有符号/平坦梯度诊断、recorded-policy CO2 improvement 和 action-activity diagnostics。
+- 新增 [summarize_phf_ablation.py](c:/repositories/strawberry/agc_mpc/summarize_phf_ablation.py)，并生成 PHF 消融 JSON / CSV / Markdown / figure 输出。
+
+初步 validation 结论：
+
+- `itransformer_co2_late_residual`、`itransformer_co2_late_frozen_expert` 和 `itransformer_co2_frozen_backbone_horizon_mixture` 在初版 control-relevant validation 综合排名中最好。
+- `itransformer_co2_horizon_mixture` 仍然是离线 full/final CO2 forecasting leader，但在 first-step、前 6 步和闭环 CO2 validation 中排名靠后。
+- 这支持当前 PHF 叙事：`horizon_mixture` 是离线 PHF 代表模型，而 MPC predictor selection 必须单独引入 control-relevant validation。
+
+## 18. 2026-04-21 Control-Relevant Validation v2 与 PHF 消融
+
+新生成的 validation 输出：
+
+- `results/forecasting/analysis/control_relevant_validation_reference.json`
+- `results/forecasting/analysis/control_relevant_validation_reference.csv`
+- `results/forecasting/analysis/control_relevant_validation_reference.md`
+- `results/forecasting/figures/comparisons/control_relevant_validation_reference.png`
+
+Validation v2 新增：
+
+- signed CO2 bias
+- constraint-near proxy MAE
+- signed and flat gradient diagnostics
+- recorded-policy CO2 improvement
+- action-activity diagnostics
+
+当前 control-relevant mean rank：
+
+1. `itransformer_co2_late_frozen_expert`: `2.250`
+2. `itransformer_co2_late_residual`: `2.500`
+3. `itransformer_residual`: `3.250`
+4. `itransformer_co2_frozen_backbone_horizon_mixture`: `3.375`
+5. `itransformer_co2_horizon_mixture`: `4.500`
+6. `itransformer_co2_recoupled_expert`: `5.125`
+
+新生成的 PHF 消融输出：
+
+- `results/forecasting/analysis/phf_ablation_reference.json`
+- `results/forecasting/analysis/phf_ablation_reference.csv`
+- `results/forecasting/analysis/phf_ablation_reference.md`
+- `results/forecasting/figures/comparisons/phf_ablation_reference.png`
+
+PHF 消融结论：
+
+- `itransformer_co2_horizon_mixture` 仍是离线 PHF 代表模型和 CO2 forecasting leader。
+- `itransformer_co2_late_frozen_expert` 仍是最强 CO2 闭环控制 baseline。
+- `itransformer_co2_recoupled_expert` 仍是最强整体闭环 objective baseline。
+- `itransformer_co2_frozen_backbone_horizon_mixture` 仍是 control-safety diagnostic，不是离线主方法。
+
+下一步推荐技术任务：
+
+- 在当前 validation / story 层提交之后，只新增一个 control-aware fusion 候选。
+- 该候选应保留 `late_frozen_expert` 的短时域可控性，同时尝试恢复 `horizon_mixture` 的离线末端收益。
+
+## 19. 2026-04-21 Control-Aware Fusion 候选
+
+已实现 `itransformer_co2_control_aware_fusion`。
+
+设计：
+
+- 冻结 `itransformer_co2_late_frozen_expert` 作为短时域 anchor
+- 冻结 `itransformer_co2_horizon_mixture` 作为末端离线收益参考
+- 只训练一个 CO2 fusion gate：前 `6` 个 control step 尽量贴住 late-frozen anchor，主要在 horizon 后半段逐步打开
+- 当前晋升版本不再单纯提高 tail trust，而是在 control horizon 之后对导入的 terminal delta 做平滑选择
+- 加入辅助保护项，保护：
+  - first-step `CO2air`
+  - first `6`-step `CO2air`
+  - 相对 late-frozen anchor 的 `co2_sp` first-step 梯度
+
+正式 `joint_all + Reference` forecasting 结果：
+
+- `Tair`：Full `R2=0.9460`，MAE `0.632`；Final `R2=0.9326`，MAE `0.713`
+- `Rhair`：Full `R2=0.8908`，MAE `4.117`；Final `R2=0.8580`，MAE `4.762`
+- `CO2air`：Full `R2=0.7858`，MAE `43.983`；Final `R2=0.7393`，MAE `49.069`
+
+Control-relevant validation 结果：
+
+- 新的最佳 mean rank：`1.750`
+- first-step `CO2air MAE = 24.468`
+- first `6`-step `CO2air MAE = 26.742`
+- final-step `CO2air MAE = 26.601`
+- constraint-near proxy `CO2air MAE = 29.392`
+- first-step `co2_sp` gradient magnitude `0.3040`
+
+闭环 `96-step` 结果：
+
+- `GradientMPC`
+  - objective `0.1491`
+  - `Tair MAE=2.202`
+  - `Rhair MAE=4.267`
+  - `CO2air MAE=6.415`
+- `CEMMPC`
+  - objective `0.2475`
+  - `CO2air MAE=16.045`
+
+解释：
+
+- 这个候选在 validation suite 上几乎完整保住了 `late_frozen_expert` 的短时域控制行为。
+- 它拿回了 `horizon_mixture` 的大部分离线 CO2 收益：
+  - 相比 `late_frozen_expert`，Full `CO2air MAE` 从 `44.727` 改进到 `43.983`
+  - 相比 `late_frozen_expert`，Final `CO2air MAE` 从 `57.193` 改进到 `49.069`
+- 这次晋升的 delta-smoothing 版本，相比上一版 control-aware fusion，又把闭环转化往前推了一小步：
+  - `GradientMPC CO2air` 从 `6.521` 改进到 `6.415`
+  - objective 从 `0.1504` 改进到 `0.1491`
+- 它仍然没有超过 `late_frozen_expert` 的闭环 CO2（`6.415` vs `6.298`），但仍然很接近，而且当前 control-relevant validation aggregate 里仍排第一。
+- 因此它值得保留，作为主线中的 control-aware follow-up，而不是删掉。
+
+这个候选之后的下一步：
+
+- 不再新增一个新的架构家族
+- 只调现有 fusion gate 的保守度 / late-start schedule / auxiliary weight
+- 目标：在保持当前 first-step 和 first `6`-step 行为的前提下，把 `GradientMPC CO2air` 继续往 `late_frozen_expert` 靠近
+
+补充调参记录：
+
+- 还测试了一版更保守的 tail-trust pilot，并单独存档在：
+  - `results/forecasting/analysis/itransformer_co2_control_aware_fusion_conservative_tune_holdout_reference_summary.json`
+  - `results/control/summaries/itransformer_co2_control_aware_fusion_conservative_tune_holdout_gradient_mpc_summary.json`
+- 这版 pilot 把离线 CO2 提到 Full `43.817` / Final `46.784`，但控制转化没有继续改善到足以替换当前主候选。
+- 当前结论：继续单纯提高 terminal trust 不是最好的下一步；下一轮更应该在保住当前 tail gain 的同时，继续压缩剩余的闭环差距。
+
+- 还测试了一版额外加入 gate 单调 / 平滑正则的 pilot，并单独存档在：
+  - `results/forecasting/analysis/itransformer_co2_control_aware_fusion_gate_shape_tune_holdout_reference_summary.json`
+  - `results/control/summaries/itransformer_co2_control_aware_fusion_gate_shape_tune_holdout_gradient_mpc_summary.json`
+- 这版 pilot 把离线 CO2 提到 Full `43.779` / Final `46.916`，但 `GradientMPC CO2air` 反而变差到 `6.885`。
+- 当前结论：单纯把 late gate 做得更平滑或更单调，也不是正确的下一步。
+
+- 随后又测试了 delta-smoothing selector 版本，并已经晋升为当前主候选。
+- 它的关键动作是在 control horizon 之后，对 `late_frozen_expert -> horizon_mixture` 导入的 terminal delta 做平滑选择，而不是只调 gate 的时间曲线。
+- 当前结论：相比继续改 gate schedule，选择更平滑的 terminal delta 更有希望。

@@ -1,0 +1,47 @@
+{
+  "models": [
+    "itransformer_co2_control_aware_fusion",
+    "itransformer_co2_late_frozen_expert",
+    "itransformer_co2_horizon_mixture"
+  ],
+  "labels": {
+    "itransformer_co2_control_aware_fusion": "Control-aware fusion",
+    "itransformer_co2_late_frozen_expert": "Late frozen expert",
+    "itransformer_co2_horizon_mixture": "Horizon mixture"
+  },
+  "forecast_sample_idx": 3406,
+  "control_steps": 96,
+  "compartment": "Reference",
+  "offline_co2": {
+    "itransformer_co2_control_aware_fusion": {
+      "full_mae": 43.98258972167969,
+      "final_mae": 49.06934356689453
+    },
+    "itransformer_co2_late_frozen_expert": {
+      "full_mae": 44.72697448730469,
+      "final_mae": 57.193050384521484
+    },
+    "itransformer_co2_horizon_mixture": {
+      "full_mae": 43.90980529785156,
+      "final_mae": 47.6611213684082
+    }
+  },
+  "control_transfer": {
+    "itransformer_co2_control_aware_fusion": {
+      "validation_rank": 1.75,
+      "objective_mean": 0.14913348228825876,
+      "co2_mae": 6.415060043334961
+    },
+    "itransformer_co2_late_frozen_expert": {
+      "validation_rank": 2.875,
+      "objective_mean": 0.1533443430865494,
+      "co2_mae": 6.297586917877197
+    },
+    "itransformer_co2_horizon_mixture": {
+      "validation_rank": 5.5,
+      "objective_mean": 0.37132372887572274,
+      "co2_mae": 28.695877075195312
+    }
+  },
+  "figure_path": "results\\forecasting\\figures\\comparisons\\phf_triplet_forecast_control_dashboard.png"
+}
