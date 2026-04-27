@@ -1,0 +1,69 @@
+{
+  "predictors": [
+    "itransformer_co2_control_aware_fusion"
+  ],
+  "controllers": [
+    "recorded",
+    "gradient_mpc",
+    "cem_mpc"
+  ],
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "rollout_mode": "surrogate",
+  "steps": 96,
+  "target_cols": [
+    "Tair",
+    "Rhair",
+    "CO2air"
+  ],
+  "records": [
+    {
+      "predictor": "itransformer_co2_control_aware_fusion",
+      "controller": "recorded",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 96,
+      "objective_mean": 0.0,
+      "control_delta_mae": 0.0,
+      "action_tv": 0.16307871144575378,
+      "target_mae": {
+        "Tair": 1.9104782342910767,
+        "Rhair": 9.526719093322754,
+        "CO2air": 46.050445556640625
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_control_aware_fusion_recorded_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_control_aware_fusion",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 96,
+      "objective_mean": 0.14913348228825876,
+      "control_delta_mae": 9.007125854492188,
+      "action_tv": 5.471264715927343,
+      "target_mae": {
+        "Tair": 2.201852560043335,
+        "Rhair": 4.266982078552246,
+        "CO2air": 6.415060043334961
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_control_aware_fusion_gradient_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_control_aware_fusion",
+      "controller": "cem_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "steps": 96,
+      "objective_mean": 0.24752874340629205,
+      "control_delta_mae": 24.36894989013672,
+      "action_tv": 18.936738359431427,
+      "target_mae": {
+        "Tair": 3.338120460510254,
+        "Rhair": 6.374818801879883,
+        "CO2air": 16.04457664489746
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_control_aware_fusion_cem_mpc_closed_loop.png"
+    }
+  ]
+}

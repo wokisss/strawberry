@@ -18,6 +18,7 @@ from config import AGCConfig
 from data_processing.processor import AGCDataProcessor
 from models.hybrid_residual_forecaster import ConditionalHybridResidualForecaster
 from models.itransformer_residual_forecaster import (
+    ConditionalITransformerCO2ControlAwareFusionForecaster,
     ConditionalITransformerCO2LateResidualForecaster,
     ConditionalITransformerCO2LateFrozenExpertForecaster,
     ConditionalITransformerCO2FrozenBackboneHorizonMixtureForecaster,
@@ -86,6 +87,10 @@ MODEL_REGISTRY = {
         "builder": ConditionalITransformerCO2FrozenBackboneHorizonMixtureForecaster,
         "label": "frozen late-residual backbone + protected frozen co2 expert + terminal pullback",
     },
+    "itransformer_co2_control_aware_fusion": {
+        "builder": ConditionalITransformerCO2ControlAwareFusionForecaster,
+        "label": "late-frozen control anchor + horizon-mixture terminal fusion",
+    },
     "itransformer_co2_wavelet_residual": {
         "builder": ConditionalITransformerCO2WaveletResidualForecaster,
         "label": "dlinear main path + itransformer residual + wavelet-style co2 adapter",
@@ -106,6 +111,7 @@ AUXILIARY_WEIGHTS = {
     "itransformer_co2_protected_terminal": 0.08,
     "itransformer_co2_horizon_mixture": 0.05,
     "itransformer_co2_frozen_backbone_horizon_mixture": 0.05,
+    "itransformer_co2_control_aware_fusion": 0.08,
 }
 
 
@@ -247,17 +253,38 @@ def _maybe_load_frozen_expert(model, model_name: str, cfg: AGCConfig, bundle, re
 
 
 def _maybe_load_main_checkpoint(model, model_name: str, cfg: AGCConfig, bundle, regime: str, device: torch.device) -> None:
-    if model_name not in {"itransformer_co2_frozen_backbone_horizon_mixture"}:
-        return
     horizon_suffix = f"_h{cfg.horizon}" if cfg.horizon != 24 else ""
-    checkpoint_name = f"itransformer_co2_late_residual{horizon_suffix}_{regime}_{bundle['eval_compartments'][0].lower()}.pt"
-    checkpoint_path = Path(cfg.forecast_checkpoints_dir) / checkpoint_name
-    if not checkpoint_path.exists():
+    eval_name = bundle["eval_compartments"][0].lower()
+    if model_name == "itransformer_co2_frozen_backbone_horizon_mixture":
+        checkpoint_name = f"itransformer_co2_late_residual{horizon_suffix}_{regime}_{eval_name}.pt"
+        checkpoint_path = Path(cfg.forecast_checkpoints_dir) / checkpoint_name
+        if not checkpoint_path.exists():
+            raise FileNotFoundError(
+                f"Missing main late-residual checkpoint: {checkpoint_path}. "
+                "Run benchmark_residual_forecaster_variants.py for itransformer_co2_late_residual first."
+            )
+        model.load_main_checkpoint(str(checkpoint_path), map_location=device)
+        return
+    if model_name != "itransformer_co2_control_aware_fusion":
+        return
+    base_path = Path(cfg.forecast_checkpoints_dir) / (
+        f"itransformer_co2_late_frozen_expert{horizon_suffix}_{regime}_{eval_name}.pt"
+    )
+    terminal_path = Path(cfg.forecast_checkpoints_dir) / (
+        f"itransformer_co2_horizon_mixture{horizon_suffix}_{regime}_{eval_name}.pt"
+    )
+    if not base_path.exists():
         raise FileNotFoundError(
-            f"Missing main late-residual checkpoint: {checkpoint_path}. "
-            "Run benchmark_residual_forecaster_variants.py for itransformer_co2_late_residual first."
+            f"Missing late-frozen expert checkpoint: {base_path}. "
+            "Run benchmark_residual_forecaster_variants.py for itransformer_co2_late_frozen_expert first."
         )
-    model.load_main_checkpoint(str(checkpoint_path), map_location=device)
+    if not terminal_path.exists():
+        raise FileNotFoundError(
+            f"Missing horizon-mixture checkpoint: {terminal_path}. "
+            "Run benchmark_residual_forecaster_variants.py for itransformer_co2_horizon_mixture first."
+        )
+    model.load_base_checkpoint(str(base_path), map_location=device)
+    model.load_terminal_checkpoint(str(terminal_path), map_location=device)
 
 
 def _run_one_model(model_name: str, cfg: AGCConfig, bundle, device: torch.device, regime: str, describe_only: bool) -> None:

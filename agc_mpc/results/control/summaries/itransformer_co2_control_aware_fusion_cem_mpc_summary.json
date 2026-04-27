@@ -1,0 +1,16 @@
+{
+  "predictor": "itransformer_co2_control_aware_fusion",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 96,
+  "objective_mean": 0.24752874340629205,
+  "control_delta_mae": 24.36894989013672,
+  "action_tv": 18.936738359431427,
+  "target_mae": {
+    "Tair": 3.338120460510254,
+    "Rhair": 6.374818801879883,
+    "CO2air": 16.04457664489746
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_control_aware_fusion_cem_mpc_closed_loop.png"
+}

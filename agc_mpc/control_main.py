@@ -25,6 +25,7 @@ from data_processing.processor import AGCDataProcessor
 from models.dlinear_forecaster import ConditionalDLinearForecaster
 from models.hybrid_residual_forecaster import ConditionalHybridResidualForecaster
 from models.itransformer_residual_forecaster import (
+    ConditionalITransformerCO2ControlAwareFusionForecaster,
     ConditionalITransformerCO2LateResidualForecaster,
     ConditionalITransformerCO2LateFrozenExpertForecaster,
     ConditionalITransformerCO2FrozenBackboneHorizonMixtureForecaster,
@@ -329,6 +330,22 @@ def _build_model_specs(bundle, cfg):
             ),
             "checkpoint": f"itransformer_co2_frozen_backbone_horizon_mixture_joint_all_{cfg.control_compartment.lower()}.pt",
         },
+        "itransformer_co2_control_aware_fusion": {
+            "builder": lambda: ConditionalITransformerCO2ControlAwareFusionForecaster(
+                seq_len=cfg.seq_len,
+                horizon=cfg.horizon,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                nhead=cfg.transformer_heads,
+                ff_dim=cfg.transformer_ff_dim,
+            ),
+            "checkpoint": f"itransformer_co2_control_aware_fusion_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
         "itransformer_co2_wavelet_residual": {
             "builder": lambda: ConditionalITransformerCO2WaveletResidualForecaster(
                 seq_len=cfg.seq_len,
@@ -418,13 +435,27 @@ def _load_frozen_expert_if_needed(model, predictor_name: str, cfg: AGCConfig, de
 
 
 def _load_main_if_needed(model, predictor_name: str, cfg: AGCConfig, device) -> None:
-    if predictor_name not in {"itransformer_co2_frozen_backbone_horizon_mixture"}:
+    if predictor_name == "itransformer_co2_frozen_backbone_horizon_mixture":
+        checkpoint_name = f"itransformer_co2_late_residual_joint_all_{cfg.control_compartment.lower()}.pt"
+        checkpoint_path = Path(cfg.forecast_checkpoints_dir) / checkpoint_name
+        if not checkpoint_path.exists():
+            raise FileNotFoundError(f"Missing main late-residual checkpoint: {checkpoint_path}")
+        model.load_main_checkpoint(str(checkpoint_path), map_location=device)
         return
-    checkpoint_name = f"itransformer_co2_late_residual_joint_all_{cfg.control_compartment.lower()}.pt"
-    checkpoint_path = Path(cfg.forecast_checkpoints_dir) / checkpoint_name
-    if not checkpoint_path.exists():
-        raise FileNotFoundError(f"Missing main late-residual checkpoint: {checkpoint_path}")
-    model.load_main_checkpoint(str(checkpoint_path), map_location=device)
+    if predictor_name != "itransformer_co2_control_aware_fusion":
+        return
+    base_path = Path(cfg.forecast_checkpoints_dir) / (
+        f"itransformer_co2_late_frozen_expert_joint_all_{cfg.control_compartment.lower()}.pt"
+    )
+    terminal_path = Path(cfg.forecast_checkpoints_dir) / (
+        f"itransformer_co2_horizon_mixture_joint_all_{cfg.control_compartment.lower()}.pt"
+    )
+    if not base_path.exists():
+        raise FileNotFoundError(f"Missing late-frozen expert checkpoint: {base_path}")
+    if not terminal_path.exists():
+        raise FileNotFoundError(f"Missing horizon-mixture checkpoint: {terminal_path}")
+    model.load_base_checkpoint(str(base_path), map_location=device)
+    model.load_terminal_checkpoint(str(terminal_path), map_location=device)
 
 
 def _print_summary(summary) -> None:
@@ -558,6 +589,7 @@ def parse_args() -> argparse.Namespace:
             "itransformer_co2_protected_terminal",
             "itransformer_co2_horizon_mixture",
             "itransformer_co2_frozen_backbone_horizon_mixture",
+            "itransformer_co2_control_aware_fusion",
             "itransformer_co2_wavelet_residual",
             "itransformer_co2_wavelet_blend",
             *LATEST_PREDICTORS,

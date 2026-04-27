@@ -1510,3 +1510,236 @@ class ConditionalITransformerCO2FrozenBackboneHorizonMixtureForecaster(
         prediction = prediction.clone()
         prediction[..., self.co2_target_idx] = main_co2 + correction
         return prediction
+
+
+class ConditionalITransformerCO2ControlAwareFusionForecaster(nn.Module):
+    """Fuse late-frozen control behavior with horizon-mixture terminal gains."""
+
+    def __init__(
+        self,
+        seq_len: int,
+        horizon: int,
+        past_dim: int,
+        weather_dim: int,
+        control_dim: int,
+        target_dim: int,
+        hidden_dim: int = 96,
+        num_layers: int = 2,
+        dropout: float = 0.1,
+        nhead: int = 4,
+        ff_dim: int = 192,
+        kernel_size: int = 25,
+        co2_target_idx: int = 2,
+        co2_control_idx: int = 2,
+        control_horizon: int = 6,
+        blend_start: float = 0.5,
+        blend_power: float = 2.0,
+        gate_ceiling: float = 1.0,
+        delta_smoothing_kernel: int = 5,
+    ):
+        super().__init__()
+        self.co2_target_idx = min(co2_target_idx, target_dim - 1)
+        self.co2_control_idx = min(co2_control_idx, control_dim - 1)
+        self.control_horizon = control_horizon
+        self.blend_power = blend_power
+        self.blend_start = max(blend_start, control_horizon / max(horizon - 1, 1))
+        self.gate_ceiling = gate_ceiling
+        self.delta_smoothing_kernel = max(1, delta_smoothing_kernel)
+        self.base_model = ConditionalITransformerCO2LateFrozenExpertForecaster(
+            seq_len=seq_len,
+            horizon=horizon,
+            past_dim=past_dim,
+            weather_dim=weather_dim,
+            control_dim=control_dim,
+            target_dim=target_dim,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+            nhead=nhead,
+            ff_dim=ff_dim,
+            kernel_size=kernel_size,
+            co2_target_idx=self.co2_target_idx,
+        )
+        self.terminal_model = ConditionalITransformerCO2HorizonMixtureForecaster(
+            seq_len=seq_len,
+            horizon=horizon,
+            past_dim=past_dim,
+            weather_dim=weather_dim,
+            control_dim=control_dim,
+            target_dim=target_dim,
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+            nhead=nhead,
+            ff_dim=ff_dim,
+            kernel_size=kernel_size,
+            co2_target_idx=self.co2_target_idx,
+        )
+        gate_in_dim = past_dim + weather_dim + control_dim + target_dim + 4
+        self.fusion_gate = nn.Sequential(
+            nn.Linear(gate_in_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, 1),
+            nn.Sigmoid(),
+        )
+        nn.init.constant_(self.fusion_gate[-2].bias, -3.2)
+        self.delta_temperature = nn.Parameter(torch.tensor(35.0))
+        self.first_step_weight = 1.0
+        self.control_horizon_weight = 1.0
+        self.gradient_weight = 0.5
+        self._freeze_anchors()
+
+    def _freeze_anchors(self) -> None:
+        for module in (self.base_model, self.terminal_model):
+            for parameter in module.parameters():
+                parameter.requires_grad_(False)
+            module.eval()
+
+    def load_base_checkpoint(self, checkpoint_path: str, map_location=None) -> None:
+        state = torch.load(checkpoint_path, map_location=map_location)
+        self.base_model.load_state_dict(state)
+        self._freeze_anchors()
+
+    def load_terminal_checkpoint(self, checkpoint_path: str, map_location=None) -> None:
+        state = torch.load(checkpoint_path, map_location=map_location)
+        self.terminal_model.load_state_dict(state)
+        self._freeze_anchors()
+
+    def train(self, mode: bool = True):
+        nn.Module.train(self, mode)
+        self.base_model.eval()
+        self.terminal_model.eval()
+        return self
+
+    def _horizon_ratio(self, prediction: torch.Tensor) -> torch.Tensor:
+        return torch.linspace(
+            0.0,
+            1.0,
+            steps=prediction.size(1),
+            device=prediction.device,
+            dtype=prediction.dtype,
+        ).view(1, -1)
+
+    def _late_profile(self, prediction: torch.Tensor) -> torch.Tensor:
+        horizon_ratio = self._horizon_ratio(prediction)
+        denominator = max(1.0 - self.blend_start, 1e-6)
+        shifted = torch.clamp((horizon_ratio - self.blend_start) / denominator, min=0.0, max=1.0)
+        return shifted.pow(self.blend_power)
+
+    def _select_delta(self, delta: torch.Tensor) -> torch.Tensor:
+        if self.delta_smoothing_kernel <= 1 or delta.size(1) <= 2:
+            return delta
+        left = (self.delta_smoothing_kernel - 1) // 2
+        right = self.delta_smoothing_kernel - 1 - left
+        padded = F.pad(delta.unsqueeze(1), (left, right), mode="replicate")
+        smoothed = F.avg_pool1d(padded, kernel_size=self.delta_smoothing_kernel, stride=1).squeeze(1)
+        selected = delta.clone()
+        if selected.size(1) > self.control_horizon:
+            selected[:, self.control_horizon :] = smoothed[:, self.control_horizon :]
+        return selected
+
+    def _co2_fusion(
+        self,
+        x_past: torch.Tensor,
+        w_future: torch.Tensor,
+        u_future: torch.Tensor,
+        base_prediction: torch.Tensor,
+        terminal_prediction: torch.Tensor,
+    ) -> torch.Tensor:
+        base_co2 = base_prediction[..., self.co2_target_idx]
+        terminal_co2 = terminal_prediction[..., self.co2_target_idx]
+        delta = self._select_delta(terminal_co2 - base_co2)
+        late_profile = self._late_profile(base_prediction)
+        late_profile_expand = late_profile.unsqueeze(-1).expand(base_prediction.size(0), -1, -1)
+        delta_scale = torch.clamp(self.delta_temperature.abs(), min=10.0)
+        agreement = torch.exp(-torch.abs(delta) / delta_scale)
+        past_summary = x_past.mean(dim=1, keepdim=True).expand(-1, base_prediction.size(1), -1)
+        gate_input = torch.cat(
+            [
+                past_summary,
+                w_future,
+                u_future,
+                base_prediction,
+                base_co2.unsqueeze(-1),
+                terminal_co2.unsqueeze(-1),
+                delta.unsqueeze(-1),
+                late_profile_expand,
+            ],
+            dim=-1,
+        )
+        learned_gate = self.fusion_gate(gate_input).squeeze(-1)
+        return self.gate_ceiling * learned_gate * agreement * late_profile
+
+    def _gradient_match_loss(
+        self,
+        x_past: torch.Tensor,
+        w_future: torch.Tensor,
+        u_future: torch.Tensor,
+    ) -> torch.Tensor:
+        if not u_future.requires_grad:
+            u_future = u_future.detach().clone().requires_grad_(True)
+        base_prediction = self.base_model(x_past, w_future, u_future)
+        terminal_prediction = self.terminal_model(x_past, w_future, u_future)
+        fusion_gate = self._co2_fusion(x_past, w_future, u_future, base_prediction, terminal_prediction)
+        student_co2 = base_prediction[..., self.co2_target_idx] + fusion_gate * (
+            terminal_prediction[..., self.co2_target_idx] - base_prediction[..., self.co2_target_idx]
+        )
+        anchor_co2 = base_prediction[..., self.co2_target_idx]
+        control_horizon = min(self.control_horizon, student_co2.size(1))
+        student_signal = student_co2[:, :control_horizon].mean()
+        anchor_signal = anchor_co2[:, :control_horizon].mean()
+        student_grad = torch.autograd.grad(
+            student_signal,
+            u_future,
+            create_graph=True,
+            retain_graph=True,
+            allow_unused=False,
+        )[0]
+        anchor_grad = torch.autograd.grad(
+            anchor_signal,
+            u_future,
+            create_graph=False,
+            retain_graph=True,
+            allow_unused=False,
+        )[0].detach()
+        return (
+            (
+                student_grad[:, :control_horizon, self.co2_control_idx]
+                - anchor_grad[:, :control_horizon, self.co2_control_idx]
+            )
+            ** 2
+        ).mean()
+
+    def compute_auxiliary_loss(
+        self,
+        x_past: torch.Tensor,
+        w_future: torch.Tensor,
+        u_future: torch.Tensor,
+        y_true: torch.Tensor,
+        prediction: torch.Tensor,
+        criterion,
+    ) -> torch.Tensor:
+        base_prediction = self.base_model(x_past, w_future, u_future)
+        pred_co2 = prediction[..., self.co2_target_idx]
+        base_co2 = base_prediction[..., self.co2_target_idx].detach()
+        control_horizon = min(self.control_horizon, prediction.size(1))
+        first_step_loss = ((pred_co2[:, 0] - base_co2[:, 0]) ** 2).mean()
+        control_horizon_loss = ((pred_co2[:, :control_horizon] - base_co2[:, :control_horizon]) ** 2).mean()
+        gradient_loss = self._gradient_match_loss(x_past, w_future, u_future)
+        return (
+            self.first_step_weight * first_step_loss
+            + self.control_horizon_weight * control_horizon_loss
+            + self.gradient_weight * gradient_loss
+        )
+
+    def forward(self, x_past: torch.Tensor, w_future: torch.Tensor, u_future: torch.Tensor) -> torch.Tensor:
+        base_prediction = self.base_model(x_past, w_future, u_future)
+        terminal_prediction = self.terminal_model(x_past, w_future, u_future)
+        fusion_gate = self._co2_fusion(x_past, w_future, u_future, base_prediction, terminal_prediction)
+        prediction = base_prediction.clone()
+        base_co2 = base_prediction[..., self.co2_target_idx]
+        terminal_co2 = terminal_prediction[..., self.co2_target_idx]
+        prediction[..., self.co2_target_idx] = base_co2 + fusion_gate * (terminal_co2 - base_co2)
+        return prediction

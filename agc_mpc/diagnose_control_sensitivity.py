@@ -18,6 +18,7 @@ from control_main import (
     _build_model_specs,
     _load_checkpoint,
     _load_frozen_expert_if_needed,
+    _load_main_if_needed,
     _set_global_seed,
 )
 from data_processing.processor import AGCDataProcessor
@@ -46,6 +47,7 @@ def _load_adapter(predictor: str, cfg: AGCConfig, scaled_bundle, raw_bundle, dev
 
     model = model_specs[predictor]["builder"]()
     _load_frozen_expert_if_needed(model, predictor, cfg, device)
+    _load_main_if_needed(model, predictor, cfg, device)
     _load_checkpoint(
         model,
         Path(cfg.forecast_checkpoints_dir) / model_specs[predictor]["checkpoint"],
