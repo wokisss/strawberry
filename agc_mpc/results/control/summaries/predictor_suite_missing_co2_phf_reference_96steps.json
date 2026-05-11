@@ -1,0 +1,386 @@
+{
+  "predictors": [
+    "itransformer_co2_residual",
+    "itransformer_co2_frozen_expert",
+    "itransformer_co2_teacher_distill",
+    "itransformer_co2_protected_expert",
+    "itransformer_co2_protected_terminal",
+    "itransformer_co2_wavelet_residual",
+    "itransformer_co2_wavelet_blend"
+  ],
+  "controllers": [
+    "recorded",
+    "gradient_mpc",
+    "cem_mpc"
+  ],
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "rollout_mode": "surrogate",
+  "start_idx": 0,
+  "output_tag": "",
+  "steps": 96,
+  "target_cols": [
+    "Tair",
+    "Rhair",
+    "CO2air"
+  ],
+  "records": [
+    {
+      "predictor": "itransformer_co2_residual",
+      "controller": "recorded",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.0,
+      "control_delta_mae": 0.0,
+      "action_tv": 0.16307871144575378,
+      "target_mae": {
+        "Tair": 4.025249481201172,
+        "Rhair": 6.071183681488037,
+        "CO2air": 41.99650955200195
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_residual_recorded_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.0556838217501839,
+      "control_delta_mae": 9.33105182647705,
+      "action_tv": 4.582161944359541,
+      "target_mae": {
+        "Tair": 0.935808002948761,
+        "Rhair": 1.502833366394043,
+        "CO2air": 6.421406269073486
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_residual_gradient_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_residual",
+      "controller": "cem_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.1345464344485663,
+      "control_delta_mae": 28.347091674804688,
+      "action_tv": 19.637773907432955,
+      "target_mae": {
+        "Tair": 2.59962797164917,
+        "Rhair": 3.877798080444336,
+        "CO2air": 13.006675720214844
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_residual_cem_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_frozen_expert",
+      "controller": "recorded",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.0,
+      "control_delta_mae": 0.0,
+      "action_tv": 0.16307871144575378,
+      "target_mae": {
+        "Tair": 1.6969894170761108,
+        "Rhair": 6.308469772338867,
+        "CO2air": 99.86193084716797
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_frozen_expert_recorded_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_frozen_expert",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.06494007302292933,
+      "control_delta_mae": 10.742445945739746,
+      "action_tv": 5.012565364129841,
+      "target_mae": {
+        "Tair": 0.9173087477684021,
+        "Rhair": 2.262934684753418,
+        "CO2air": 20.14030647277832
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_frozen_expert_gradient_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_frozen_expert",
+      "controller": "cem_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.14867164518606538,
+      "control_delta_mae": 23.32143211364746,
+      "action_tv": 15.92510092506806,
+      "target_mae": {
+        "Tair": 2.452045202255249,
+        "Rhair": 5.2641921043396,
+        "CO2air": 14.6887845993042
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_frozen_expert_cem_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_teacher_distill",
+      "controller": "recorded",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.0,
+      "control_delta_mae": 0.0,
+      "action_tv": 0.16307871144575378,
+      "target_mae": {
+        "Tair": 4.283439636230469,
+        "Rhair": 22.991884231567383,
+        "CO2air": 54.63359451293945
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_teacher_distill_recorded_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_teacher_distill",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.3501983259532911,
+      "control_delta_mae": 16.87813377380371,
+      "action_tv": 5.415487461257726,
+      "target_mae": {
+        "Tair": 2.789154052734375,
+        "Rhair": 6.876527786254883,
+        "CO2air": 27.337553024291992
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_teacher_distill_gradient_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_teacher_distill",
+      "controller": "cem_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.6665343097411096,
+      "control_delta_mae": 27.457746505737305,
+      "action_tv": 18.152209880451363,
+      "target_mae": {
+        "Tair": 4.466729164123535,
+        "Rhair": 10.654947280883789,
+        "CO2air": 22.602941513061523
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_teacher_distill_cem_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_protected_expert",
+      "controller": "recorded",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.0,
+      "control_delta_mae": 0.0,
+      "action_tv": 0.16307871144575378,
+      "target_mae": {
+        "Tair": 2.3016645908355713,
+        "Rhair": 8.49289321899414,
+        "CO2air": 63.55885314941406
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_protected_expert_recorded_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_protected_expert",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.0606412547834528,
+      "control_delta_mae": 13.336051940917969,
+      "action_tv": 6.51103098411113,
+      "target_mae": {
+        "Tair": 0.8803367614746094,
+        "Rhair": 1.4408197402954102,
+        "CO2air": 14.206242561340332
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_protected_expert_gradient_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_protected_expert",
+      "controller": "cem_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.13180554270123443,
+      "control_delta_mae": 27.58355140686035,
+      "action_tv": 20.690549443165462,
+      "target_mae": {
+        "Tair": 2.3956117630004883,
+        "Rhair": 4.249294281005859,
+        "CO2air": 28.859277725219727
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_protected_expert_cem_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_protected_terminal",
+      "controller": "recorded",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.0,
+      "control_delta_mae": 0.0,
+      "action_tv": 0.16307871144575378,
+      "target_mae": {
+        "Tair": 5.313199043273926,
+        "Rhair": 6.538844585418701,
+        "CO2air": 100.14789581298828
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_protected_terminal_recorded_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_protected_terminal",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.38370612285022315,
+      "control_delta_mae": 9.686915397644043,
+      "action_tv": 5.365952145579892,
+      "target_mae": {
+        "Tair": 3.379747152328491,
+        "Rhair": 6.179096221923828,
+        "CO2air": 27.088768005371094
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_protected_terminal_gradient_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_protected_terminal",
+      "controller": "cem_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.5698059251105102,
+      "control_delta_mae": 20.52651596069336,
+      "action_tv": 16.784072789053123,
+      "target_mae": {
+        "Tair": 4.660707950592041,
+        "Rhair": 7.618994235992432,
+        "CO2air": 49.5000114440918
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_protected_terminal_cem_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_wavelet_residual",
+      "controller": "recorded",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.0,
+      "control_delta_mae": 0.0,
+      "action_tv": 0.16307871144575378,
+      "target_mae": {
+        "Tair": 3.709959030151367,
+        "Rhair": 5.020516872406006,
+        "CO2air": 73.93550109863281
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_wavelet_residual_recorded_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_wavelet_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.06392183498246595,
+      "control_delta_mae": 10.608621597290039,
+      "action_tv": 3.8796055677036443,
+      "target_mae": {
+        "Tair": 1.0751405954360962,
+        "Rhair": 2.1421947479248047,
+        "CO2air": 7.775554180145264
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_wavelet_residual_gradient_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_wavelet_residual",
+      "controller": "cem_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.1517887402054233,
+      "control_delta_mae": 25.979814529418945,
+      "action_tv": 18.821670544644196,
+      "target_mae": {
+        "Tair": 2.754328966140747,
+        "Rhair": 4.127379894256592,
+        "CO2air": 14.410372734069824
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_wavelet_residual_cem_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_wavelet_blend",
+      "controller": "recorded",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.0,
+      "control_delta_mae": 0.0,
+      "action_tv": 0.16307871144575378,
+      "target_mae": {
+        "Tair": 1.0705677270889282,
+        "Rhair": 5.9588189125061035,
+        "CO2air": 36.025028228759766
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_wavelet_blend_recorded_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_wavelet_blend",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.07712001939459394,
+      "control_delta_mae": 22.137590408325195,
+      "action_tv": 5.355024077929556,
+      "target_mae": {
+        "Tair": 1.023245930671692,
+        "Rhair": 1.9276704788208008,
+        "CO2air": 8.020186424255371
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_wavelet_blend_gradient_mpc_closed_loop.png"
+    },
+    {
+      "predictor": "itransformer_co2_wavelet_blend",
+      "controller": "cem_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.1507582847455827,
+      "control_delta_mae": 26.084875106811523,
+      "action_tv": 16.0648304335773,
+      "target_mae": {
+        "Tair": 2.344040870666504,
+        "Rhair": 4.713503360748291,
+        "CO2air": 12.936729431152344
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_wavelet_blend_cem_mpc_closed_loop.png"
+    }
+  ]
+}

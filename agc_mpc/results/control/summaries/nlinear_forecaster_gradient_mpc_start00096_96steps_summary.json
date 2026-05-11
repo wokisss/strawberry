@@ -1,0 +1,17 @@
+{
+  "predictor": "nlinear_forecaster",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 96,
+  "steps": 96,
+  "objective_mean": 0.09584592587392156,
+  "control_delta_mae": 17.3270206451416,
+  "action_tv": 4.2965689823031425,
+  "target_mae": {
+    "Tair": 1.0252386331558228,
+    "Rhair": 2.6947338581085205,
+    "CO2air": 18.771705627441406
+  },
+  "figure_path": "results\\control\\figures\\nlinear_forecaster_gradient_mpc_start00096_96steps_closed_loop.png"
+}

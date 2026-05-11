@@ -1,0 +1,17 @@
+{
+  "predictor": "itransformer_co2_control_aware_fusion",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 192,
+  "steps": 96,
+  "objective_mean": 0.06057415945300212,
+  "control_delta_mae": 32.90391540527344,
+  "action_tv": 6.3414765338723855,
+  "target_mae": {
+    "Tair": 0.12625785171985626,
+    "Rhair": 2.3715269565582275,
+    "CO2air": 20.160802841186523
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_control_aware_fusion_gradient_mpc_start00192_96steps_closed_loop.png"
+}

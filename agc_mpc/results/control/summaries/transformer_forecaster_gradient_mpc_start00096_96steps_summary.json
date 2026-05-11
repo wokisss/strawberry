@@ -1,0 +1,17 @@
+{
+  "predictor": "transformer_forecaster",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 96,
+  "steps": 96,
+  "objective_mean": 0.05890920358554771,
+  "control_delta_mae": 74.61090850830078,
+  "action_tv": 6.685345857714613,
+  "target_mae": {
+    "Tair": 0.3053044080734253,
+    "Rhair": 1.8979231119155884,
+    "CO2air": 23.64796257019043
+  },
+  "figure_path": "results\\control\\figures\\transformer_forecaster_gradient_mpc_start00096_96steps_closed_loop.png"
+}

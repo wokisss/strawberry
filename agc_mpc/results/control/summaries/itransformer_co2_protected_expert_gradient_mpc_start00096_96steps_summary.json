@@ -1,0 +1,17 @@
+{
+  "predictor": "itransformer_co2_protected_expert",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 96,
+  "steps": 96,
+  "objective_mean": 0.12782935571158305,
+  "control_delta_mae": 20.552927017211914,
+  "action_tv": 4.553542171604931,
+  "target_mae": {
+    "Tair": 0.8291708827018738,
+    "Rhair": 0.7485520839691162,
+    "CO2air": 50.39009475708008
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_protected_expert_gradient_mpc_start00096_96steps_closed_loop.png"
+}

@@ -1,0 +1,16 @@
+{
+  "predictor": "lstm_forecaster",
+  "controller": "recorded",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 96,
+  "objective_mean": 0.0,
+  "control_delta_mae": 0.0,
+  "action_tv": 0.16307871144575378,
+  "target_mae": {
+    "Tair": 0.8428520560264587,
+    "Rhair": 8.605770111083984,
+    "CO2air": 60.164215087890625
+  },
+  "figure_path": "results\\control\\figures\\lstm_forecaster_recorded_closed_loop.png"
+}

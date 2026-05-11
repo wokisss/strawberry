@@ -1,0 +1,17 @@
+{
+  "predictor": "itransformer_co2_teacher_distill",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 0,
+  "steps": 96,
+  "objective_mean": 0.6665343097411096,
+  "control_delta_mae": 27.457746505737305,
+  "action_tv": 18.152209880451363,
+  "target_mae": {
+    "Tair": 4.466729164123535,
+    "Rhair": 10.654947280883789,
+    "CO2air": 22.602941513061523
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_teacher_distill_cem_mpc_closed_loop.png"
+}

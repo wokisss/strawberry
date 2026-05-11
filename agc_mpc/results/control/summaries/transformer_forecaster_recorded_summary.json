@@ -1,0 +1,16 @@
+{
+  "predictor": "transformer_forecaster",
+  "controller": "recorded",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 96,
+  "objective_mean": 0.0,
+  "control_delta_mae": 0.0,
+  "action_tv": 0.16307871144575378,
+  "target_mae": {
+    "Tair": 1.1300138235092163,
+    "Rhair": 6.422832012176514,
+    "CO2air": 50.06881332397461
+  },
+  "figure_path": "results\\control\\figures\\transformer_forecaster_recorded_closed_loop.png"
+}

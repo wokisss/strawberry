@@ -1,0 +1,16 @@
+{
+  "predictor": "frequency_forecaster",
+  "controller": "recorded",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 96,
+  "objective_mean": 0.0,
+  "control_delta_mae": 0.0,
+  "action_tv": 0.16307871144575378,
+  "target_mae": {
+    "Tair": 1.4783897399902344,
+    "Rhair": 9.020296096801758,
+    "CO2air": 46.76808166503906
+  },
+  "figure_path": "results\\control\\figures\\frequency_forecaster_recorded_closed_loop.png"
+}

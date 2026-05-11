@@ -1,0 +1,17 @@
+{
+  "predictor": "itransformer_co2_wavelet_residual",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 0,
+  "steps": 96,
+  "objective_mean": 0.1517887402054233,
+  "control_delta_mae": 25.979814529418945,
+  "action_tv": 18.821670544644196,
+  "target_mae": {
+    "Tair": 2.754328966140747,
+    "Rhair": 4.127379894256592,
+    "CO2air": 14.410372734069824
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_wavelet_residual_cem_mpc_closed_loop.png"
+}

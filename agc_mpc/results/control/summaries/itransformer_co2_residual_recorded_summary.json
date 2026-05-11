@@ -1,0 +1,17 @@
+{
+  "predictor": "itransformer_co2_residual",
+  "controller": "recorded",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 0,
+  "steps": 96,
+  "objective_mean": 0.0,
+  "control_delta_mae": 0.0,
+  "action_tv": 0.16307871144575378,
+  "target_mae": {
+    "Tair": 4.025249481201172,
+    "Rhair": 6.071183681488037,
+    "CO2air": 41.99650955200195
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_residual_recorded_closed_loop.png"
+}

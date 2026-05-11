@@ -1,0 +1,16 @@
+{
+  "predictor": "segrnn_forecaster",
+  "controller": "recorded",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 96,
+  "objective_mean": 0.0,
+  "control_delta_mae": 0.0,
+  "action_tv": 0.16307871144575378,
+  "target_mae": {
+    "Tair": 2.485219717025757,
+    "Rhair": 5.942737102508545,
+    "CO2air": 60.4117431640625
+  },
+  "figure_path": "results\\control\\figures\\segrnn_forecaster_recorded_closed_loop.png"
+}

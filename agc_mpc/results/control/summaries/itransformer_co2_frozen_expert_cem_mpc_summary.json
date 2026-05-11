@@ -1,0 +1,17 @@
+{
+  "predictor": "itransformer_co2_frozen_expert",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 0,
+  "steps": 96,
+  "objective_mean": 0.14867164518606538,
+  "control_delta_mae": 23.32143211364746,
+  "action_tv": 15.92510092506806,
+  "target_mae": {
+    "Tair": 2.452045202255249,
+    "Rhair": 5.2641921043396,
+    "CO2air": 14.6887845993042
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_frozen_expert_cem_mpc_closed_loop.png"
+}

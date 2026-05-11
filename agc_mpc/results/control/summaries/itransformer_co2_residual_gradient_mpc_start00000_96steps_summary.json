@@ -1,0 +1,17 @@
+{
+  "predictor": "itransformer_co2_residual",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 0,
+  "steps": 96,
+  "objective_mean": 0.055770663816171386,
+  "control_delta_mae": 9.318459510803223,
+  "action_tv": 4.583359828218818,
+  "target_mae": {
+    "Tair": 0.9379992485046387,
+    "Rhair": 1.5003553628921509,
+    "CO2air": 6.331002712249756
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_residual_gradient_mpc_start00000_96steps_closed_loop.png"
+}

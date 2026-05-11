@@ -1,0 +1,16 @@
+{
+  "predictor": "segrnn_forecaster",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 96,
+  "objective_mean": 0.0583583121576036,
+  "control_delta_mae": 25.490026473999023,
+  "action_tv": 16.67380079502861,
+  "target_mae": {
+    "Tair": 0.9386513233184814,
+    "Rhair": 2.0183403491973877,
+    "CO2air": 21.323654174804688
+  },
+  "figure_path": "results\\control\\figures\\segrnn_forecaster_cem_mpc_closed_loop.png"
+}

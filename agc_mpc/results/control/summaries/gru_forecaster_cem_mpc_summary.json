@@ -1,0 +1,16 @@
+{
+  "predictor": "gru_forecaster",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 96,
+  "objective_mean": 0.13444387786633646,
+  "control_delta_mae": 23.713829040527344,
+  "action_tv": 16.253844652945798,
+  "target_mae": {
+    "Tair": 0.7188727259635925,
+    "Rhair": 4.9596171379089355,
+    "CO2air": 51.73329544067383
+  },
+  "figure_path": "results\\control\\figures\\gru_forecaster_cem_mpc_closed_loop.png"
+}

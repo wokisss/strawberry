@@ -1,0 +1,17 @@
+{
+  "predictor": "itransformer_co2_late_frozen_expert",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 0,
+  "steps": 96,
+  "objective_mean": 0.15382690029218793,
+  "control_delta_mae": 9.033388137817383,
+  "action_tv": 5.5518132039966686,
+  "target_mae": {
+    "Tair": 2.2016470432281494,
+    "Rhair": 4.301968097686768,
+    "CO2air": 6.44212532043457
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_late_frozen_expert_gradient_mpc_start00000_96steps_closed_loop.png"
+}

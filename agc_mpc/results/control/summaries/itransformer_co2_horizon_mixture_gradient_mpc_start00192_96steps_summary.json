@@ -1,0 +1,17 @@
+{
+  "predictor": "itransformer_co2_horizon_mixture",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 192,
+  "steps": 96,
+  "objective_mean": 0.06780891799523185,
+  "control_delta_mae": 25.302026748657227,
+  "action_tv": 4.428603533189744,
+  "target_mae": {
+    "Tair": 0.2285432666540146,
+    "Rhair": 0.5557050108909607,
+    "CO2air": 26.26959228515625
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_horizon_mixture_gradient_mpc_start00192_96steps_closed_loop.png"
+}

@@ -1,0 +1,16 @@
+{
+  "predictor": "gru_forecaster",
+  "controller": "recorded",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 96,
+  "objective_mean": 0.0,
+  "control_delta_mae": 0.0,
+  "action_tv": 0.16307871144575378,
+  "target_mae": {
+    "Tair": 3.1169283390045166,
+    "Rhair": 3.554741621017456,
+    "CO2air": 77.17798614501953
+  },
+  "figure_path": "results\\control\\figures\\gru_forecaster_recorded_closed_loop.png"
+}

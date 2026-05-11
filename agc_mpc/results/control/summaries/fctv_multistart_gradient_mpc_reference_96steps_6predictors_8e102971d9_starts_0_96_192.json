@@ -1,0 +1,353 @@
+{
+  "predictors": [
+    "itransformer_residual",
+    "patchtst_residual",
+    "transformer_forecaster",
+    "nlinear_forecaster",
+    "dlinear_forecaster",
+    "itransformer_co2_wavelet_residual"
+  ],
+  "controllers": [
+    "gradient_mpc"
+  ],
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "rollout_mode": "surrogate",
+  "start_indices": [
+    0,
+    96,
+    192
+  ],
+  "steps": 96,
+  "target_cols": [
+    "Tair",
+    "Rhair",
+    "CO2air"
+  ],
+  "records": [
+    {
+      "predictor": "itransformer_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.19244779120587432,
+      "control_delta_mae": 18.796566009521484,
+      "action_tv": 5.345652793146049,
+      "target_mae": {
+        "Tair": 2.2164032459259033,
+        "Rhair": 5.675436496734619,
+        "CO2air": 11.531888008117676
+      },
+      "figure_path": "results\\control\\figures\\itransformer_residual_gradient_mpc_start00000_96steps_closed_loop.png",
+      "output_tag": "start00000_96steps"
+    },
+    {
+      "predictor": "patchtst_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.2628365657098281,
+      "control_delta_mae": 50.953731536865234,
+      "action_tv": 14.65745880206426,
+      "target_mae": {
+        "Tair": 3.088890314102173,
+        "Rhair": 7.961357116699219,
+        "CO2air": 36.01357650756836
+      },
+      "figure_path": "results\\control\\figures\\patchtst_residual_gradient_mpc_start00000_96steps_closed_loop.png",
+      "output_tag": "start00000_96steps"
+    },
+    {
+      "predictor": "transformer_forecaster",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.08576489061427613,
+      "control_delta_mae": 22.21642303466797,
+      "action_tv": 7.331430541040997,
+      "target_mae": {
+        "Tair": 1.0368291139602661,
+        "Rhair": 4.063201904296875,
+        "CO2air": 16.465669631958008
+      },
+      "figure_path": "results\\control\\figures\\transformer_forecaster_gradient_mpc_start00000_96steps_closed_loop.png",
+      "output_tag": "start00000_96steps"
+    },
+    {
+      "predictor": "nlinear_forecaster",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.15259951422922313,
+      "control_delta_mae": 35.20651626586914,
+      "action_tv": 10.361576172212759,
+      "target_mae": {
+        "Tair": 1.8669614791870117,
+        "Rhair": 4.1818389892578125,
+        "CO2air": 25.23583221435547
+      },
+      "figure_path": "results\\control\\figures\\nlinear_forecaster_gradient_mpc_start00000_96steps_closed_loop.png",
+      "output_tag": "start00000_96steps"
+    },
+    {
+      "predictor": "dlinear_forecaster",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.39618113019969314,
+      "control_delta_mae": 14.096638679504395,
+      "action_tv": 8.572125101462007,
+      "target_mae": {
+        "Tair": 3.4360313415527344,
+        "Rhair": 6.458637237548828,
+        "CO2air": 37.82425308227539
+      },
+      "figure_path": "results\\control\\figures\\dlinear_forecaster_gradient_mpc_start00000_96steps_closed_loop.png",
+      "output_tag": "start00000_96steps"
+    },
+    {
+      "predictor": "itransformer_co2_wavelet_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.06358634760060038,
+      "control_delta_mae": 10.739814758300781,
+      "action_tv": 3.8328985196227827,
+      "target_mae": {
+        "Tair": 1.0611761808395386,
+        "Rhair": 2.1475131511688232,
+        "CO2air": 7.711439609527588
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_wavelet_residual_gradient_mpc_start00000_96steps_closed_loop.png",
+      "output_tag": "start00000_96steps"
+    },
+    {
+      "predictor": "itransformer_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 96,
+      "steps": 96,
+      "objective_mean": 0.16661961621139199,
+      "control_delta_mae": 27.04412269592285,
+      "action_tv": 5.096351426948483,
+      "target_mae": {
+        "Tair": 2.392040491104126,
+        "Rhair": 4.198577404022217,
+        "CO2air": 18.051841735839844
+      },
+      "figure_path": "results\\control\\figures\\itransformer_residual_gradient_mpc_start00096_96steps_closed_loop.png",
+      "output_tag": "start00096_96steps"
+    },
+    {
+      "predictor": "patchtst_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 96,
+      "steps": 96,
+      "objective_mean": 0.0951984046259895,
+      "control_delta_mae": 34.336734771728516,
+      "action_tv": 8.30821161965529,
+      "target_mae": {
+        "Tair": 0.8508591055870056,
+        "Rhair": 2.5981740951538086,
+        "CO2air": 30.907594680786133
+      },
+      "figure_path": "results\\control\\figures\\patchtst_residual_gradient_mpc_start00096_96steps_closed_loop.png",
+      "output_tag": "start00096_96steps"
+    },
+    {
+      "predictor": "transformer_forecaster",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 96,
+      "steps": 96,
+      "objective_mean": 0.05890920358554771,
+      "control_delta_mae": 74.61090850830078,
+      "action_tv": 6.685345857714613,
+      "target_mae": {
+        "Tair": 0.3053044080734253,
+        "Rhair": 1.8979231119155884,
+        "CO2air": 23.64796257019043
+      },
+      "figure_path": "results\\control\\figures\\transformer_forecaster_gradient_mpc_start00096_96steps_closed_loop.png",
+      "output_tag": "start00096_96steps"
+    },
+    {
+      "predictor": "nlinear_forecaster",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 96,
+      "steps": 96,
+      "objective_mean": 0.09584592587392156,
+      "control_delta_mae": 17.3270206451416,
+      "action_tv": 4.2965689823031425,
+      "target_mae": {
+        "Tair": 1.0252386331558228,
+        "Rhair": 2.6947338581085205,
+        "CO2air": 18.771705627441406
+      },
+      "figure_path": "results\\control\\figures\\nlinear_forecaster_gradient_mpc_start00096_96steps_closed_loop.png",
+      "output_tag": "start00096_96steps"
+    },
+    {
+      "predictor": "dlinear_forecaster",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 96,
+      "steps": 96,
+      "objective_mean": 0.09774145972914994,
+      "control_delta_mae": 70.4874496459961,
+      "action_tv": 9.426536590637019,
+      "target_mae": {
+        "Tair": 1.0181900262832642,
+        "Rhair": 2.195167064666748,
+        "CO2air": 16.177457809448242
+      },
+      "figure_path": "results\\control\\figures\\dlinear_forecaster_gradient_mpc_start00096_96steps_closed_loop.png",
+      "output_tag": "start00096_96steps"
+    },
+    {
+      "predictor": "itransformer_co2_wavelet_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 96,
+      "steps": 96,
+      "objective_mean": 0.09022926331575339,
+      "control_delta_mae": 26.504541397094727,
+      "action_tv": 4.463888629029195,
+      "target_mae": {
+        "Tair": 0.9970765709877014,
+        "Rhair": 2.260113000869751,
+        "CO2air": 12.312408447265625
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_wavelet_residual_gradient_mpc_start00096_96steps_closed_loop.png",
+      "output_tag": "start00096_96steps"
+    },
+    {
+      "predictor": "itransformer_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 192,
+      "steps": 96,
+      "objective_mean": 0.03596895172571143,
+      "control_delta_mae": 35.13960266113281,
+      "action_tv": 6.245958654209971,
+      "target_mae": {
+        "Tair": 0.1891234666109085,
+        "Rhair": 1.3165264129638672,
+        "CO2air": 11.644330024719238
+      },
+      "figure_path": "results\\control\\figures\\itransformer_residual_gradient_mpc_start00192_96steps_closed_loop.png",
+      "output_tag": "start00192_96steps"
+    },
+    {
+      "predictor": "patchtst_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 192,
+      "steps": 96,
+      "objective_mean": 0.06120661009723941,
+      "control_delta_mae": 69.90070343017578,
+      "action_tv": 7.48573956809317,
+      "target_mae": {
+        "Tair": 0.29615524411201477,
+        "Rhair": 1.2114018201828003,
+        "CO2air": 57.06890869140625
+      },
+      "figure_path": "results\\control\\figures\\patchtst_residual_gradient_mpc_start00192_96steps_closed_loop.png",
+      "output_tag": "start00192_96steps"
+    },
+    {
+      "predictor": "transformer_forecaster",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 192,
+      "steps": 96,
+      "objective_mean": 0.038943664830488466,
+      "control_delta_mae": 8.617920875549316,
+      "action_tv": 0.8241621910904845,
+      "target_mae": {
+        "Tair": 0.07292238622903824,
+        "Rhair": 1.436308741569519,
+        "CO2air": 31.78847312927246
+      },
+      "figure_path": "results\\control\\figures\\transformer_forecaster_gradient_mpc_start00192_96steps_closed_loop.png",
+      "output_tag": "start00192_96steps"
+    },
+    {
+      "predictor": "nlinear_forecaster",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 192,
+      "steps": 96,
+      "objective_mean": 0.045233746272667,
+      "control_delta_mae": 7.480574131011963,
+      "action_tv": 1.962730018266787,
+      "target_mae": {
+        "Tair": 0.51045161485672,
+        "Rhair": 2.0770275592803955,
+        "CO2air": 23.84612464904785
+      },
+      "figure_path": "results\\control\\figures\\nlinear_forecaster_gradient_mpc_start00192_96steps_closed_loop.png",
+      "output_tag": "start00192_96steps"
+    },
+    {
+      "predictor": "dlinear_forecaster",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 192,
+      "steps": 96,
+      "objective_mean": 0.04492917832491609,
+      "control_delta_mae": 57.15858459472656,
+      "action_tv": 9.120660015071431,
+      "target_mae": {
+        "Tair": 0.26051613688468933,
+        "Rhair": 2.0098321437835693,
+        "CO2air": 11.316402435302734
+      },
+      "figure_path": "results\\control\\figures\\dlinear_forecaster_gradient_mpc_start00192_96steps_closed_loop.png",
+      "output_tag": "start00192_96steps"
+    },
+    {
+      "predictor": "itransformer_co2_wavelet_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 192,
+      "steps": 96,
+      "objective_mean": 0.055304778419667855,
+      "control_delta_mae": 30.816743850708008,
+      "action_tv": 3.0988380833684155,
+      "target_mae": {
+        "Tair": 0.40996798872947693,
+        "Rhair": 2.2941341400146484,
+        "CO2air": 12.502181053161621
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_wavelet_residual_gradient_mpc_start00192_96steps_closed_loop.png",
+      "output_tag": "start00192_96steps"
+    }
+  ]
+}

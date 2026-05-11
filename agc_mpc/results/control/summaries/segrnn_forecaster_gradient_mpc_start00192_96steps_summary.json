@@ -1,0 +1,17 @@
+{
+  "predictor": "segrnn_forecaster",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 192,
+  "steps": 96,
+  "objective_mean": 0.11640529478124033,
+  "control_delta_mae": 51.33283996582031,
+  "action_tv": 6.609550550580025,
+  "target_mae": {
+    "Tair": 0.672799289226532,
+    "Rhair": 5.178913593292236,
+    "CO2air": 111.29247283935547
+  },
+  "figure_path": "results\\control\\figures\\segrnn_forecaster_gradient_mpc_start00192_96steps_closed_loop.png"
+}

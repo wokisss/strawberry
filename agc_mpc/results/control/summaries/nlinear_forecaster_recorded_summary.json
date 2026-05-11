@@ -1,0 +1,16 @@
+{
+  "predictor": "nlinear_forecaster",
+  "controller": "recorded",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 96,
+  "objective_mean": 0.0,
+  "control_delta_mae": 0.0,
+  "action_tv": 0.16307871144575378,
+  "target_mae": {
+    "Tair": 1.837519645690918,
+    "Rhair": 11.202935218811035,
+    "CO2air": 57.293331146240234
+  },
+  "figure_path": "results\\control\\figures\\nlinear_forecaster_recorded_closed_loop.png"
+}

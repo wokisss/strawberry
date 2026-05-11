@@ -1,0 +1,16 @@
+{
+  "predictor": "nlinear_forecaster",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 96,
+  "objective_mean": 0.3921946784636627,
+  "control_delta_mae": 35.07194900512695,
+  "action_tv": 24.014603663235903,
+  "target_mae": {
+    "Tair": 3.6950509548187256,
+    "Rhair": 8.131305694580078,
+    "CO2air": 28.17608070373535
+  },
+  "figure_path": "results\\control\\figures\\nlinear_forecaster_cem_mpc_closed_loop.png"
+}

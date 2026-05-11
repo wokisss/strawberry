@@ -1,0 +1,17 @@
+{
+  "predictor": "itransformer_co2_wavelet_blend",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 0,
+  "steps": 96,
+  "objective_mean": 0.1507582847455827,
+  "control_delta_mae": 26.084875106811523,
+  "action_tv": 16.0648304335773,
+  "target_mae": {
+    "Tair": 2.344040870666504,
+    "Rhair": 4.713503360748291,
+    "CO2air": 12.936729431152344
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_wavelet_blend_cem_mpc_closed_loop.png"
+}

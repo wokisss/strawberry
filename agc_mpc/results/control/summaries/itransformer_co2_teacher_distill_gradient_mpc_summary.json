@@ -1,0 +1,17 @@
+{
+  "predictor": "itransformer_co2_teacher_distill",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 0,
+  "steps": 96,
+  "objective_mean": 0.3501983259532911,
+  "control_delta_mae": 16.87813377380371,
+  "action_tv": 5.415487461257726,
+  "target_mae": {
+    "Tair": 2.789154052734375,
+    "Rhair": 6.876527786254883,
+    "CO2air": 27.337553024291992
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_teacher_distill_gradient_mpc_closed_loop.png"
+}

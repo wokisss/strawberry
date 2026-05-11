@@ -1,0 +1,17 @@
+{
+  "predictor": "itransformer_co2_protected_terminal",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 0,
+  "steps": 96,
+  "objective_mean": 0.5698059251105102,
+  "control_delta_mae": 20.52651596069336,
+  "action_tv": 16.784072789053123,
+  "target_mae": {
+    "Tair": 4.660707950592041,
+    "Rhair": 7.618994235992432,
+    "CO2air": 49.5000114440918
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_protected_terminal_cem_mpc_closed_loop.png"
+}

@@ -1,0 +1,17 @@
+{
+  "predictor": "itransformer_co2_frozen_expert",
+  "controller": "recorded",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 0,
+  "steps": 96,
+  "objective_mean": 0.0,
+  "control_delta_mae": 0.0,
+  "action_tv": 0.16307871144575378,
+  "target_mae": {
+    "Tair": 1.6969894170761108,
+    "Rhair": 6.308469772338867,
+    "CO2air": 99.86193084716797
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_frozen_expert_recorded_closed_loop.png"
+}

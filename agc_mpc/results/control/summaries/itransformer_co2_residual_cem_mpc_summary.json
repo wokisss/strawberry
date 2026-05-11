@@ -1,0 +1,17 @@
+{
+  "predictor": "itransformer_co2_residual",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 0,
+  "steps": 96,
+  "objective_mean": 0.1345464344485663,
+  "control_delta_mae": 28.347091674804688,
+  "action_tv": 19.637773907432955,
+  "target_mae": {
+    "Tair": 2.59962797164917,
+    "Rhair": 3.877798080444336,
+    "CO2air": 13.006675720214844
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_residual_cem_mpc_closed_loop.png"
+}

@@ -1,0 +1,17 @@
+{
+  "predictor": "itransformer_co2_protected_expert",
+  "controller": "recorded",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 0,
+  "steps": 96,
+  "objective_mean": 0.0,
+  "control_delta_mae": 0.0,
+  "action_tv": 0.16307871144575378,
+  "target_mae": {
+    "Tair": 2.3016645908355713,
+    "Rhair": 8.49289321899414,
+    "CO2air": 63.55885314941406
+  },
+  "figure_path": "results\\control\\figures\\itransformer_co2_protected_expert_recorded_closed_loop.png"
+}

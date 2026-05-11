@@ -1,0 +1,16 @@
+{
+  "predictor": "lstm_forecaster",
+  "controller": "cem_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "steps": 96,
+  "objective_mean": 0.24669790021531904,
+  "control_delta_mae": 28.81168556213379,
+  "action_tv": 21.998655041058857,
+  "target_mae": {
+    "Tair": 1.8301119804382324,
+    "Rhair": 3.81113600730896,
+    "CO2air": 31.237417221069336
+  },
+  "figure_path": "results\\control\\figures\\lstm_forecaster_cem_mpc_closed_loop.png"
+}
