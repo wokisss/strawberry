@@ -1,0 +1,198 @@
+{
+  "suite_path": "C:\\repositories\\strawberry\\agc_mpc\\results\\control\\summaries\\fctv_multistart_gradient_mpc_reference_96steps_starts_0_96_192.json",
+  "base_path": "results\\forecasting\\analysis\\control_relevant_validation_reference.json",
+  "start_indices": [
+    0,
+    96,
+    192
+  ],
+  "key_metrics": [
+    {
+      "control_target": "mpc_tair_mae",
+      "metric": "tair_first_step_mae"
+    },
+    {
+      "control_target": "mpc_rhair_mae",
+      "metric": "rhair_first_step_mae"
+    },
+    {
+      "control_target": "mpc_co2_mae",
+      "metric": "co2_first_step_mae"
+    },
+    {
+      "control_target": "mpc_co2_mae",
+      "metric": "co2_constraint_near_mae_proxy"
+    },
+    {
+      "control_target": "mpc_objective",
+      "metric": "multiobjective_transfer_selection_score"
+    }
+  ],
+  "summary_rows": [
+    {
+      "start_idx": 0,
+      "model_count": 10,
+      "control_target": "mpc_tair_mae",
+      "metric": "tair_first_step_mae",
+      "role": "offline_or_diagnostic_only",
+      "full_spearman": -0.2727272727272727,
+      "full_pairwise_consistency": 0.4222222222222222,
+      "leave_one_model_spearman_min": -0.5333333333333333,
+      "leave_one_model_pairwise_min": 0.3333333333333333
+    },
+    {
+      "start_idx": 0,
+      "model_count": 10,
+      "control_target": "mpc_rhair_mae",
+      "metric": "rhair_first_step_mae",
+      "role": "secondary_selection",
+      "full_spearman": 0.41818181818181815,
+      "full_pairwise_consistency": 0.6666666666666666,
+      "leave_one_model_spearman_min": 0.19999999999999998,
+      "leave_one_model_pairwise_min": 0.5833333333333334
+    },
+    {
+      "start_idx": 0,
+      "model_count": 10,
+      "control_target": "mpc_co2_mae",
+      "metric": "co2_first_step_mae",
+      "role": "secondary_selection",
+      "full_spearman": 0.498482545817653,
+      "full_pairwise_consistency": 0.7045454545454546,
+      "leave_one_model_spearman_min": 0.35983578576496095,
+      "leave_one_model_pairwise_min": 0.6571428571428571
+    },
+    {
+      "start_idx": 0,
+      "model_count": 10,
+      "control_target": "mpc_co2_mae",
+      "metric": "co2_constraint_near_mae_proxy",
+      "role": "offline_or_diagnostic_only",
+      "full_spearman": 0.006060606060606061,
+      "full_pairwise_consistency": 0.5111111111111111,
+      "leave_one_model_spearman_min": -0.18333333333333335,
+      "leave_one_model_pairwise_min": 0.4444444444444444
+    },
+    {
+      "start_idx": 0,
+      "model_count": 10,
+      "control_target": "mpc_objective",
+      "metric": "multiobjective_transfer_selection_score",
+      "role": "weak_selection",
+      "full_spearman": 0.28484848484848485,
+      "full_pairwise_consistency": 0.6,
+      "leave_one_model_spearman_min": 0.016666666666666666,
+      "leave_one_model_pairwise_min": 0.5
+    },
+    {
+      "start_idx": 96,
+      "model_count": 10,
+      "control_target": "mpc_tair_mae",
+      "metric": "tair_first_step_mae",
+      "role": "offline_or_diagnostic_only",
+      "full_spearman": -0.11515151515151514,
+      "full_pairwise_consistency": 0.4666666666666667,
+      "leave_one_model_spearman_min": -0.39999999999999997,
+      "leave_one_model_pairwise_min": 0.3611111111111111
+    },
+    {
+      "start_idx": 96,
+      "model_count": 10,
+      "control_target": "mpc_rhair_mae",
+      "metric": "rhair_first_step_mae",
+      "role": "offline_or_diagnostic_only",
+      "full_spearman": -0.10303030303030303,
+      "full_pairwise_consistency": 0.4444444444444444,
+      "leave_one_model_spearman_min": -0.5166666666666667,
+      "leave_one_model_pairwise_min": 0.3055555555555556
+    },
+    {
+      "start_idx": 96,
+      "model_count": 10,
+      "control_target": "mpc_co2_mae",
+      "metric": "co2_first_step_mae",
+      "role": "offline_or_diagnostic_only",
+      "full_spearman": -0.14589733048321551,
+      "full_pairwise_consistency": 0.4090909090909091,
+      "leave_one_model_spearman_min": -0.42678197846541877,
+      "leave_one_model_pairwise_min": 0.3142857142857143
+    },
+    {
+      "start_idx": 96,
+      "model_count": 10,
+      "control_target": "mpc_co2_mae",
+      "metric": "co2_constraint_near_mae_proxy",
+      "role": "offline_or_diagnostic_only",
+      "full_spearman": 0.06666666666666665,
+      "full_pairwise_consistency": 0.5777777777777777,
+      "leave_one_model_spearman_min": -0.13333333333333333,
+      "leave_one_model_pairwise_min": 0.5
+    },
+    {
+      "start_idx": 96,
+      "model_count": 10,
+      "control_target": "mpc_objective",
+      "metric": "multiobjective_transfer_selection_score",
+      "role": "offline_or_diagnostic_only",
+      "full_spearman": 0.18787878787878787,
+      "full_pairwise_consistency": 0.5555555555555556,
+      "leave_one_model_spearman_min": -0.11666666666666665,
+      "leave_one_model_pairwise_min": 0.4444444444444444
+    },
+    {
+      "start_idx": 192,
+      "model_count": 10,
+      "control_target": "mpc_tair_mae",
+      "metric": "tair_first_step_mae",
+      "role": "weak_selection",
+      "full_spearman": 0.35757575757575755,
+      "full_pairwise_consistency": 0.6,
+      "leave_one_model_spearman_min": 0.18333333333333335,
+      "leave_one_model_pairwise_min": 0.5277777777777778
+    },
+    {
+      "start_idx": 192,
+      "model_count": 10,
+      "control_target": "mpc_rhair_mae",
+      "metric": "rhair_first_step_mae",
+      "role": "offline_or_diagnostic_only",
+      "full_spearman": 0.09090909090909088,
+      "full_pairwise_consistency": 0.5777777777777777,
+      "leave_one_model_spearman_min": -0.11666666666666665,
+      "leave_one_model_pairwise_min": 0.5
+    },
+    {
+      "start_idx": 192,
+      "model_count": 10,
+      "control_target": "mpc_co2_mae",
+      "metric": "co2_first_step_mae",
+      "role": "offline_or_diagnostic_only",
+      "full_spearman": -0.24316221747202585,
+      "full_pairwise_consistency": 0.4318181818181818,
+      "leave_one_model_spearman_min": -0.43333333333333335,
+      "leave_one_model_pairwise_min": 0.3611111111111111
+    },
+    {
+      "start_idx": 192,
+      "model_count": 10,
+      "control_target": "mpc_co2_mae",
+      "metric": "co2_constraint_near_mae_proxy",
+      "role": "offline_or_diagnostic_only",
+      "full_spearman": -0.34545454545454546,
+      "full_pairwise_consistency": 0.35555555555555557,
+      "leave_one_model_spearman_min": -0.5166666666666667,
+      "leave_one_model_pairwise_min": 0.2777777777777778
+    },
+    {
+      "start_idx": 192,
+      "model_count": 10,
+      "control_target": "mpc_objective",
+      "metric": "multiobjective_transfer_selection_score",
+      "role": "weak_selection",
+      "full_spearman": 0.28484848484848485,
+      "full_pairwise_consistency": 0.6,
+      "leave_one_model_spearman_min": 0.11666666666666665,
+      "leave_one_model_pairwise_min": 0.5555555555555556
+    }
+  ]
+}
