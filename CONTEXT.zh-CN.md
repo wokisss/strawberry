@@ -2,7 +2,7 @@
 
 中文对齐翻译版本。
 英文主版本： [CONTEXT.md](c:/repositories/strawberry/CONTEXT.md)
-最近同步时间：`2026-04-21`
+最近同步时间：`2026-04-28`
 
 ## 0. 目的与维护规则
 
@@ -260,34 +260,55 @@ latest predictor suite 中已知的汇总结论：
 - 新增控制敏感性诊断和 trace-based 成对控制对比图。
 - 记录关键结论：普通离线 forecasting 指标不会自动转化成 MPC 控制收益。
 
-### 上周：2026-04-13 ~ 2026-04-19
+#### 2026-04-20 ~ 2026-04-26
 
-- 实现并正式 benchmark 最新 CO2 expert fusion 变体。
-- 完成 `itransformer_co2_horizon_mixture` forecasting 攻坚。
-- 诊断离线 forecasting leader 的 MPC 转化失败原因。
-- 实现 `itransformer_co2_frozen_backbone_horizon_mixture` 作为 control-safe 诊断变体。
-- 生成与 `late_frozen_expert`、`recoupled_expert` 的 trace-based 控制对比图。
+- 建立标准化 `control_relevant_validation.py` suite，并升级到 v2。
+- 将论文主线收敛到 `Protected Horizon Fusion` / `PHF-iTransformer`。
+- 生成正式 PHF 消融表和图。
+- 实现、benchmark 并晋升 `itransformer_co2_control_aware_fusion` 为当前均衡型汇报模型。
+- 生成 `control-aware fusion`、`late_frozen_expert` 和 `horizon_mixture` 的三模型汇报对比图。
 
-### 本周：2026-04-20 ~ 2026-04-26
+### 上周：2026-04-20 ~ 2026-04-26
 
-- 默认不要继续添加无关的新 predictor。
-- 主任务候选 1：建立标准化 control-relevant validation suite。
-- 主任务候选 2：把模型故事收敛到 `Protected Horizon Fusion` / `PHF-iTransformer`。
-- 高风险高收益候选：构建 control-aware CO2 fusion，把 `late_frozen_expert` 的短时域可控性和 `horizon_mixture` 的离线末端收益结合起来。
-- 已完成：实现并正式 benchmark 了 1 个 `control-aware fusion` 候选。
-- 已完成：对该候选重跑 control-relevant validation 和 `GradientMPC 96-step`。
-- 下一动作：只继续调现有 control-aware fusion 的 gate / tail schedule，不再扩成新的模型族。
-- 支撑任务候选：整理 PHF 消融表和已有变体图。
-- 支撑任务候选：整理跨 `Tair`、`Rhair`、`CO2air` 的文献 benchmark 表。
-- 除非用户另行选择，本周推荐组合：
-  - control-relevant validation
-  - PHF 主线 / 论文故事收敛
+- 确认普通离线 forecasting 指标不足以单独用于 MPC predictor selection。
+- 实现 `control-aware fusion`，结合 `late_frozen_expert` 的短时域可控性和 `horizon_mixture` 的大部分末端预测收益。
+- 确认 `control-aware fusion` 是当前 control-relevant validation 综合排名最好的模型，mean rank 为 `1.750`。
+- 确认晋升版本的 `GradientMPC 96-step` 转化结果：objective `0.1491`，`CO2air MAE=6.415`。
+- 更新 PHF 主线文档、论文文献库、PHF 消融输出和汇报图。
 
-### 下周：2026-04-27 ~ 2026-05-03
+### 本周：2026-04-27 ~ 2026-05-03
 
-- 如果本周完成 validation 和故事收敛，下周只实现一个 control-aware CO2 fusion 候选。
-- 如果用户选择性能优先，则优先 control-aware mixture，并重跑正式 forecasting + `96-step` control。
-- 如果用户选择论文准备优先，则优先 PHF 消融、方法图和文献对比。
+- 本周重点是方法验证，而不是宣布另一个最终模型。
+- 当前目标方法是多目标 `Forecast-to-Control Transfer Validation`，而不是只服务于 CO2 的模型选择器。
+- CO2 仍然是当前重点压力变量，因为它最清楚地暴露了预测收益无法直接转化为控制收益的问题；但方法必须同时量化 `Tair` 和 `Rhair` 的预测到控制转化。
+- `diffmpc_style_transformer` 暂时排除在严格模型池之外，因为它的 48 步历史窗口协议与当前 288 步 AGC 控制验证协议不一致。
+- 任务 A：把严格 validation 模型池扩展到本地 PHF / fusion 家族之外。
+- 任务 A 目标模型组：
+  - 兼容的标准 baseline：`DLinear`，然后补训三目标 `GRU`、`LSTM`、`SegRNN`、`NLinear` 和纯 `Transformer`
+  - 可行时纳入代表性的近年时序 baseline：`PatchTST`、`iTransformer`，以及至少一个分解 / 频域风格模型，例如 `Autoformer`、`FEDformer` 或 `TimesNet`
+  - 已有 residual、CO2-aware、PHF / expert / fusion 变体
+- 任务 B：把 validation 指标从 CO2-only 推广为多目标 control-transfer 指标。
+- 任务 B 指标组：
+  - `Tair`、`Rhair`、`CO2air` 的逐目标 first-step MAE
+  - 逐目标前 `control_horizon=6` 步 MAE
+  - 逐目标短时域 signed bias / absolute bias
+  - 状态接近运行边界或参考带时的 constraint-near / setpoint-near MAE
+  - 控制敏感性诊断：预测输出相对相关未来控制输入是否保留可用梯度
+  - 与闭环 tracking objective 对齐的归一化多目标 composite score
+- 任务 C：量化这些指标是否真的预测闭环收益。
+- 任务 C 分析：
+  - 每个预测侧指标与闭环 `Tair`、`Rhair`、`CO2air` MAE 的相关性
+  - 每个预测侧指标与闭环 objective 的相关性
+  - rank correlation、top-k hit rate 和 pairwise consistency
+  - leave-one-model 与 leave-one-family 稳健性
+  - 区分逐目标 selection metrics、整体 objective selection metrics 和 diagnostic-only metrics
+- 预期输出：一份跨模型方法报告，说明哪些指标组能够量化预测到控制转化、哪些地方会失败，以及它们应如何用于多目标温室 MPC。
+
+### 下周：2026-05-04 ~ 2026-05-10
+
+- 如果稳健性检查成立，下周将多目标 transfer 分析整理成论文方法章节和图表。
+- 如果指标转化能力表现出变量依赖或模型族依赖，要明确报告这个限制，并定义变量特定的指标角色，而不是强行给出一个万能分数。
+- 只有在 validation 方法稳定后，才继续模型调参；新增架构只能用于补齐缺失 baseline 家族，而不是为了追 leaderboard。
 
 ## 8. 当前优先级
 
@@ -327,6 +348,7 @@ latest predictor suite 中已知的汇总结论：
    - 结构是否能解释成面向控制的设计？
 5. 做 CO2 时，优先专项建模，不要盲目扩展通用 backbone。
 6. 只要维护中的双语文档发生变化，英文主版本和中文镜像版本必须在同一轮同步更新。
+7. 不要默认回避跑模型。forecasting 训练、闭环 rollout 和 FCTV 复算是必要实验步骤，不是可选润色。如果 checkpoint、数据和可运行命令都存在，应直接跑实验，而不是只补工具或文档。只有在环境阻塞、必要产物缺失，或当前轮计算成本明显过高时才推迟；推迟时必须写清楚阻塞原因和下一步精确命令。
 
 ## 10. 2026-04-07 CO2 Wavelet 并回主线更新
 
@@ -843,3 +865,773 @@ Control-relevant validation 结果：
 - 随后又测试了 delta-smoothing selector 版本，并已经晋升为当前主候选。
 - 它的关键动作是在 control horizon 之后，对 `late_frozen_expert -> horizon_mixture` 导入的 terminal delta 做平滑选择，而不是只调 gate 的时间曲线。
 - 当前结论：相比继续改 gate schedule，选择更平滑的 terminal delta 更有希望。
+
+## 20. 2026-04-27 当前周方向：跨模型 Forecast-To-Control 验证
+
+用户在 `2026-04-27` 进一步修正了任务范围：
+
+- 研究问题不是“证明某个 CO2 模型是最终汇报模型”。
+- 研究问题是形成一套可量化的方法论，用预测侧 validation 去解释和预测多目标控制收益。
+- CO2 仍然是当前重点，因为它最明显地暴露 forecast-to-control mismatch；但 `Tair` 和 `Rhair` 必须纳入方法。
+- `diffmpc_style_transformer` 当前先不管，因为它的协议与当前严格 AGC 控制验证设置不一致。
+
+更新后的理由：
+
+- 上周已经确认离线 CO2 forecasting gain 不会自动转化成 MPC 收益。
+- 下一步是判断这个观察能否扩展成可复用的多目标 validation 方法。
+- 方法需要量化哪些预测侧指标能预测闭环 `Tair`、`Rhair`、`CO2air` 和整体 objective 收益，哪些指标只能作为离线诊断。
+
+更新后的主要任务：
+
+1. 定义多目标 FCTV 指标组。
+   - 逐目标 first-step MAE：`Tair`、`Rhair`、`CO2air`。
+   - 逐目标前 `control_horizon=6` 步 MAE。
+   - 逐目标短时域 bias / absolute bias。
+   - 逐目标 constraint-near 或 setpoint-near MAE。
+   - 逐目标和整体 objective 的加权 forecast rank。
+   - 相关控制通道的 gradient / controllability diagnostics。
+
+2. 用闭环结果验证 metric-to-control transfer。
+   - 将预测指标与 `GradientMPC` 闭环 `Tair`、`Rhair`、`CO2air` MAE 对齐。
+   - 将预测指标与闭环 objective 和 action-activity 诊断对齐。
+   - 使用 Pearson / Spearman correlation、top-k hit rate、pairwise consistency、leave-one-model robustness 和 leave-one-family robustness。
+   - 分目标报告 metric roles，不强行用一个 score 解释所有控制结果。
+
+3. 用严格可比原则扩展模型广度。
+   - 当前 11 个兼容模型作为初始池。
+   - 补训三目标标准 baseline：`GRU`、`LSTM`、`SegRNN`、`NLinear` 和纯 `Transformer`。
+   - 可行时纳入代表性近年时序模型：`PatchTST`、`iTransformer`，以及 `Autoformer`、`FEDformer` 或 `TimesNet` 中至少一个。
+   - PHF / expert / fusion 变体作为模型深度和消融覆盖，而不是唯一证据来源。
+
+4. 正式化方法论。
+   - 论文面向的对象应是指标组和验证协议，而不仅是模型排名。
+   - CO2 专项结论可以作为 case study，但方法章节必须说明同一逻辑如何用于温度和湿度。
+   - 最终模型只能作为方法应用结果来讲，不能替代方法本身。
+
+当前周预期产出：
+
+- 多目标 FCTV JSON / CSV / Markdown 输出。
+- 一张简洁图，展示逐目标 metric-to-control 相关性和稳健性。
+- 一个 baseline coverage 表，区分严格可比模型与协议不匹配 / appendix-only 模型。
+- 一段方法叙述，解释为什么 first-step / control-horizon / bias / constraint-near / gradient 是候选指标，以及哪些已经被实验证实。
+
+初步实现和结果：
+
+- 新增 [analyze_forecast_to_control_transfer.py](c:/repositories/strawberry/agc_mpc/analyze_forecast_to_control_transfer.py)。
+- 将 `control_relevant_validation.py` 默认模型池从 PHF 本地集合扩展到 `11` 个兼容模型：
+  - `dlinear_forecaster`
+  - `current_hybrid_transformer`
+  - `transformer_hybrid_residual`
+  - `itransformer_residual`
+  - `patchtst_residual`
+  - `itransformer_co2_late_residual`
+  - `itransformer_co2_late_frozen_expert`
+  - `itransformer_co2_recoupled_expert`
+  - `itransformer_co2_horizon_mixture`
+  - `itransformer_co2_frozen_backbone_horizon_mixture`
+  - `itransformer_co2_control_aware_fusion`
+- 新增 `dlinear_forecaster` 作为兼容的三目标 DLinear baseline，并运行其 `96-step` 闭环控制 suite：
+  - `GradientMPC` objective `0.3962`
+  - `GradientMPC CO2air MAE = 37.824`
+  - `CEMMPC CO2air MAE = 26.864`
+- 旧的 `dlinear_baseline`、`transformer_baseline`、`gru_baseline` 和 `segrnn_baseline` 没有纳入细粒度 validation run，因为它们保存的是四目标 checkpoint，不能直接加载到当前三目标 control protocol。
+- `diffmpc_style_transformer` 暂未纳入 pooled validation，因为它使用 48 步历史窗口协议，而当前 control-validation protocol 使用 288 步历史窗口。
+- 新增 baseline coverage 说明：
+  - `results/forecasting/analysis/forecast_to_control_baseline_coverage.md`
+- 已重新生成：
+  - `results/forecasting/analysis/control_relevant_validation_reference.json`
+  - `results/forecasting/analysis/control_relevant_validation_reference.csv`
+  - `results/forecasting/analysis/control_relevant_validation_reference.md`
+  - `results/forecasting/figures/comparisons/control_relevant_validation_reference.png`
+- 已生成新的 forecast-to-control transfer 输出：
+  - `results/forecasting/analysis/forecast_to_control_transfer_reference.json`
+  - `results/forecasting/analysis/forecast_to_control_transfer_reference.csv`
+  - `results/forecasting/analysis/forecast_to_control_transfer_reference.md`
+  - `results/forecasting/figures/comparisons/forecast_to_control_transfer_reference.png`
+- 已新增 robustness 输出：
+  - `results/forecasting/analysis/forecast_to_control_transfer_robustness_reference.csv`
+  - `results/forecasting/figures/comparisons/forecast_to_control_transfer_robustness_reference.png`
+- 已新增汇报型 summary 图：
+  - `results/forecasting/figures/comparisons/forecast_to_control_transfer_summary_reference.png`
+
+基于 `11` 个兼容模型池的初步 CO2-focused transfer 结论：
+
+- 对闭环 `CO2air MAE` 来说，`co2_first_step_mae` 是当前最强 selection metric：
+  - Pearson `0.572`
+  - Spearman `0.752`
+  - pairwise consistency `0.815`
+  - top-3 闭环优胜模型命中：yes，top-3 overlap `1.000`
+- `co2_control_horizon_mae` 是第二强的 CO2 控制 selection metric：
+  - Spearman `0.588`
+  - pairwise consistency `0.722`
+- `co2_constraint_near_mae_proxy` 和 `co2_control_horizon_abs_bias` 是有用的辅助 selection metric，但弱于 first-step / first-6-step MAE。
+- `co2_final_step_mae` 在当前模型池中不能预测闭环 `CO2air MAE`：
+  - Spearman `0.009`
+  - pairwise consistency `0.509`
+- 面向 CO2 tracking 的 selection metrics 不能很好解释整体 `mpc_objective`。这支持把 `CO2air` tracking selection 和整体 controller objective quality 分开处理。
+- `control-aware fusion` 仍是 forecast-only transfer rank 和 aggregate control-relevant validation 下最好的模型，而 `late_frozen_expert` 仍是 raw closed-loop `CO2air MAE` 最好的模型。
+
+稳健性更新：
+
+- transfer 分析已加入 leave-one-model 和 leave-one-family robustness。
+- 新增 `co2_transfer_selection_score`，作为只使用已验证 control-transfer 指标的加权 composite score：
+  - `co2_first_step_mae`：权重 `3.0`
+  - `co2_control_horizon_mae`：权重 `2.0`
+  - `co2_constraint_near_mae_proxy`：权重 `1.5`
+  - `co2_control_horizon_abs_bias`：权重 `1.5`
+- 当前针对闭环 `CO2air MAE` 的指标角色：
+  - `co2_first_step_mae`：`primary_selection`
+  - `co2_control_horizon_mae`：`secondary_selection`
+  - `co2_constraint_near_mae_proxy`：`secondary_selection`
+  - `co2_control_horizon_abs_bias`：`secondary_selection`
+  - `forecast_only_transfer_rank`：`secondary_selection`
+  - `co2_transfer_selection_score`：`secondary_selection`
+  - `co2_weighted_horizon_mae`：`weak_selection`
+  - `co2_full_horizon_mae`：`offline_or_diagnostic_only`
+  - `co2_final_step_mae`：`offline_or_diagnostic_only`
+  - gradient metrics：`diagnostic_only`
+- `co2_first_step_mae` 是当前唯一的 primary selection metric：
+  - 相对闭环 `CO2air MAE` 的 full Spearman：`0.752`
+  - leave-one-model Spearman 范围：`0.669 .. 0.839`
+  - leave-one-family Spearman 范围：`0.661 .. 0.839`
+  - leave-one-model pairwise minimum：`0.773`
+- 这加强了方法论主张：first-step CO2 accuracy 不只是 PHF 本地模型族内的观察，在当前兼容的跨模型池中，它也是预测闭环 CO2 tracking 表现最稳定的指标。
+- `co2_transfer_selection_score` 适合作为汇报用的 composite score，但不应表述为强于 `co2_first_step_mae`：
+  - 相对闭环 `CO2air MAE` 的 full Spearman：`0.582`
+  - leave-one-model Spearman 范围：`0.455 .. 0.770`
+  - leave-one-model pairwise minimum：`0.667`
+  - 排名前两位：`control-aware fusion`，然后是 `late_frozen_expert`
+- 当前建议表述：first-step CO2 MAE 是当前最强 CO2 primary selection signal，加权 CO2 score 是用于排序和汇报的 secondary composite。
+- 这还不是完整的多目标方法论，因为 `Tair` 和 `Rhair` 的 transfer roles 仍需计算和压力测试。
+
+本轮执行清单已完成：
+
+- 将 transfer analyzer 扩展成明确的 score-and-robustness 工具。
+- 重新生成 transfer JSON / CSV / Markdown 输出。
+- 重新生成 transfer correlation 图。
+- 重新生成 leave-one-model robustness 图。
+- 新增一张紧凑的汇报型 summary 图。
+- 用 AST compilation 验证新脚本语法正常。
+
+立即下一步技术任务：
+
+- 将 [control_relevant_validation.py](c:/repositories/strawberry/agc_mpc/control_relevant_validation.py) 和 [analyze_forecast_to_control_transfer.py](c:/repositories/strawberry/agc_mpc/analyze_forecast_to_control_transfer.py) 从 CO2-only selection metrics 推广为多目标 FCTV metrics。
+- 先重跑当前 11 模型池，再补严格可比的标准 baseline。
+- 更新汇报语言：`control-aware fusion` 只能表述为当前 CO2-weighted composite 选出的一个模型，而不是方法论的中心贡献。
+
+## 21. 2026-04-27 FCTV 论文故事与边界
+
+当前面向论文的方法论方向是可行的，但必须表述为 screening 和 diagnosis protocol，而不是理论保证。
+
+推荐方法名：
+
+- `Forecast-to-Control Transfer Validation (FCTV)`
+
+核心主张：
+
+- full-horizon MAE、final-step MAE、RMSE、R2 等普通离线 forecasting 指标不足以单独用于 MPC predictor selection。
+- 在 receding-horizon MPC 中，靠近真实执行控制时域的预测误差、短时域系统性 bias、约束附近误差和控制输入敏感性，可能比长时域平均精度更能预测闭环收益。
+- FCTV 是纯离线 forecasting evaluation 和昂贵闭环 MPC rollout 之间的低成本中间验证层。
+
+这个方法是什么：
+
+- 面向 `Tair`、`Rhair`、`CO2air` 的多目标预测侧指标组。
+- 将预测指标与闭环 `GradientMPC` 结果关联起来的 transfer-analysis protocol。
+- 模型筛选和失败诊断工具。
+
+这个方法不是什么：
+
+- 不是稳定性证明。
+- 不能替代最终闭环 MPC 验证。
+- 不是一个必须同时解释温度、湿度、CO2 和所有控制器的万能单一分数。
+- 不是把某个当前 PHF / fusion 模型包装成最终贡献。
+
+候选 FCTV 指标组：
+
+- 逐目标 first-step MAE
+- 逐目标前 `control_horizon=6` 步 MAE
+- 逐目标短时域 signed bias 和 absolute bias
+- 逐目标 constraint-near 或 setpoint-near MAE
+- 相对相关未来控制输入的 gradient / control-sensitivity diagnostics
+- 逐目标和整体 objective 的 composite ranks
+
+支撑小论文所需的验证证据：
+
+- 严格可比的模型广度：至少覆盖 DLinear / NLinear、GRU / LSTM / SegRNN、纯 Transformer、PatchTST / iTransformer、residual 变体和 PHF / fusion 变体
+- 同时分析 `Tair`、`Rhair`、`CO2air` 和闭环 objective
+- Pearson / Spearman correlation
+- pairwise consistency
+- top-k winner hit rate
+- leave-one-model 和 leave-one-family robustness
+- 明确区分逐目标 selection metrics、整体 objective selection metrics 和 diagnostic-only metrics
+
+当前最强的部分证据：
+
+- 在当前 11 个兼容模型池中，CO2 first-step MAE 是目前观察到的最强闭环 CO2 tracking selection signal。
+- `co2_final_step_mae` 在当前模型池中不能预测闭环 CO2 tracking。
+- 这支持更大的故事：terminal offline forecasting gain 不一定能转化成 receding-horizon MPC 收益。
+- 这个结果仍不完整，因为 `Tair` 和 `Rhair` 的 metric roles 还需要计算和压力测试。
+
+论文定位：
+
+- 不要声称过去没有人研究 forecast 和 control 的关系。
+- 已有 control-oriented identification、decision-focused learning 和 MPC forecast-value 研究已经承认预测质量会影响控制。
+- 更稳妥的研究空缺是：缺少面向温室多目标 MPC 的、离线可计算的、多目标 forecast-side validation 指标组，用来在进入闭环 rollout 前筛选和诊断深度预测模型。
+- 贡献应表述为在多目标温室气候控制中，搭建 forecasting evaluation 和 MPC validation 之间的实用桥梁。
+
+## 22. 2026-04-27 多目标 FCTV 实现更新
+
+第 20 节里写的立即下一步技术任务，已经在当前 `11` 个兼容模型池上完成第一版。
+
+实现更新：
+
+- [control_relevant_validation.py](c:/repositories/strawberry/agc_mpc/control_relevant_validation.py) 现在会导出 `Tair`、`Rhair`、`CO2air` 三个目标统一前缀格式的 forecast metrics。
+- [analyze_forecast_to_control_transfer.py](c:/repositories/strawberry/agc_mpc/analyze_forecast_to_control_transfer.py) 现在执行多目标 FCTV transfer analysis，而不是 CO2-only analysis。
+- analyzer 现在分别针对以下闭环结果报告逐目标 selection role：
+  - `mpc_tair_mae`
+  - `mpc_rhair_mae`
+  - `mpc_co2_mae`
+  - `mpc_objective`
+- analyzer 现在输出以下目标特定 score：
+  - `tair_transfer_selection_score`
+  - `rhair_transfer_selection_score`
+  - `co2_transfer_selection_score`
+  - `multiobjective_transfer_selection_score`
+
+已重新生成的输出：
+
+- `results/forecasting/analysis/control_relevant_validation_reference.{json,csv,md}`
+- `results/forecasting/figures/comparisons/control_relevant_validation_reference.png`
+- `results/forecasting/analysis/forecast_to_control_transfer_reference.{json,csv,md}`
+- `results/forecasting/analysis/forecast_to_control_transfer_robustness_reference.csv`
+- `results/forecasting/figures/comparisons/forecast_to_control_transfer_reference.png`
+- `results/forecasting/figures/comparisons/forecast_to_control_transfer_robustness_reference.png`
+- `results/forecasting/figures/comparisons/forecast_to_control_transfer_summary_reference.png`
+
+当前多目标证据：
+
+- `CO2air`：`co2_first_step_mae` 仍然是预测闭环 `CO2air MAE` 最强的已验证 selection metric。
+  - Spearman `0.752`
+  - pairwise consistency `0.815`
+  - leave-one-model Spearman 范围 `0.669 .. 0.839`
+  - role：`primary_selection`
+- `Rhair`：`rhair_first_step_mae` 对闭环 `Rhair MAE` 有用，但强度低于 CO2。
+  - Spearman `0.627`
+  - pairwise consistency `0.727`
+  - leave-one-model Spearman 范围 `0.539 .. 0.733`
+  - role：`secondary_selection`
+- `Tair`：`tair_first_step_mae` 目前不能稳定选择闭环 `Tair MAE` 更好的模型。
+  - Spearman `-0.236`
+  - pairwise consistency `0.400`
+  - role：`offline_or_diagnostic_only`
+- 整体 objective：当前 `multiobjective_transfer_selection_score` 不能很好解释 `mpc_objective`。
+  - Spearman `0.136`
+  - pairwise consistency `0.564`
+  - role：`offline_or_diagnostic_only`
+
+当前解释：
+
+- FCTV 应该表述为逐目标 screening 和 diagnosis protocol，而不是一个万能单一分数。
+- 当前最强的正面案例仍然是 CO2，因为它的 receding-horizon transfer signal 最清楚。
+- 湿度有可用的 secondary transfer evidence。
+- 温度目前暴露了一个方法边界：只看 target-matched first-step error，还不足以选择闭环 Tair controller。
+- 这个限制本身对方法论叙事有价值，因为它支持 variable-specific metric roles，而不是强行给出 all-in-one score。
+
+立即下一步技术任务：
+
+- 扩展严格可比模型广度，补三目标重训的 `GRU`、`LSTM`、`SegRNN`、`NLinear`、纯 `Transformer`，以及可行时的 `iTransformer` / `PatchTST` / decomposition-style baseline。
+- 增加或改进 Tair/Rhair-specific control-sensitivity diagnostics，不要只依赖 CO2 gradient diagnostics。
+- 在 baseline pool 不再过度偏向 PHF 家族之后，重新检查 objective-level screening 是否会改善。
+
+## 23. 2026-04-28 标准 Baseline 扩展与 FCTV 复查
+
+FCTV 的下一步 baseline 补全任务已经完成一部分。
+
+实现更新：
+
+- [compare_training_regimes.py](c:/repositories/strawberry/agc_mpc/compare_training_regimes.py) 现在支持：
+  - `--control-protocol`：严格三目标 `Tair` / `Rhair` / `CO2air` 训练
+  - `--fair-budget`：正式预算，`batch_size=256`、`num_epochs=200`、`learning_rate=1e-4`、`lambda_trend=0.3`、`early_stop_patience=15`
+- [control_main.py](c:/repositories/strawberry/agc_mpc/control_main.py) 现在暴露严格控制 predictor：
+  - `gru_forecaster`
+  - `lstm_forecaster`
+  - `nlinear_forecaster`
+  - `segrnn_forecaster`
+  - `transformer_forecaster`
+- [control_relevant_validation.py](c:/repositories/strawberry/agc_mpc/control_relevant_validation.py) 已把这三个标准 baseline 加入默认 FCTV 模型池。
+- [control/controller.py](c:/repositories/strawberry/agc_mpc/control/controller.py) 在 gradient-based MPC 优化时禁用 CuDNN RNN kernel，使 recurrent predictor 可以在 eval-mode 控制 rollout 中被求梯度。
+- FCTV gradient diagnostics 不再是 CO2-only；现在包含 `Tair`、`Rhair`、`CO2air` 的 first-step 和 mean forecast gradients，以及逐目标相关控制通道。
+
+新严格 baseline 训练结果：
+
+- `gru_forecaster`
+  - Full MAE：`Tair=0.866`、`Rhair=4.753`、`CO2air=48.396`
+  - Final MAE：`Tair=0.986`、`Rhair=6.281`、`CO2air=54.721`
+- `segrnn_forecaster`
+  - Full MAE：`Tair=0.960`、`Rhair=5.109`、`CO2air=69.209`
+  - Final MAE：`Tair=1.186`、`Rhair=6.406`、`CO2air=84.046`
+- `lstm_forecaster`
+  - Full MAE：`Tair=0.874`、`Rhair=4.832`、`CO2air=69.352`
+  - Final MAE：`Tair=1.105`、`Rhair=6.483`、`CO2air=81.987`
+- `nlinear_forecaster`
+  - Full MAE：`Tair=0.727`、`Rhair=4.236`、`CO2air=61.003`
+  - Final MAE：`Tair=0.774`、`Rhair=4.710`、`CO2air=63.283`
+- `transformer_forecaster`
+  - Full MAE：`Tair=0.597`、`Rhair=4.256`、`CO2air=42.789`
+  - Final MAE：`Tair=0.691`、`Rhair=5.175`、`CO2air=48.983`
+
+新的 96-step 闭环 `GradientMPC` 结果：
+
+- `gru_forecaster`：objective `0.1108`，`Tair MAE=0.409`，`Rhair MAE=4.957`，`CO2air MAE=49.973`
+- `segrnn_forecaster`：objective `0.0486`，`Tair MAE=0.391`，`Rhair MAE=2.195`，`CO2air MAE=14.425`
+- `lstm_forecaster`：objective `0.1780`，`Tair MAE=1.491`，`Rhair MAE=4.497`，`CO2air MAE=23.014`
+- `nlinear_forecaster`：objective `0.1526`，`Tair MAE=1.867`，`Rhair MAE=4.182`，`CO2air MAE=25.236`
+- `transformer_forecaster`：objective `0.0861`，`Tair MAE=1.039`，`Rhair MAE=4.072`，`CO2air MAE=16.455`
+
+更新后的 FCTV 模型池：
+
+- 默认严格模型池已经从 `11` 个扩展到 `16` 个。
+- 当前覆盖 DLinear、NLinear、GRU、LSTM、SegRNN、纯 Transformer、Transformer-hybrid、PatchTST-style residual、iTransformer-style residual、CO2-aware residual，以及 PHF / control-aware fusion 变体。
+
+加入标准 baseline 后的 transfer 结论：
+
+- `CO2air`：`co2_first_step_mae` 仍是当前最强 CO2 screening signal，但角色需要更保守：
+  - Spearman `0.593`
+  - pairwise consistency `0.723`
+  - role：`secondary_selection`
+- `Rhair`：`rhair_first_step_mae` 现在是扩展模型池里最强的逐目标已验证 signal：
+  - Spearman `0.653`
+  - pairwise consistency `0.758`
+  - role：`primary_selection`
+- `Tair`：`tair_first_step_mae` 仍不能稳定选择闭环 Tair 更好的模型：
+  - Spearman `-0.335`
+  - pairwise consistency `0.383`
+  - role：`offline_or_diagnostic_only`
+- 整体 objective：当前 `multiobjective_transfer_selection_score` 仍不能解释 `mpc_objective`：
+  - Spearman `0.153`
+  - pairwise consistency `0.567`
+  - role：`offline_or_diagnostic_only`
+
+解释更新：
+
+- 加入非 PHF 标准 baseline 后，早先的 CO2 primary-selection 结论变弱。这是有价值的修正，不是失败。
+- 当前稳妥表述应该是：first-step CO2 error 是当前最好的 CO2 screening metric，但在模型池继续扩展前，应称为 secondary selection signal。
+- 标准 baseline 说明 FCTV 的必要性：`segrnn_forecaster` 的离线 CO2 forecasting 并不强，但闭环 CO2 tracking 明显好于它的 offline final-step CO2 MAE 所暗示的结果。
+- 这支持论文叙事：forecast quality 必须通过 control-relevant timing、bias、sensitivity 和逐目标 transfer role 来评价，而不能只看普通离线 forecasting rank。
+
+剩余 baseline 缺口：
+
+- 可行时补至少一个 decomposition / frequency-style baseline。
+- 用 family-level ablation 区分框架效应和模块效应。
+
+## 24. 2026-04-28 Frequency Baseline 与归因报告
+
+当前轮剩余的 baseline 和归因任务已经完成。
+
+实现更新：
+
+- 新增 [frequency_forecaster.py](c:/repositories/strawberry/agc_mpc/models/frequency_forecaster.py)，作为轻量 frequency-style conditional baseline。
+  - 它从历史状态序列中提取低频 FFT 模式。
+  - 它把 frequency context 与未来天气、未来请求控制输入融合。
+  - 它是当前仓库内协议一致的 frequency-style baseline，不是 Autoformer / FEDformer / TimesNet 的正式复现。
+- 已将 `frequency_baseline` / `frequency_forecaster` 接入：
+  - [compare_training_regimes.py](c:/repositories/strawberry/agc_mpc/compare_training_regimes.py)
+  - [control_main.py](c:/repositories/strawberry/agc_mpc/control_main.py)
+  - [control_relevant_validation.py](c:/repositories/strawberry/agc_mpc/control_relevant_validation.py)
+  - [analyze_forecast_to_control_transfer.py](c:/repositories/strawberry/agc_mpc/analyze_forecast_to_control_transfer.py)
+- 已生成归因说明：
+  - `results/forecasting/analysis/forecast_to_control_attribution_reference.md`
+
+Frequency baseline 结果：
+
+- 离线预测：
+  - Full MAE：`Tair=1.253`、`Rhair=4.624`、`CO2air=90.101`
+  - Final MAE：`Tair=1.383`、`Rhair=5.284`、`CO2air=91.544`
+- 96-step `GradientMPC`：
+  - objective `0.4338`
+  - `Tair MAE=1.725`
+  - `Rhair MAE=8.759`
+  - `CO2air MAE=15.530`
+
+更新后的 FCTV 模型池：
+
+- 默认严格模型池现在是 `17` 个模型。
+- 当前覆盖 DLinear、NLinear、frequency-style MLP、GRU、LSTM、SegRNN、纯 Transformer、Transformer-hybrid、PatchTST-style residual、iTransformer-style residual、CO2-aware residual，以及 PHF / control-aware fusion 变体。
+
+`17` 模型池下的 FCTV 指标角色：
+
+- `rhair_first_step_mae -> mpc_rhair_mae`
+  - role：`primary_selection`
+  - Spearman `0.711`
+  - pairwise consistency `0.787`
+- `co2_first_step_mae -> mpc_co2_mae`
+  - role：`secondary_selection`
+  - Spearman `0.516`
+  - pairwise consistency `0.681`
+- `co2_constraint_near_mae_proxy -> mpc_co2_mae`
+  - role：`secondary_selection`
+  - Spearman `0.522`
+  - pairwise consistency `0.676`
+- `tair_first_step_mae -> mpc_tair_mae`
+  - role：`offline_or_diagnostic_only`
+  - Spearman `-0.270`
+  - pairwise consistency `0.412`
+- `multiobjective_transfer_selection_score -> mpc_objective`
+  - role：`weak_selection`
+  - Spearman `0.267`
+  - pairwise consistency `0.618`
+
+归因结论：
+
+- 当前证据支持 metric-mediated attribution，而不是简单说“某个框架更好”。
+- framework effect 是存在的：例如 `segrnn_forecaster` 和 `frequency_forecaster` 的离线 CO2 预测较弱，但闭环 CO2 tracking 明显好于 final-step CO2 MAE 所暗示的结果。
+- PHF / iTransformer 家族内部的 module effect 是 horizon-specific 的：late expert、horizon mixture、frozen-backbone mixture、control-aware fusion 会分别改变不同 FCTV 指标。
+- 当前最稳妥的表述是：
+  - 模型框架和模块会通过特定 forecast-side behavior 影响控制；
+  - FCTV 用来识别哪些 behavior 对哪个控制目标有用；
+  - 整体 objective 的结论仍必须通过最终闭环 MPC 验证。
+
+剩余可选后续工作：
+
+- 如果论文需要严格外部 baseline，可继续补正式 Autoformer / FEDformer / TimesNet 实现。
+- 为了增强因果稳健性，可在多个 start index 上重复闭环 rollout。
+- 如果要提出更强的 module-causality claim，需要把同类模块移植到一个以上 backbone 上做 controlled module swap。
+
+## 25. 2026-04-28 FCTV 后续推进清单与指标来源解释
+
+下一步不应该继续盲目堆模型，而是把“预测指标为什么能解释控制收益”这条逻辑链补完整。
+
+P0：论文级方法论整理。
+
+- 明确 FCTV 的定位：它不是一个新模型，而是 forecasting evaluation 和闭环 MPC validation 之间的筛选 / 诊断协议。
+- 基于 `results/forecasting/analysis/forecast_to_control_transfer_reference.md` 写成方法章节：候选指标来源、验证方式、角色分类。
+- 把当前 `17` 模型池结论写清楚：`Rhair first-step MAE` 最强，`CO2 first-step / constraint-near` 是辅助筛选，`Tair` 当前不能被 target-matched forecast error 解释，整体 objective 仍需闭环验证。
+
+P1：补稳健性实验。
+
+- 在多个 closed-loop start index 上重复 96-step rollout，验证当前 FCTV 关系不是某一个片段偶然得到的。
+- 对每个 start index 重算 `mpc_tair_mae`、`mpc_rhair_mae`、`mpc_co2_mae` 和 `mpc_objective`。
+- 重新统计 Spearman、pairwise consistency、top-k hit、leave-one-model robustness 和 leave-one-family robustness。
+- 如果结论稳定，FCTV 才能从“当前实验现象”升级为“可复用验证方法”。
+
+P1：补归因实验。
+
+- 固定 backbone，只替换模块：例如 iTransformer residual、CO2 late adapter、frozen expert、horizon mixture、control-aware fusion。
+- 固定模块思想，换 backbone：如果可行，把类似 CO2 late / fusion 思路迁移到一个以上 backbone。
+- 目标是区分收益来自框架、模块，还是某些 FCTV 指标改善后间接导致控制改善。
+
+P2：补外部 baseline。
+
+- 如果论文需要更强外部对比，可补正式 Autoformer / FEDformer / TimesNet。
+- 这不是当前最急任务，因为已有 `17` 个严格可比模型池；更急的是稳健性和归因。
+
+P2：补展示材料。
+
+- 做一张逻辑链图：模型 / 模块 -> forecast-side behavior -> FCTV metric -> closed-loop target。
+- 做一张指标角色表：selection metric、secondary metric、diagnostic-only metric。
+- 做一张反例图：final-step CO2 MAE 好不一定控制好，说明普通 forecast rank 不够。
+
+指标来源解释口径：
+
+- 普通指标如 MAE、RMSE、R2 来自 forecasting / regression tradition，主要回答“预测整体拟合得好不好”。
+- R2 是统计回归中的拟合优度指标，定义为 `R2 = 1 - SSE / SST`，衡量模型解释目标变量方差的比例。
+- 这些普通指标不能直接回答“预测器用于 MPC 后控制收益是否更好”，因为 MPC 只执行 receding horizon 中最前面的控制动作。
+- FCTV 指标来自 MPC 执行机制、控制目标结构和优化器敏感性要求。
+- `first-step MAE` 和 `control_horizon MAE` 来自 receding-horizon MPC 的执行机制，因为控制器每次最依赖即将执行的短时域预测。
+- `bias` 来自控制偏差风险，因为系统性偏高或偏低会让 MPC 选择方向错误的控制动作。
+- `constraint-near MAE` 来自约束 / 设定点附近的控制风险，因为靠近约束时的小误差比远离约束时的小误差更可能改变控制决策。
+- `gradient diagnostics` 来自 GradientMPC 的优化需求，用来判断预测模型是否对未来控制输入有合理敏感性。
+- 当前论文表述应为：先由 MPC 机制提出候选指标，再通过跨模型 transfer validation 验证哪些指标真的能预测闭环收益，而不是事后凭结果凑指标。
+
+## 26. 2026-04-28 FCTV 方法报告、多起点工具与展示材料
+
+第 25 节的后续清单已经从开放任务推进为具体的方法报告、可复现实验工具和展示资产。
+
+已完成 P0 方法论整理：
+
+- 新增 `results/forecasting/analysis/forecast_to_control_transfer_method_reference.md`。
+- 方法报告明确 FCTV 是 offline forecasting 和闭环 MPC validation 之间的筛选 / 诊断协议。
+- 报告解释了候选指标来源：receding-horizon 执行机制、短时域 bias 风险、constraint-near 风险，以及 GradientMPC 对控制敏感性的要求。
+- 报告记录当前 `17` 模型池结论：
+  - `rhair_first_step_mae` 是解释 `mpc_rhair_mae` 的最强逐目标信号。
+  - `co2_first_step_mae` 和 `co2_constraint_near_mae_proxy` 是 CO2 的辅助筛选指标。
+  - `tair_first_step_mae` 目前不能可靠选择 `mpc_tair_mae` 更好的模型。
+  - `multiobjective_transfer_selection_score` 对整体 objective 仍然只是 weak selection。
+
+已完成 P1 稳健性工具：
+
+- 新增 `run_fctv_multistart_control.py`，用于在多个 closed-loop start index 上重复 96-step `GradientMPC` rollout。
+- 新增 `analyze_fctv_multistart_transfer.py`，用于把每个 start index 的闭环指标替换回 FCTV 分析并重新计算 transfer 统计。
+- `AGCConfig` 新增可选 `control_output_tag`。
+- `AGCClosedLoopSimulator` 现在会在 summary 中记录 `start_idx`，并用 `control_output_tag` 避免多起点 rollout 的图和 summary 互相覆盖。
+- `control_main.py` 的 suite summary 现在记录 `start_idx` 和 `output_tag`。
+
+执行说明：
+
+- 本轮没有直接跑完整 multi-start robustness benchmark，因为这需要在 `17` 模型池上执行大量昂贵的 96-step GradientMPC rollout。
+- 当前已经具备可复现实验命令路径：
+  - `python agc_mpc/run_fctv_multistart_control.py --start-indices 0 96 192 --steps 96`
+  - `python agc_mpc/analyze_fctv_multistart_transfer.py --suite-json <generated_suite_json>`
+
+已完成 P2 展示材料：
+
+- 新增 `plot_fctv_presentation_assets.py`。
+- 已生成：
+  - `results/forecasting/figures/comparisons/fctv_presentation_reference_logic_chain.png`
+  - `results/forecasting/figures/comparisons/fctv_presentation_reference_metric_roles.png`
+  - `results/forecasting/figures/comparisons/fctv_presentation_reference_co2_counterexample.png`
+
+归因状态：
+
+- 当前能够支持的仍然是 metric-mediated attribution，而不是笼统的框架因果结论。
+- 现有 PHF / iTransformer 变体提供同家族模块证据，标准 baseline 提供框架对照。
+- 更强的因果归因仍需要 multi-start rollout 和跨一个以上 backbone 的 controlled module swap。
+
+验证情况：
+
+- 已基于当前 transfer JSON 生成新的展示资产。
+- 由于当前环境阻止 `__pycache__` 字节码替换，改用 AST parsing 验证本轮修改的 Python 文件语法。
+
+## 27. 2026-04-28 剩余可跑模型与实验执行规则
+
+当前 `17` 模型 FCTV 池之后仍然存在的可运行缺口：
+
+- 已被 `control_main.py` 支持、也已有 checkpoint，但尚未进入当前严格 `17` 模型 FCTV 池：
+  - `itransformer_co2_residual`
+  - `itransformer_co2_frozen_expert`
+  - `itransformer_co2_teacher_distill`
+  - `itransformer_co2_protected_expert`
+  - `itransformer_co2_protected_terminal`
+  - `itransformer_co2_wavelet_residual`
+  - `itransformer_co2_wavelet_blend`
+- 也可以运行，但对当前严格模型池优先级较低：
+  - `dlinear_baseline`
+  - `transformer_hybrid_baseline`
+  - `transformer_baseline`
+- 除非协议对齐，否则继续排除：
+  - `diffmpc_style_transformer`，因为它的历史协议与当前严格 288-step AGC control-validation 协议不一致。
+- 尚未作为正式外部 baseline 实现：
+  - Autoformer / FEDformer / TimesNet。
+
+立即可跑的实验优先级：
+
+1. 对当前 FCTV 池缺失、但已有 checkpoint 的 CO2 / PHF 变体补跑 96-step `GradientMPC` 闭环检查。
+2. 如果这些闭环运行完成，用扩展模型池重算 `control_relevant_validation.py` 和 `analyze_forecast_to_control_transfer.py`。
+3. 单起点扩展池完成后，再对最重要 predictor 做 multi-start robustness。
+
+规则澄清：
+
+- 以后推进实验时，不要默认把“跑模型”视为应该回避的事情。
+- 如果用户要求推进实验，且模型、checkpoint、脚本都存在，应直接运行。
+- 如果完整运行成本很高，先选择有技术理由的子集运行，报告已运行内容，并留下剩余精确命令。
+
+## 28. 2026-04-28 扩展 24 模型 FCTV 实际运行
+
+第 27 节列出的缺失 checkpointed CO2 / PHF 变体已经实际补跑，没有停留在计划层面。
+
+新的 96-step `GradientMPC` 闭环结果：
+
+- `itransformer_co2_residual`：objective `0.0557`，`Tair MAE=0.936`，`Rhair MAE=1.503`，`CO2air MAE=6.421`
+- `itransformer_co2_frozen_expert`：objective `0.0649`，`Tair MAE=0.917`，`Rhair MAE=2.263`，`CO2air MAE=20.140`
+- `itransformer_co2_teacher_distill`：objective `0.3502`，`Tair MAE=2.789`，`Rhair MAE=6.877`，`CO2air MAE=27.338`
+- `itransformer_co2_protected_expert`：objective `0.0606`，`Tair MAE=0.880`，`Rhair MAE=1.441`，`CO2air MAE=14.206`
+- `itransformer_co2_protected_terminal`：objective `0.3837`，`Tair MAE=3.380`，`Rhair MAE=6.179`，`CO2air MAE=27.089`
+- `itransformer_co2_wavelet_residual`：objective `0.0639`，`Tair MAE=1.075`，`Rhair MAE=2.142`，`CO2air MAE=7.776`
+- `itransformer_co2_wavelet_blend`：objective `0.0771`，`Tair MAE=1.023`，`Rhair MAE=1.928`，`CO2air MAE=8.020`
+
+已生成 / 更新输出：
+
+- `results/control/summaries/predictor_suite_missing_co2_phf_reference_96steps.json`
+- `results/forecasting/analysis/control_relevant_validation_reference.{json,csv,md}`
+- `results/forecasting/analysis/forecast_to_control_transfer_reference.{json,csv,md}`
+- `results/forecasting/analysis/forecast_to_control_transfer_robustness_reference.csv`
+- `results/forecasting/figures/comparisons/` 下的 FCTV comparison、robustness、summary 和 presentation figures
+
+更新后的 24 模型 FCTV 结论：
+
+- 当前模型池包含 `24` 个模型。
+- `rhair_first_step_mae -> mpc_rhair_mae` 仍是最强逐目标信号，但角色降为 `secondary_selection`：
+  - Spearman `0.592`
+  - pairwise consistency `0.732`
+  - leave-one-model Spearman minimum `0.537`
+- `co2_first_step_mae -> mpc_co2_mae` 在扩展池中不再是稳定 selector：
+  - role：`offline_or_diagnostic_only`
+  - Spearman `0.168`
+  - pairwise consistency `0.549`
+- `co2_constraint_near_mae_proxy -> mpc_co2_mae` 同样不再稳定：
+  - role：`offline_or_diagnostic_only`
+  - Spearman `0.015`
+  - pairwise consistency `0.507`
+- `tair_first_step_mae -> mpc_tair_mae` 仍不可靠：
+  - Spearman `-0.123`
+  - pairwise consistency `0.464`
+- `multiobjective_transfer_selection_score -> mpc_objective` 仍不适合作为整体 objective selector：
+  - Spearman `0.167`
+  - pairwise consistency `0.564`
+- `rhair_first_step_mae -> mpc_objective` 是当前最强的整体 objective 辅助信号：
+  - role：`objective_secondary_selection`
+  - Spearman `0.507`
+  - pairwise consistency `0.703`
+
+解释更新：
+
+- 早先 `17` 模型池中的 CO2 screening 结论具有模型池依赖性；补入缺失 CO2 / PHF 变体后，CO2 first-step 和 constraint-near transfer 明显变弱。
+- 这对论文叙事是有价值的证据：FCTV 必须在明确模型池范围下报告 metric role，不能过度宣称 universal transfer。
+- 新增模型中闭环 CO2 最好的是 `itransformer_co2_residual`，`CO2air MAE=6.421`，接近 `control-aware fusion` (`6.415`) 和 `late_frozen_expert` (`6.298`)，但整体 objective 明显更好。
+- `itransformer_co2_protected_expert` 是新增变体里 objective 最好的模型 (`0.0606`)，且 `Rhair MAE=1.441` 很强，值得进入控制侧讨论。
+- 当前扩展单起点池之后的立即下一步是 multi-start robustness，而不是继续加新架构。
+
+## 29. 2026-04-28 初始 Multi-Start FCTV 稳健性运行
+
+已经完成一组代表性的 multi-start robustness run，没有把稳健性继续停留在未来计划。
+
+执行范围：
+
+- `10` 个 predictor
+- start indices：`0`、`96`、`192`
+- rollout 长度：`96` steps
+- controller：`GradientMPC`
+
+predictor 子集：
+
+- `current_hybrid_transformer`
+- `transformer_hybrid_residual`
+- `segrnn_forecaster`
+- `frequency_forecaster`
+- `itransformer_co2_residual`
+- `itransformer_co2_protected_expert`
+- `itransformer_co2_late_residual`
+- `itransformer_co2_late_frozen_expert`
+- `itransformer_co2_control_aware_fusion`
+- `itransformer_co2_horizon_mixture`
+
+已生成输出：
+
+- `results/control/summaries/fctv_multistart_gradient_mpc_reference_96steps_starts_0_96_192.json`
+- `results/forecasting/analysis/forecast_to_control_transfer_multistart_reference.{json,csv,md}`
+- 每个 start 的 transfer report：
+  - `forecast_to_control_transfer_multistart_reference_start00000.*`
+  - `forecast_to_control_transfer_multistart_reference_start00096.*`
+  - `forecast_to_control_transfer_multistart_reference_start00192.*`
+- `results/forecasting/figures/comparisons/forecast_to_control_transfer_multistart_reference.png`
+
+重要执行说明：
+
+- 长时间命令在完成并保存 suite JSON 后超过工具超时时间，因此 shell 返回 timeout status `124`。
+- 输出文件已经存在且完整，analyzer 成功处理了 start indices `[0, 96, 192]`。
+
+Multi-start 指标结论：
+
+- `co2_first_step_mae -> mpc_co2_mae` 跨 start 不稳定：
+  - start `0`：`secondary_selection`，Spearman `0.498`，pairwise `0.705`
+  - start `96`：`offline_or_diagnostic_only`，Spearman `-0.146`，pairwise `0.409`
+  - start `192`：`offline_or_diagnostic_only`，Spearman `-0.243`，pairwise `0.432`
+- `rhair_first_step_mae -> mpc_rhair_mae` 也不稳定：
+  - start `0`：`secondary_selection`，Spearman `0.418`，pairwise `0.667`
+  - start `96`：`offline_or_diagnostic_only`，Spearman `-0.103`，pairwise `0.444`
+  - start `192`：`offline_or_diagnostic_only`，Spearman `0.091`，pairwise `0.578`
+- `multiobjective_transfer_selection_score -> mpc_objective` 仍然只是 weak 或 diagnostic：
+  - start `0`：`weak_selection`，Spearman `0.285`，pairwise `0.600`
+  - start `96`：`offline_or_diagnostic_only`，Spearman `0.188`，pairwise `0.556`
+  - start `192`：`weak_selection`，Spearman `0.285`，pairwise `0.600`
+- `tair_first_step_mae -> mpc_tair_mae` 仍不可靠。
+
+Multi-start 模型侧发现：
+
+- `itransformer_co2_residual` 是测试子集中最稳定的 CO2 闭环 tracking 模型：
+  - start `0`：`CO2air MAE=6.331`，objective `0.0558`
+  - start `96`：`CO2air MAE=11.074`，objective `0.0654`
+  - start `192`：`CO2air MAE=10.701`，objective `0.0465`
+- 每个 start 下 objective 最优模型：
+  - start `0`：`current_hybrid_transformer`，objective `0.0442`
+  - start `96`：`current_hybrid_transformer`，objective `0.0517`
+  - start `192`：`transformer_hybrid_residual`，objective `0.0235`
+
+解释更新：
+
+- multi-start 结果强化了限制结论：FCTV metric role 不仅依赖模型池，也依赖 rollout segment。
+- FCTV 应表述为带明确范围的诊断协议，而不是 universal offline selector。
+- 当前最强的近期模型结论不是某个 FCTV 指标能通用选出 winner，而是 `itransformer_co2_residual` 值得重新关注，因为它是稳健的 CO2 闭环 tracker。
+- 下一步实验优先级是完整 24 模型 multi-start robustness，或围绕 `itransformer_co2_residual`、`current_hybrid_transformer`、`transformer_hybrid_residual` 和主要 PHF/fusion 变体做更小的 repeated-start suite。
+
+## 30. 2026-04-28 扩展 16 模型 Multi-Start FCTV 稳健性运行
+
+初始 `10` 模型 multi-start 子集已经扩展到 `16` 个 predictor，新增：
+
+- `itransformer_residual`
+- `patchtst_residual`
+- `transformer_forecaster`
+- `nlinear_forecaster`
+- `dlinear_forecaster`
+- `itransformer_co2_wavelet_residual`
+
+执行说明：
+
+- 第二个长时间命令同样在完成并保存 suite JSON 后超过工具超时，返回 status `124`。
+- 保存的 suite 是完整的，并已与前一个 10 模型 suite 合并。
+
+已生成输出：
+
+- `results/control/summaries/fctv_multistart_gradient_mpc_reference_96steps_6predictors_8e102971d9_starts_0_96_192.json`
+- `results/control/summaries/fctv_multistart_gradient_mpc_reference_96steps_16predictors_starts_0_96_192.json`
+- `results/forecasting/analysis/forecast_to_control_transfer_multistart16_reference.{json,csv,md}`
+- 每个 start 的 `forecast_to_control_transfer_multistart16_reference_start*.{json,csv,md}` 和 robustness CSV
+- `results/forecasting/figures/comparisons/forecast_to_control_transfer_multistart16_reference.png`
+- `results/forecasting/analysis/fctv_multistart_model_rankings_reference.{csv,md}`
+- `results/forecasting/figures/comparisons/fctv_multistart_model_rankings_reference.png`
+
+16 模型 multi-start 指标结论：
+
+- `co2_first_step_mae -> mpc_co2_mae` 仍然具有 segment dependence：
+  - start `0`：`secondary_selection`，Spearman `0.366`，pairwise `0.630`
+  - start `96`：`offline_or_diagnostic_only`，Spearman `-0.263`，pairwise `0.395`
+  - start `192`：`offline_or_diagnostic_only`，Spearman `-0.243`，pairwise `0.412`
+- `rhair_first_step_mae -> mpc_rhair_mae` 进一步变弱：
+  - start `0`：`weak_selection`，Spearman `0.282`，pairwise `0.617`
+  - start `96`：`offline_or_diagnostic_only`，Spearman `-0.068`，pairwise `0.458`
+  - start `192`：`offline_or_diagnostic_only`，Spearman `0.174`，pairwise `0.583`
+- `multiobjective_transfer_selection_score -> mpc_objective` 不稳定：
+  - start `0`：`weak_selection`，Spearman `0.338`，pairwise `0.617`
+  - start `96`：`offline_or_diagnostic_only`，Spearman `-0.074`，pairwise `0.458`
+  - start `192`：`offline_or_diagnostic_only`，Spearman `0.144`，pairwise `0.567`
+- `tair_first_step_mae -> mpc_tair_mae` 仍不可靠。
+
+16 模型 multi-start 模型侧结论：
+
+- `itransformer_co2_residual` 仍是最稳定的 CO2 闭环 tracking 模型：
+  - start `0`：CO2 最优，`CO2air MAE=6.331`，objective `0.0558`
+  - start `96`：CO2 最优，`CO2air MAE=11.074`，objective `0.0654`
+  - start `192`：CO2 最优，`CO2air MAE=10.701`，objective `0.0465`
+- 每个 start 下整体 objective 最优模型：
+  - start `0`：`current_hybrid_transformer`，objective `0.0442`
+  - start `96`：`current_hybrid_transformer`，objective `0.0517`
+  - start `192`：`transformer_hybrid_residual`，objective `0.0235`
+- 额外重要的 segment-specific 发现：
+  - start `192`：`dlinear_forecaster` 达到 `CO2air MAE=11.316`，objective `0.0449`
+  - start `192`：`itransformer_residual` 达到 `CO2air MAE=11.644`，objective `0.0360`
+
+解释更新：
+
+- 16 模型 multi-start 结果确认：当前没有任何 FCTV forecast-side metric 是稳定的 universal selector。
+- FCTV 仍然适合作为诊断协议，用来识别 mismatch 和 segment dependence。
+- 模型叙事现在应该强调稳健闭环证据：
+  - `current_hybrid_transformer` 在 starts `0` 和 `96` 上仍是最强 objective-oriented baseline。
+  - `transformer_hybrid_residual` 在 start `192` 上 objective 最强。
+  - `itransformer_co2_residual` 在扩展 multi-start 子集中始终是最强 CO2 tracker。
+- multi-start model ranking figure 已生成，用于直接对比不同 start 下的 objective 和 CO2 MAE。
+
+## 31. 2026-04-29 FCTV 周报汇报图
+
+已生成面向导师周报的 FCTV 结果链条汇总图。
+
+新增脚本和输出：
+
+- `agc_mpc/plot_fctv_weekly_metric_degradation.py`
+- `results/forecasting/figures/comparisons/fctv_weekly_metric_degradation_summary.png`
+
+图中要传达的信息：
+
+- 早期 `17` 模型 CO2-focused FCTV 阶段确实出现了有用的筛选信号。
+- 扩展到 `24` 模型池后，CO2 first-step 和 constraint-near 指标退化为 diagnostic-only 角色。
+- 进一步扩展到 `16` 模型、starts `0`、`96`、`192` 后，主要 forecast-side metrics 表现出明显的模型池依赖和片段依赖。
+- 这张图应用于汇报当前结论：离线预测指标不能可靠筛选闭环控制收益；FCTV 更适合作为诊断框架，闭环 MPC 验证仍然必要。

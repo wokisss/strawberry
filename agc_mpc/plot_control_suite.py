@@ -29,6 +29,13 @@ PREDICTOR_LABELS = {
     "itransformer_co2_wavelet_blend": "iTransformer + CO2 Blend",
     "patchtst_residual": "PatchTST Residual",
     "dlinear_baseline": "DLinear",
+    "dlinear_forecaster": "DLinear",
+    "frequency_forecaster": "Frequency MLP",
+    "gru_forecaster": "GRU",
+    "lstm_forecaster": "LSTM",
+    "nlinear_forecaster": "NLinear",
+    "segrnn_forecaster": "SegRNN",
+    "transformer_forecaster": "Transformer",
     "transformer_hybrid_baseline": "Transformer-hybrid",
     "transformer_baseline": "Transformer",
 }

@@ -28,7 +28,17 @@ from results_utils import ensure_results_layout
 
 
 DEFAULT_PREDICTORS = [
+    "dlinear_forecaster",
+    "frequency_forecaster",
+    "gru_forecaster",
+    "lstm_forecaster",
+    "nlinear_forecaster",
+    "segrnn_forecaster",
+    "transformer_forecaster",
+    "current_hybrid_transformer",
+    "transformer_hybrid_residual",
     "itransformer_residual",
+    "patchtst_residual",
     "itransformer_co2_late_residual",
     "itransformer_co2_late_frozen_expert",
     "itransformer_co2_recoupled_expert",
@@ -37,7 +47,29 @@ DEFAULT_PREDICTORS = [
     "itransformer_co2_control_aware_fusion",
 ]
 
+TARGET_PREFIXES = {
+    "Tair": "tair",
+    "Rhair": "rhair",
+    "CO2air": "co2",
+}
+
+TARGET_CONTROL_CHANNELS = {
+    "Tair": ["t_heat_sp", "t_vent_sp", "window_pos_lee_sp"],
+    "Rhair": ["dx_sp", "t_vent_sp", "window_pos_lee_sp", "water_sup_intervals_sp_min"],
+    "CO2air": ["co2_sp", "assim_sp", "t_vent_sp"],
+}
+
 TARGETS_FOR_RANKING = [
+    "tair_first_step_mae",
+    "tair_control_horizon_mae",
+    "tair_control_horizon_abs_bias",
+    "tair_constraint_near_mae_proxy",
+    "mpc_tair_mae",
+    "rhair_first_step_mae",
+    "rhair_control_horizon_mae",
+    "rhair_control_horizon_abs_bias",
+    "rhair_constraint_near_mae_proxy",
+    "mpc_rhair_mae",
     "co2_first_step_mae",
     "co2_control_horizon_mae",
     "co2_weighted_horizon_mae",
@@ -49,7 +81,17 @@ TARGETS_FOR_RANKING = [
 ]
 
 PREDICTOR_LABELS = {
+    "dlinear_forecaster": "DLinear",
+    "frequency_forecaster": "Frequency MLP",
+    "gru_forecaster": "GRU",
+    "lstm_forecaster": "LSTM",
+    "nlinear_forecaster": "NLinear",
+    "segrnn_forecaster": "SegRNN",
+    "transformer_forecaster": "Transformer",
+    "current_hybrid_transformer": "Hybrid transformer",
+    "transformer_hybrid_residual": "Hybrid residual",
     "itransformer_residual": "Residual",
+    "patchtst_residual": "PatchTST residual",
     "itransformer_co2_late_residual": "Late residual",
     "itransformer_co2_late_frozen_expert": "Late frozen expert",
     "itransformer_co2_recoupled_expert": "Recoupled expert",
@@ -222,54 +264,68 @@ def _summarize_gradient_array(arr: np.ndarray, control_cols: list[str]) -> dict:
 
 def _gradient_diagnostics(adapter: PredictiveControlAdapter, raw_bundle, indices: list[int]) -> dict:
     cost_grads = []
-    co2_mean_grads = []
-    co2_first_grads = []
+    target_mean_grads = {target: [] for target in adapter.y_cols}
+    target_first_grads = {target: [] for target in adapter.y_cols}
     baseline_costs = []
-    co2_idx = adapter.y_index["CO2air"]
 
-    for idx in indices:
-        current_x_real = raw_bundle["X_past_test"][idx]
-        w_future_real = raw_bundle["W_future_test"][idx]
-        baseline_u_real = raw_bundle["U_future_test"][idx]
-        ref_y_real = raw_bundle["Y_future_test"][idx]
+    with torch.backends.cudnn.flags(enabled=False):
+        for idx in indices:
+            current_x_real = raw_bundle["X_past_test"][idx]
+            w_future_real = raw_bundle["W_future_test"][idx]
+            baseline_u_real = raw_bundle["U_future_test"][idx]
+            ref_y_real = raw_bundle["Y_future_test"][idx]
 
-        x_scaled = adapter.x_real_to_scaled(current_x_real).unsqueeze(0)
-        w_scaled = adapter.w_real_to_scaled(w_future_real).unsqueeze(0)
-        ref_scaled = adapter.build_reference_scaled(ref_y_real)
-        baseline_short = adapter.u_real_to_unit(
-            baseline_u_real[: adapter.cfg.control_horizon]
-        ).unsqueeze(0)
-        short_plan = baseline_short.clone().detach().requires_grad_(True)
-        plan_unit = adapter.expand_control_plan(short_plan)
-        baseline_plan = adapter.expand_control_plan(baseline_short)
-        u_scaled = adapter.u_unit_to_scaled(plan_unit)
-        pred_scaled = adapter.predict_scaled(x_scaled, w_scaled, u_scaled)
-        cost = adapter.control_cost(
-            pred_scaled,
-            ref_scaled,
-            plan_unit,
-            baseline_plan,
-            torch.zeros_like(baseline_short[:, 0]),
-        ).mean()
+            x_scaled = adapter.x_real_to_scaled(current_x_real).unsqueeze(0)
+            w_scaled = adapter.w_real_to_scaled(w_future_real).unsqueeze(0)
+            ref_scaled = adapter.build_reference_scaled(ref_y_real)
+            baseline_short = adapter.u_real_to_unit(
+                baseline_u_real[: adapter.cfg.control_horizon]
+            ).unsqueeze(0)
+            short_plan = baseline_short.clone().detach().requires_grad_(True)
+            plan_unit = adapter.expand_control_plan(short_plan)
+            baseline_plan = adapter.expand_control_plan(baseline_short)
+            u_scaled = adapter.u_unit_to_scaled(plan_unit)
+            pred_scaled = adapter.predict_scaled(x_scaled, w_scaled, u_scaled)
+            cost = adapter.control_cost(
+                pred_scaled,
+                ref_scaled,
+                plan_unit,
+                baseline_plan,
+                torch.zeros_like(baseline_short[:, 0]),
+            ).mean()
 
-        cost.backward(retain_graph=True)
-        cost_grads.append(short_plan.grad.detach().squeeze(0).cpu().numpy())
-        baseline_costs.append(float(cost.detach().item()))
+            cost.backward(retain_graph=True)
+            cost_grads.append(short_plan.grad.detach().squeeze(0).cpu().numpy())
+            baseline_costs.append(float(cost.detach().item()))
 
-        short_plan.grad.zero_()
-        pred_scaled[..., co2_idx].mean().backward(retain_graph=True)
-        co2_mean_grads.append(short_plan.grad.detach().squeeze(0).cpu().numpy())
+            short_plan.grad.zero_()
+            for target in adapter.y_cols:
+                target_idx = adapter.y_index[target]
+                pred_scaled[..., target_idx].mean().backward(retain_graph=True)
+                target_mean_grads[target].append(short_plan.grad.detach().squeeze(0).cpu().numpy())
+                short_plan.grad.zero_()
 
-        short_plan.grad.zero_()
-        pred_scaled[:, 0, co2_idx].mean().backward()
-        co2_first_grads.append(short_plan.grad.detach().squeeze(0).cpu().numpy())
+                pred_scaled[:, 0, target_idx].mean().backward(retain_graph=True)
+                target_first_grads[target].append(short_plan.grad.detach().squeeze(0).cpu().numpy())
+                short_plan.grad.zero_()
+
+    target_mean_summary = {
+        target: _summarize_gradient_array(np.asarray(grads, dtype=np.float32), adapter.u_cols)
+        for target, grads in target_mean_grads.items()
+    }
+    target_first_summary = {
+        target: _summarize_gradient_array(np.asarray(grads, dtype=np.float32), adapter.u_cols)
+        for target, grads in target_first_grads.items()
+    }
 
     return {
         "baseline_control_cost_mean": float(np.mean(baseline_costs)),
         "baseline_control_cost_std": float(np.std(baseline_costs)),
         "cost_gradient": _summarize_gradient_array(np.asarray(cost_grads, dtype=np.float32), adapter.u_cols),
-        "co2_mean_gradient": _summarize_gradient_array(np.asarray(co2_mean_grads, dtype=np.float32), adapter.u_cols),
-        "co2_first_step_gradient": _summarize_gradient_array(np.asarray(co2_first_grads, dtype=np.float32), adapter.u_cols),
+        "target_mean_gradient": target_mean_summary,
+        "target_first_step_gradient": target_first_summary,
+        "co2_mean_gradient": target_mean_summary["CO2air"],
+        "co2_first_step_gradient": target_first_summary["CO2air"],
     }
 
 
@@ -291,20 +347,8 @@ def _flat_record(predictor: str, payload: dict) -> dict[str, float | str]:
     recorded_co2_mae = recorded_target_mae.get("CO2air", np.nan)
     mpc_action_tv = mpc.get("action_tv", np.nan)
     recorded_action_tv = recorded.get("action_tv", np.nan)
-    return {
+    record = {
         "predictor": predictor,
-        "first_step_tair_mae": logged["first_step_mae"]["Tair"],
-        "first_step_rhair_mae": logged["first_step_mae"]["Rhair"],
-        "co2_first_step_mae": logged["first_step_mae"]["CO2air"],
-        "co2_control_horizon_mae": logged["control_horizon_mae"]["CO2air"],
-        "co2_weighted_horizon_mae": logged["weighted_horizon_mae"]["CO2air"],
-        "co2_full_horizon_mae": logged["full_horizon_mae"]["CO2air"],
-        "co2_final_step_mae": logged["final_step_mae"]["CO2air"],
-        "co2_first_step_bias": logged["first_step_bias"]["CO2air"],
-        "co2_control_horizon_bias": logged["control_horizon_bias"]["CO2air"],
-        "co2_control_horizon_abs_bias": abs(logged["control_horizon_bias"]["CO2air"]),
-        "co2_final_step_bias": logged["final_step_bias"]["CO2air"],
-        "co2_constraint_near_mae_proxy": logged["constraint_near_mae_proxy"]["CO2air"],
         "co2_early_segment_mae": logged["co2_segment_mae"]["early_control_horizon"],
         "co2_mid_segment_mae": logged["co2_segment_mae"]["mid_horizon"],
         "co2_late_segment_mae": logged["co2_segment_mae"]["late_horizon"],
@@ -328,16 +372,51 @@ def _flat_record(predictor: str, payload: dict) -> dict[str, float | str]:
             if np.isfinite(mpc_action_tv) and np.isfinite(recorded_action_tv)
             else np.nan
         ),
-        "mpc_tair_mae": target_mae.get("Tair", np.nan),
-        "mpc_rhair_mae": target_mae.get("Rhair", np.nan),
-        "mpc_co2_mae": mpc_co2_mae,
-        "recorded_co2_mae": recorded_co2_mae,
-        "recorded_policy_co2_improvement": (
-            float(recorded_co2_mae - mpc_co2_mae)
-            if np.isfinite(recorded_co2_mae) and np.isfinite(mpc_co2_mae)
-            else np.nan
-        ),
     }
+    for target, prefix in TARGET_PREFIXES.items():
+        mpc_target_mae = target_mae.get(target, np.nan)
+        recorded_target_value = recorded_target_mae.get(target, np.nan)
+        first_gradient = gradient["target_first_step_gradient"][target]
+        mean_gradient = gradient["target_mean_gradient"][target]
+        record.update(
+            {
+                f"{prefix}_first_step_mae": logged["first_step_mae"][target],
+                f"{prefix}_control_horizon_mae": logged["control_horizon_mae"][target],
+                f"{prefix}_weighted_horizon_mae": logged["weighted_horizon_mae"][target],
+                f"{prefix}_full_horizon_mae": logged["full_horizon_mae"][target],
+                f"{prefix}_final_step_mae": logged["final_step_mae"][target],
+                f"{prefix}_first_step_bias": logged["first_step_bias"][target],
+                f"{prefix}_first_step_abs_bias": abs(logged["first_step_bias"][target]),
+                f"{prefix}_control_horizon_bias": logged["control_horizon_bias"][target],
+                f"{prefix}_control_horizon_abs_bias": abs(logged["control_horizon_bias"][target]),
+                f"{prefix}_final_step_bias": logged["final_step_bias"][target],
+                f"{prefix}_final_step_abs_bias": abs(logged["final_step_bias"][target]),
+                f"{prefix}_constraint_near_mae_proxy": logged["constraint_near_mae_proxy"][target],
+                f"mpc_{prefix}_mae": mpc_target_mae,
+                f"recorded_{prefix}_mae": recorded_target_value,
+                f"recorded_policy_{prefix}_improvement": (
+                    float(recorded_target_value - mpc_target_mae)
+                    if np.isfinite(recorded_target_value) and np.isfinite(mpc_target_mae)
+                    else np.nan
+                ),
+                f"{prefix}_mean_grad_mean_abs": mean_gradient["mean_abs_grad"],
+                f"{prefix}_first_grad_mean_abs": first_gradient["mean_abs_grad"],
+            }
+        )
+        for control_name in TARGET_CONTROL_CHANNELS[target]:
+            record.update(
+                {
+                    f"{prefix}_{control_name}_first_grad": first_gradient["by_control"].get(control_name, 0.0),
+                    f"{prefix}_{control_name}_first_grad_signed": first_gradient["by_control_signed"].get(control_name, 0.0),
+                    f"{prefix}_{control_name}_first_grad_positive_fraction": first_gradient["positive_fraction"].get(control_name, 0.0),
+                    f"{prefix}_{control_name}_first_grad_flat_fraction": first_gradient["flat_fraction"].get(control_name, 0.0),
+                }
+            )
+    record["first_step_tair_mae"] = record["tair_first_step_mae"]
+    record["first_step_rhair_mae"] = record["rhair_first_step_mae"]
+    record["recorded_co2_mae"] = recorded_co2_mae
+    record["recorded_policy_co2_improvement"] = record["recorded_policy_co2_improvement"]
+    return record
 
 
 def _rank_records(records: list[dict]) -> list[dict]:
@@ -390,6 +469,16 @@ def _write_markdown(path: Path, records: list[dict]) -> None:
     cols = [
         "predictor",
         "control_relevant_mean_rank",
+        "tair_first_step_mae",
+        "tair_control_horizon_mae",
+        "tair_control_horizon_bias",
+        "tair_constraint_near_mae_proxy",
+        "mpc_tair_mae",
+        "rhair_first_step_mae",
+        "rhair_control_horizon_mae",
+        "rhair_control_horizon_bias",
+        "rhair_constraint_near_mae_proxy",
+        "mpc_rhair_mae",
         "co2_first_step_mae",
         "co2_control_horizon_mae",
         "co2_control_horizon_bias",
@@ -428,6 +517,12 @@ def _plot_summary(path: Path, records: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     labels = [PREDICTOR_LABELS.get(record["predictor"], record["predictor"]) for record in records]
     metrics = [
+        ("tair_first_step_mae", "Tair first-step MAE"),
+        ("tair_control_horizon_mae", "Tair first 6-step MAE"),
+        ("mpc_tair_mae", "Closed-loop Tair MAE"),
+        ("rhair_first_step_mae", "Rhair first-step MAE"),
+        ("rhair_control_horizon_mae", "Rhair first 6-step MAE"),
+        ("mpc_rhair_mae", "Closed-loop Rhair MAE"),
         ("co2_first_step_mae", "CO2 first-step MAE"),
         ("co2_control_horizon_mae", "CO2 first 6-step MAE"),
         ("co2_control_horizon_abs_bias", "CO2 first 6-step abs bias"),

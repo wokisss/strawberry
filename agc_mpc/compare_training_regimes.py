@@ -19,7 +19,10 @@ from config import AGCConfig
 from data_processing.processor import AGCDataProcessor
 from evaluation.evaluator import ForecasterEvaluator
 from models.dlinear_forecaster import ConditionalDLinearForecaster
+from models.frequency_forecaster import ConditionalFrequencyMLPForecaster
 from models.gru_forecaster import ConditionalGRUForecaster
+from models.lstm_forecaster import ConditionalLSTMForecaster
+from models.nlinear_forecaster import ConditionalNLinearForecaster
 from models.seg_rnn_forecaster import ConditionalSegRNNForecaster
 from models.transformer_forecaster import ConditionalTransformerForecaster
 from models.transformer_hybrid_forecaster import ConditionalTransformerHybridForecaster
@@ -30,8 +33,15 @@ from training.trainer import Trainer
 MODEL_ALIASES = {
     "gru": "gru_baseline",
     "gru_baseline": "gru_baseline",
+    "lstm": "lstm_baseline",
+    "lstm_baseline": "lstm_baseline",
     "dlinear": "dlinear_baseline",
     "dlinear_baseline": "dlinear_baseline",
+    "frequency": "frequency_baseline",
+    "frequency_baseline": "frequency_baseline",
+    "freq": "frequency_baseline",
+    "nlinear": "nlinear_baseline",
+    "nlinear_baseline": "nlinear_baseline",
     "segrnn": "segrnn_baseline",
     "segrnn_baseline": "segrnn_baseline",
     "transformer": "transformer_baseline",
@@ -61,7 +71,10 @@ def _normalize_model_names(model_names: List[str]) -> List[str]:
         if key == "all":
             return [
                 "gru_baseline",
+                "lstm_baseline",
                 "dlinear_baseline",
+                "frequency_baseline",
+                "nlinear_baseline",
                 "segrnn_baseline",
                 "transformer_baseline",
                 "transformer_hybrid_baseline",
@@ -86,8 +99,28 @@ def _create_model(model_name: str, bundle: Dict[str, np.ndarray], cfg: AGCConfig
             dropout=cfg.dropout,
             **common,
         )
+    if model_name == "lstm_baseline":
+        return ConditionalLSTMForecaster(
+            hidden_dim=cfg.hidden_dim,
+            num_layers=cfg.num_layers,
+            dropout=cfg.dropout,
+            **common,
+        )
     if model_name == "dlinear_baseline":
         return ConditionalDLinearForecaster(
+            seq_len=cfg.seq_len,
+            horizon=cfg.horizon,
+            hidden_dim=cfg.hidden_dim,
+            **common,
+        )
+    if model_name == "frequency_baseline":
+        return ConditionalFrequencyMLPForecaster(
+            seq_len=cfg.seq_len,
+            hidden_dim=cfg.hidden_dim,
+            **common,
+        )
+    if model_name == "nlinear_baseline":
+        return ConditionalNLinearForecaster(
             seq_len=cfg.seq_len,
             horizon=cfg.horizon,
             hidden_dim=cfg.hidden_dim,
@@ -284,7 +317,7 @@ def parse_args() -> argparse.Namespace:
         "--models",
         nargs="+",
         default=["dlinear"],
-        help="Models to run: dlinear, gru, segrnn, transformer, transformer_hybrid, or all",
+        help="Models to run: dlinear, frequency, nlinear, gru, lstm, segrnn, transformer, transformer_hybrid, or all",
     )
     parser.add_argument(
         "--regimes",
@@ -301,6 +334,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=None, help="Override num_epochs.")
     parser.add_argument("--batch-size", type=int, default=None, help="Override batch_size.")
     parser.add_argument(
+        "--control-protocol",
+        action="store_true",
+        help="Use the strict three-target AGC control protocol: Tair, Rhair, CO2air.",
+    )
+    parser.add_argument(
+        "--fair-budget",
+        action="store_true",
+        help="Use the formal fair-budget training protocol.",
+    )
+    parser.add_argument(
         "--describe-only",
         action="store_true",
         help="Build the bundles and print shapes without training.",
@@ -314,6 +357,16 @@ def main() -> None:
     os.chdir(project_root)
 
     cfg = AGCConfig()
+    if args.control_protocol:
+        cfg.target_cols = ["Tair", "Rhair", "CO2air"]
+        cfg.track_weights = cfg.track_weights[:3]
+        cfg.constant_target_values = cfg.constant_target_values[:3]
+    if args.fair_budget:
+        cfg.batch_size = 256
+        cfg.num_epochs = 200
+        cfg.learning_rate = 1e-4
+        cfg.lambda_trend = 0.3
+        cfg.early_stop_patience = 15
     if args.epochs is not None:
         cfg.num_epochs = args.epochs
     if args.batch_size is not None:
@@ -332,6 +385,13 @@ def main() -> None:
     print(f"regimes: {args.regimes}")
     print(f"models: {model_names}")
     print(f"device: {device}")
+    print(f"targets: {cfg.target_cols}")
+    print(
+        "training_budget: "
+        f"batch_size={cfg.batch_size}, epochs={cfg.num_epochs}, "
+        f"lr={cfg.learning_rate}, lambda_trend={cfg.lambda_trend}, "
+        f"patience={cfg.early_stop_patience}"
+    )
 
     bundles_by_regime: Dict[str, Dict[str, np.ndarray]] = {}
     for regime in args.regimes:

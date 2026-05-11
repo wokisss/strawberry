@@ -23,6 +23,7 @@ class RolloutSummary:
     controller: str
     compartment: str
     reference_mode: str
+    start_idx: int
     steps: int
     objective_mean: float
     control_delta_mae: float
@@ -217,6 +218,13 @@ class AGCClosedLoopSimulator:
         plt.close(fig)
         return out_path
 
+    def _output_suffix(self) -> str:
+        tag = str(getattr(self.cfg, "control_output_tag", "") or "").strip()
+        if not tag:
+            return ""
+        safe = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "_" for ch in tag)
+        return f"_{safe}"
+
     def run(self, controller, predictor_name: str) -> RolloutSummary:
         x_test = self.raw_bundle["X_past_test"]
         w_test = self.raw_bundle["W_future_test"]
@@ -280,9 +288,10 @@ class AGCClosedLoopSimulator:
             trace.action_tv.append(float(action_tv[-1]))
 
         target_mae = np.mean(np.asarray(stage_errors, dtype=np.float32), axis=0)
+        suffix = self._output_suffix()
         figure_path = self._save_figure(
             trace,
-            Path(self.cfg.control_figures_dir) / f"{predictor_name}_{controller.name}_closed_loop.png",
+            Path(self.cfg.control_figures_dir) / f"{predictor_name}_{controller.name}{suffix}_closed_loop.png",
         )
 
         summary = RolloutSummary(
@@ -290,6 +299,7 @@ class AGCClosedLoopSimulator:
             controller=controller.name,
             compartment=self.cfg.control_compartment,
             reference_mode=self.cfg.control_reference_mode,
+            start_idx=int(self.cfg.control_start_idx),
             steps=sim_steps,
             objective_mean=float(np.mean(trace.objectives)),
             control_delta_mae=float(np.mean(control_delta)) if control_delta else 0.0,
@@ -298,7 +308,7 @@ class AGCClosedLoopSimulator:
             figure_path=str(figure_path),
         )
 
-        summary_path = Path(self.cfg.control_summaries_dir) / f"{predictor_name}_{controller.name}_summary.json"
+        summary_path = Path(self.cfg.control_summaries_dir) / f"{predictor_name}_{controller.name}{suffix}_summary.json"
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(json.dumps(asdict(summary), indent=2, ensure_ascii=False), encoding="utf-8")
         return summary

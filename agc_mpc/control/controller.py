@@ -229,27 +229,28 @@ class GradientMPCController(BaseController):
         best_plan_unit = None
         best_short_plan_unit = None
 
-        for _ in range(self.cfg.dpc_iterations):
-            optimizer.zero_grad()
-            short_plan_unit = torch.sigmoid(logits)
-            plan_unit = self.adapter.expand_control_plan(short_plan_unit)
-            u_scaled = self.adapter.u_unit_to_scaled(plan_unit)
-            pred_scaled = self.adapter.predict_scaled(x_scaled, w_scaled, u_scaled)
-            cost = self.adapter.control_cost(
-                pred_scaled,
-                ref_scaled,
-                plan_unit,
-                self.adapter.expand_control_plan(baseline_short_unit),
-                self.last_action_unit.unsqueeze(0),
-            ).mean()
-            cost.backward()
-            optimizer.step()
+        with torch.backends.cudnn.flags(enabled=False):
+            for _ in range(self.cfg.dpc_iterations):
+                optimizer.zero_grad()
+                short_plan_unit = torch.sigmoid(logits)
+                plan_unit = self.adapter.expand_control_plan(short_plan_unit)
+                u_scaled = self.adapter.u_unit_to_scaled(plan_unit)
+                pred_scaled = self.adapter.predict_scaled(x_scaled, w_scaled, u_scaled)
+                cost = self.adapter.control_cost(
+                    pred_scaled,
+                    ref_scaled,
+                    plan_unit,
+                    self.adapter.expand_control_plan(baseline_short_unit),
+                    self.last_action_unit.unsqueeze(0),
+                ).mean()
+                cost.backward()
+                optimizer.step()
 
-            cost_value = float(cost.detach().item())
-            if cost_value < best_cost:
-                best_cost = cost_value
-                best_plan_unit = plan_unit.detach()
-                best_short_plan_unit = short_plan_unit.detach()
+                cost_value = float(cost.detach().item())
+                if cost_value < best_cost:
+                    best_cost = cost_value
+                    best_plan_unit = plan_unit.detach()
+                    best_short_plan_unit = short_plan_unit.detach()
 
         if best_plan_unit is None:
             best_short_plan_unit = torch.sigmoid(logits).detach()

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import random
@@ -23,6 +24,8 @@ from control.controller import (
 from control.simulator import AGCClosedLoopSimulator
 from data_processing.processor import AGCDataProcessor
 from models.dlinear_forecaster import ConditionalDLinearForecaster
+from models.frequency_forecaster import ConditionalFrequencyMLPForecaster
+from models.gru_forecaster import ConditionalGRUForecaster
 from models.hybrid_residual_forecaster import ConditionalHybridResidualForecaster
 from models.itransformer_residual_forecaster import (
     ConditionalITransformerCO2ControlAwareFusionForecaster,
@@ -40,7 +43,10 @@ from models.itransformer_residual_forecaster import (
     ConditionalITransformerCO2WaveletResidualForecaster,
     ConditionalITransformerResidualForecaster,
 )
+from models.lstm_forecaster import ConditionalLSTMForecaster
+from models.nlinear_forecaster import ConditionalNLinearForecaster
 from models.patchtst_residual_forecaster import ConditionalPatchTSTResidualForecaster
+from models.seg_rnn_forecaster import ConditionalSegRNNForecaster
 from models.transformer_forecaster import ConditionalTransformerForecaster
 from models.transformer_hybrid_forecaster import ConditionalTransformerHybridForecaster
 from results_utils import ensure_results_layout
@@ -87,6 +93,95 @@ def _build_model_specs(bundle, cfg):
                 hidden_dim=cfg.hidden_dim,
             ),
             "checkpoint": "dlinear_baseline.pt",
+        },
+        "dlinear_forecaster": {
+            "builder": lambda: ConditionalDLinearForecaster(
+                seq_len=cfg.seq_len,
+                horizon=cfg.horizon,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+            ),
+            "checkpoint": f"dlinear_forecaster_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "frequency_forecaster": {
+            "builder": lambda: ConditionalFrequencyMLPForecaster(
+                seq_len=cfg.seq_len,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+            ),
+            "checkpoint": f"frequency_baseline_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "gru_forecaster": {
+            "builder": lambda: ConditionalGRUForecaster(
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+            ),
+            "checkpoint": f"gru_baseline_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "lstm_forecaster": {
+            "builder": lambda: ConditionalLSTMForecaster(
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+            ),
+            "checkpoint": f"lstm_baseline_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "nlinear_forecaster": {
+            "builder": lambda: ConditionalNLinearForecaster(
+                seq_len=cfg.seq_len,
+                horizon=cfg.horizon,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+            ),
+            "checkpoint": f"nlinear_baseline_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "segrnn_forecaster": {
+            "builder": lambda: ConditionalSegRNNForecaster(
+                seq_len=cfg.seq_len,
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                seg_len=cfg.seg_len,
+            ),
+            "checkpoint": f"segrnn_baseline_joint_all_{cfg.control_compartment.lower()}.pt",
+        },
+        "transformer_forecaster": {
+            "builder": lambda: ConditionalTransformerForecaster(
+                past_dim=bundle["X_past_test"].shape[-1],
+                weather_dim=bundle["W_future_test"].shape[-1],
+                control_dim=bundle["U_future_test"].shape[-1],
+                target_dim=bundle["Y_future_test"].shape[-1],
+                hidden_dim=cfg.hidden_dim,
+                num_layers=cfg.num_layers,
+                dropout=cfg.dropout,
+                nhead=cfg.transformer_heads,
+                ff_dim=cfg.transformer_ff_dim,
+                max_past_len=cfg.seq_len,
+                max_future_len=cfg.horizon,
+            ),
+            "checkpoint": f"transformer_baseline_joint_all_{cfg.control_compartment.lower()}.pt",
         },
         "transformer_hybrid_baseline": {
             "builder": lambda: ConditionalTransformerHybridForecaster(
@@ -471,12 +566,17 @@ def _print_summary(summary) -> None:
 
 
 def _suite_name(cfg: AGCConfig, predictors: list[str]) -> str:
+    tag = str(getattr(cfg, "control_output_tag", "") or "").strip()
+    suffix = f"_{tag}" if tag else ""
     if predictors == LATEST_PREDICTORS:
-        return f"latest_predictor_suite_{cfg.control_compartment.lower()}_{cfg.control_eval_steps}steps"
+        return f"latest_predictor_suite_{cfg.control_compartment.lower()}_{cfg.control_eval_steps}steps{suffix}"
     if len(predictors) == 1:
-        return f"{predictors[0]}_{cfg.control_compartment.lower()}_{cfg.control_eval_steps}steps_control_suite"
+        return f"{predictors[0]}_{cfg.control_compartment.lower()}_{cfg.control_eval_steps}steps{suffix}_control_suite"
     joined = "_".join(predictors)
-    return f"predictor_suite_{joined}_{cfg.control_compartment.lower()}_{cfg.control_eval_steps}steps"
+    if len(joined) > 120:
+        digest = hashlib.sha1(joined.encode("utf-8")).hexdigest()[:10]
+        joined = f"{len(predictors)}predictors_{digest}"
+    return f"predictor_suite_{joined}_{cfg.control_compartment.lower()}_{cfg.control_eval_steps}steps{suffix}"
 
 
 def run_control_benchmarks(cfg: AGCConfig, predictors: list[str]) -> None:
@@ -547,6 +647,8 @@ def run_control_benchmarks(cfg: AGCConfig, predictors: list[str]) -> None:
                 "compartment": cfg.control_compartment,
                 "reference_mode": cfg.control_reference_mode,
                 "rollout_mode": cfg.control_rollout_mode,
+                "start_idx": cfg.control_start_idx,
+                "output_tag": getattr(cfg, "control_output_tag", ""),
                 "steps": cfg.control_eval_steps,
                 "target_cols": cfg.target_cols,
                 "records": suite_records,
@@ -577,6 +679,13 @@ def parse_args() -> argparse.Namespace:
         default=LATEST_PREDICTORS,
         choices=[
             "dlinear_baseline",
+            "dlinear_forecaster",
+            "frequency_forecaster",
+            "gru_forecaster",
+            "lstm_forecaster",
+            "nlinear_forecaster",
+            "segrnn_forecaster",
+            "transformer_forecaster",
             "transformer_hybrid_baseline",
             "transformer_baseline",
             "itransformer_co2_residual",

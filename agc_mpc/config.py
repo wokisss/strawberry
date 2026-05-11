@@ -70,6 +70,7 @@ class AGCConfig:
     control_eval_steps: int = 96
     control_horizon: int = 6
     control_rollout_mode: str = "surrogate"      # "surrogate" or "semi_grounded"
+    control_output_tag: str = ""                 # Optional suffix for non-overwriting repeated rollouts.
     control_warm_start_mix: float = 0.70
     control_state_blend: float = 0.70
     control_min_quantile: float = 0.01
