@@ -28,8 +28,10 @@ class RolloutSummary:
     objective_mean: float
     control_delta_mae: float
     action_tv: float
+    resource_proxy_mean: float
     target_mae: Dict[str, float]
     figure_path: str
+    trace_path: str = ""
 
 
 @dataclass
@@ -44,6 +46,7 @@ class RolloutTrace:
     objectives: List[float] = field(default_factory=list)
     control_delta: List[float] = field(default_factory=list)
     action_tv: List[float] = field(default_factory=list)
+    resource_proxy: List[float] = field(default_factory=list)
 
 
 class AGCClosedLoopSimulator:
@@ -164,6 +167,7 @@ class AGCClosedLoopSimulator:
         obj = np.asarray(trace.objectives, dtype=np.float32)
         control_delta = np.asarray(trace.control_delta, dtype=np.float32)
         action_tv = np.asarray(trace.action_tv, dtype=np.float32)
+        resource_proxy = np.asarray(trace.resource_proxy, dtype=np.float32)
         steps = np.arange(1, len(pred) + 1)
         act_unit = self.adapter.u_real_to_unit(act).detach().cpu().numpy()
         base_unit = self.adapter.u_real_to_unit(base).detach().cpu().numpy()
@@ -187,6 +191,8 @@ class AGCClosedLoopSimulator:
         control_ax.plot(steps, control_delta, color="tab:red", linewidth=2.0, label="|u-u_log| mean")
         if len(action_tv) == len(steps):
             control_ax.plot(steps, action_tv, color="tab:orange", linewidth=2.0, label="Action TV")
+        if len(resource_proxy) == len(steps):
+            control_ax.plot(steps, resource_proxy, color="tab:green", linewidth=2.0, label="Resource proxy")
         control_ax.set_ylabel("Control metrics")
         control_ax.grid(True, alpha=0.25)
         control_ax.legend(ncol=3, fontsize=9)
@@ -205,7 +211,8 @@ class AGCClosedLoopSimulator:
         summary_text = (
             f"objective_mean={float(np.mean(obj)):.3f} | "
             f"control_delta_mae={float(np.mean(control_delta)):.3f} | "
-            f"action_tv={float(np.mean(action_tv)) if len(action_tv) else 0.0:.3f}"
+            f"action_tv={float(np.mean(action_tv)) if len(action_tv) else 0.0:.3f} | "
+            f"resource_proxy={float(np.mean(resource_proxy)) if len(resource_proxy) else 0.0:.3f}"
         )
         fig.suptitle(
             f"{out_path.stem}\n{summary_text}\nsolid=executed action, dashed=logged action",
@@ -244,6 +251,7 @@ class AGCClosedLoopSimulator:
         stage_errors = []
         action_tv = []
         control_delta = []
+        resource_proxy = []
 
         for step in range(sim_steps):
             idx = self.cfg.control_start_idx + step
@@ -273,6 +281,10 @@ class AGCClosedLoopSimulator:
             stage_ref = self._build_stage_reference(ref_y_window)
             stage_errors.append(np.abs(next_targets - stage_ref))
             control_delta.append(np.mean(np.abs(executed_action - base_u_window[0])))
+            action_unit = self.adapter.u_real_to_unit(executed_action[None, :]).detach().cpu().numpy()[0]
+            econ_weights = self.adapter.economic_action_weights.detach().cpu().numpy().reshape(-1)
+            denom = max(float(np.sum(econ_weights)), 1.0)
+            resource_proxy.append(float(np.sum(action_unit * econ_weights) / denom))
             if len(trace.executed_actions) > 0:
                 action_tv.append(np.mean(np.abs(executed_action - np.asarray(trace.executed_actions[-1], dtype=np.float32))))
             else:
@@ -286,6 +298,7 @@ class AGCClosedLoopSimulator:
             trace.objectives.append(float(plan.objective))
             trace.control_delta.append(float(control_delta[-1]))
             trace.action_tv.append(float(action_tv[-1]))
+            trace.resource_proxy.append(float(resource_proxy[-1]))
 
         target_mae = np.mean(np.asarray(stage_errors, dtype=np.float32), axis=0)
         suffix = self._output_suffix()
@@ -293,6 +306,18 @@ class AGCClosedLoopSimulator:
             trace,
             Path(self.cfg.control_figures_dir) / f"{predictor_name}_{controller.name}{suffix}_closed_loop.png",
         )
+        trace_path = Path(self.cfg.control_summaries_dir) / f"{predictor_name}_{controller.name}{suffix}_trace.json"
+        trace_payload = asdict(trace)
+        trace_payload["predictor"] = predictor_name
+        trace_payload["controller"] = controller.name
+        trace_payload["compartment"] = self.cfg.control_compartment
+        trace_payload["reference_mode"] = self.cfg.control_reference_mode
+        trace_payload["start_idx"] = int(self.cfg.control_start_idx)
+        trace_payload["steps"] = int(sim_steps)
+        trace_payload["target_cols"] = list(self.y_cols)
+        trace_payload["control_cols"] = list(self.u_cols)
+        trace_path.parent.mkdir(parents=True, exist_ok=True)
+        trace_path.write_text(json.dumps(trace_payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
         summary = RolloutSummary(
             predictor=predictor_name,
@@ -304,8 +329,10 @@ class AGCClosedLoopSimulator:
             objective_mean=float(np.mean(trace.objectives)),
             control_delta_mae=float(np.mean(control_delta)) if control_delta else 0.0,
             action_tv=float(np.mean(action_tv)) if action_tv else 0.0,
+            resource_proxy_mean=float(np.mean(resource_proxy)) if resource_proxy else 0.0,
             target_mae={name: float(target_mae[idx]) for idx, name in enumerate(self.y_cols)},
             figure_path=str(figure_path),
+            trace_path=str(trace_path),
         )
 
         summary_path = Path(self.cfg.control_summaries_dir) / f"{predictor_name}_{controller.name}{suffix}_summary.json"

@@ -97,6 +97,21 @@ class AGCConfig:
     control_smoothness_weight: float = 0.10
     constant_target_values: List[float] = field(default_factory=lambda: [21.0, 70.0, 800.0, 150.0])
 
+    # Economic / resource-aware MPC extension.
+    # Default weight is zero so the historical tracking-control benchmark is unchanged.
+    economic_profile_name: str = ""
+    economic_resource_weight: float = 0.0
+    economic_action_weights: Dict[str, float] = field(default_factory=lambda: {
+        "t_heat_sp": 1.0,
+        "co2_sp": 1.0,
+        "assim_sp": 1.0,
+        "window_pos_lee_sp": 0.35,
+        "t_vent_sp": 0.25,
+        "water_sup_intervals_sp_min": 0.20,
+        "scr_enrg_sp": 0.15,
+        "scr_blck_sp": 0.10,
+    })
+
     # ------------------------ Modeling targets ------------------------
     target_cols: List[str] = field(default_factory=lambda: [
         "Tair",

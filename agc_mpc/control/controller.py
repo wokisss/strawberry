@@ -79,6 +79,16 @@ class PredictiveControlAdapter:
                 constant_values=pad_value,
             )
         self.constant_target_real = torch.tensor(constant_target, dtype=torch.float32, device=device).view(1, 1, -1)
+        economic_weights = [
+            float(getattr(cfg, "economic_action_weights", {}).get(name, 0.0))
+            for name in self.u_cols
+        ]
+        self.economic_action_weights = torch.tensor(
+            economic_weights,
+            dtype=torch.float32,
+            device=device,
+        ).view(1, 1, -1)
+        self.economic_weight_sum = torch.clamp(self.economic_action_weights.sum(), min=1.0)
 
     def _to_tensor(self, arr: np.ndarray) -> torch.Tensor:
         return torch.tensor(arr, dtype=torch.float32, device=self.device)
@@ -148,12 +158,16 @@ class PredictiveControlAdapter:
         else:
             smooth_cost = torch.zeros(pred_scaled.size(0), dtype=torch.float32, device=self.device)
         smooth_cost = smooth_cost + ((plan_unit[:, 0] - last_action_unit) ** 2).mean(dim=1)
+        resource_cost = (plan_unit * self.economic_action_weights).sum(dim=(1, 2)) / (
+            plan_unit.size(1) * self.economic_weight_sum
+        )
 
         return (
             track_cost
             + self.cfg.control_effort_weight * effort_cost
             + self.cfg.control_deviation_weight * deviation_cost
             + self.cfg.control_smoothness_weight * smooth_cost
+            + getattr(self.cfg, "economic_resource_weight", 0.0) * resource_cost
         )
 
 
