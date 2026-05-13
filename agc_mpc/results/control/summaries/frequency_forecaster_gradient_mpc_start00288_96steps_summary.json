@@ -1,0 +1,17 @@
+{
+  "predictor": "frequency_forecaster",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 288,
+  "steps": 96,
+  "objective_mean": 1.0028731880399089,
+  "control_delta_mae": 131.44789123535156,
+  "action_tv": 9.483967600390315,
+  "target_mae": {
+    "Tair": 2.223971366882324,
+    "Rhair": 11.977751731872559,
+    "CO2air": 17.69248390197754
+  },
+  "figure_path": "results\\control\\figures\\frequency_forecaster_gradient_mpc_start00288_96steps_closed_loop.png"
+}

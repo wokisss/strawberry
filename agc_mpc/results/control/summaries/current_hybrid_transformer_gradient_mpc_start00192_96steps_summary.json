@@ -5,13 +5,13 @@
   "reference_mode": "trajectory",
   "start_idx": 192,
   "steps": 96,
-  "objective_mean": 0.04285019543021917,
-  "control_delta_mae": 15.045756340026855,
-  "action_tv": 1.2124872204537194,
+  "objective_mean": 0.042826838024969525,
+  "control_delta_mae": 14.7572660446167,
+  "action_tv": 1.2011114759370685,
   "target_mae": {
-    "Tair": 0.538621723651886,
-    "Rhair": 0.9616224765777588,
-    "CO2air": 49.13789749145508
+    "Tair": 0.5428085327148438,
+    "Rhair": 0.966888427734375,
+    "CO2air": 49.0842170715332
   },
   "figure_path": "results\\control\\figures\\current_hybrid_transformer_gradient_mpc_start00192_96steps_closed_loop.png"
 }

@@ -1,0 +1,17 @@
+{
+  "predictor": "lstm_forecaster",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 0,
+  "steps": 96,
+  "objective_mean": 0.17795458166316772,
+  "control_delta_mae": 91.15348052978516,
+  "action_tv": 11.202984411269426,
+  "target_mae": {
+    "Tair": 1.491366982460022,
+    "Rhair": 4.4974141120910645,
+    "CO2air": 23.013992309570312
+  },
+  "figure_path": "results\\control\\figures\\lstm_forecaster_gradient_mpc_start00000_96steps_closed_loop.png"
+}

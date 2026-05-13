@@ -1,0 +1,17 @@
+{
+  "predictor": "patchtst_residual",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 384,
+  "steps": 96,
+  "objective_mean": 0.12031046076056857,
+  "control_delta_mae": 36.804161071777344,
+  "action_tv": 10.67370228500416,
+  "target_mae": {
+    "Tair": 0.6545232534408569,
+    "Rhair": 2.0342354774475098,
+    "CO2air": 36.69537353515625
+  },
+  "figure_path": "results\\control\\figures\\patchtst_residual_gradient_mpc_start00384_96steps_closed_loop.png"
+}

@@ -5,13 +5,13 @@
   "reference_mode": "trajectory",
   "start_idx": 192,
   "steps": 96,
-  "objective_mean": 0.04646824798934782,
-  "control_delta_mae": 28.484975814819336,
-  "action_tv": 2.5704189400809505,
+  "objective_mean": 0.0464682635695984,
+  "control_delta_mae": 28.484777450561523,
+  "action_tv": 2.5701918682704368,
   "target_mae": {
-    "Tair": 0.3525058329105377,
-    "Rhair": 1.5947846174240112,
-    "CO2air": 10.700886726379395
+    "Tair": 0.3525080680847168,
+    "Rhair": 1.5947866439819336,
+    "CO2air": 10.700488090515137
   },
   "figure_path": "results\\control\\figures\\itransformer_co2_residual_gradient_mpc_start00192_96steps_closed_loop.png"
 }

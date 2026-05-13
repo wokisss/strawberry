@@ -5,13 +5,13 @@
   "reference_mode": "trajectory",
   "start_idx": 0,
   "steps": 96,
-  "objective_mean": 0.08576489061427613,
-  "control_delta_mae": 22.21642303466797,
-  "action_tv": 7.331430541040997,
+  "objective_mean": 0.08605647851557781,
+  "control_delta_mae": 21.9317569732666,
+  "action_tv": 7.2537362811466055,
   "target_mae": {
-    "Tair": 1.0368291139602661,
-    "Rhair": 4.063201904296875,
-    "CO2air": 16.465669631958008
+    "Tair": 1.0385926961898804,
+    "Rhair": 4.072226524353027,
+    "CO2air": 16.447629928588867
   },
   "figure_path": "results\\control\\figures\\transformer_forecaster_gradient_mpc_start00000_96steps_closed_loop.png"
 }

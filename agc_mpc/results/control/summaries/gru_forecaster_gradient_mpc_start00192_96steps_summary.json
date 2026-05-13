@@ -1,0 +1,17 @@
+{
+  "predictor": "gru_forecaster",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 192,
+  "steps": 96,
+  "objective_mean": 0.12766503020732975,
+  "control_delta_mae": 62.04439163208008,
+  "action_tv": 12.65979404685398,
+  "target_mae": {
+    "Tair": 0.48949775099754333,
+    "Rhair": 4.0568318367004395,
+    "CO2air": 176.33636474609375
+  },
+  "figure_path": "results\\control\\figures\\gru_forecaster_gradient_mpc_start00192_96steps_closed_loop.png"
+}
