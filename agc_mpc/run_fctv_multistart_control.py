@@ -65,9 +65,11 @@ def run_multistart(cfg: AGCConfig, predictors: list[str], start_indices: list[in
     scaled_bundle = processor.build_compartment_bundle(cfg.control_compartment)
 
     records = []
+    output_tag_prefix = str(getattr(cfg, "economic_profile_name", "") or "").strip()
     for start_idx in start_indices:
         cfg.control_start_idx = int(start_idx)
-        cfg.control_output_tag = f"start{int(start_idx):05d}_{cfg.control_eval_steps}steps"
+        start_tag = f"start{int(start_idx):05d}_{cfg.control_eval_steps}steps"
+        cfg.control_output_tag = f"{output_tag_prefix}_{start_tag}" if output_tag_prefix else start_tag
         print(f"Running start_idx={start_idx} for {len(predictors)} predictors")
         for predictor in predictors:
             print(f"  {predictor}")
@@ -88,13 +90,17 @@ def run_multistart(cfg: AGCConfig, predictors: list[str], start_indices: list[in
         "start_indices": start_indices,
         "steps": cfg.control_eval_steps,
         "target_cols": cfg.target_cols,
+        "economic_profile_name": output_tag_prefix,
+        "economic_resource_weight": float(getattr(cfg, "economic_resource_weight", 0.0)),
+        "economic_action_weights": getattr(cfg, "economic_action_weights", {}),
         "records": records,
     }
     joined = "_".join(str(idx) for idx in start_indices)
     predictor_digest = hashlib.sha1("_".join(predictors).encode("utf-8")).hexdigest()[:10]
     out_path = Path(cfg.control_summaries_dir) / (
         f"fctv_multistart_gradient_mpc_{cfg.control_compartment.lower()}_"
-        f"{cfg.control_eval_steps}steps_{len(predictors)}predictors_{predictor_digest}_starts_{joined}.json"
+        f"{cfg.control_eval_steps}steps_{len(predictors)}predictors_{predictor_digest}_"
+        f"{output_tag_prefix + '_' if output_tag_prefix else ''}starts_{joined}.json"
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(suite, indent=2, ensure_ascii=False), encoding="utf-8")
