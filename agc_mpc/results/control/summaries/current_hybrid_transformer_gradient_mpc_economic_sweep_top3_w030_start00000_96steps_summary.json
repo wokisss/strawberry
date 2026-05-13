@@ -1,0 +1,18 @@
+{
+  "predictor": "current_hybrid_transformer",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 0,
+  "steps": 96,
+  "objective_mean": 0.13300113783528408,
+  "control_delta_mae": 16.807418823242188,
+  "action_tv": 4.560798019481202,
+  "resource_proxy_mean": 0.2692569000646472,
+  "target_mae": {
+    "Tair": 0.4096090793609619,
+    "Rhair": 1.7093944549560547,
+    "CO2air": 21.680089950561523
+  },
+  "figure_path": "results\\control\\figures\\current_hybrid_transformer_gradient_mpc_economic_sweep_top3_w030_start00000_96steps_closed_loop.png"
+}

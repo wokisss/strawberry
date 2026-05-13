@@ -1,0 +1,18 @@
+{
+  "predictor": "transformer_forecaster",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 192,
+  "steps": 96,
+  "objective_mean": 0.10459008067846298,
+  "control_delta_mae": 7.078893184661865,
+  "action_tv": 0.6308560823090374,
+  "resource_proxy_mean": 0.2082954628082613,
+  "target_mae": {
+    "Tair": 0.122200608253479,
+    "Rhair": 1.9594703912734985,
+    "CO2air": 47.09397506713867
+  },
+  "figure_path": "results\\control\\figures\\transformer_forecaster_gradient_mpc_economic_sweep_top3_w030_start00192_96steps_closed_loop.png"
+}
