@@ -2,7 +2,7 @@
 
 English canonical version.
 Mapped Chinese mirror: [CONTEXT.zh-CN.md](c:/repositories/strawberry/CONTEXT.zh-CN.md)
-Last synchronized: `2026-04-28`
+Last synchronized: `2026-05-12`
 
 ## 0. Purpose And Maintenance Policy
 
@@ -24,6 +24,10 @@ This policy currently applies to:
 - [CO2_SPECIALIST_REPORT.md](c:/repositories/strawberry/agc_mpc/CO2_SPECIALIST_REPORT.md) and [CO2_SPECIALIST_REPORT.zh-CN.md](c:/repositories/strawberry/agc_mpc/CO2_SPECIALIST_REPORT.zh-CN.md)
 - [PHF_MAINLINE.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.md) and [PHF_MAINLINE.zh-CN.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.zh-CN.md)
 - [THESIS_LITERATURE_LIBRARY.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.md) and [THESIS_LITERATURE_LIBRARY.zh-CN.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.zh-CN.md)
+- [FCTV_EXPERIMENT_DESIGN.md](c:/repositories/strawberry/agc_mpc/FCTV_EXPERIMENT_DESIGN.md) and [FCTV_EXPERIMENT_DESIGN.zh-CN.md](c:/repositories/strawberry/agc_mpc/FCTV_EXPERIMENT_DESIGN.zh-CN.md)
+- [FCTV_METHOD_SECTION.md](c:/repositories/strawberry/agc_mpc/FCTV_METHOD_SECTION.md) and [FCTV_METHOD_SECTION.zh-CN.md](c:/repositories/strawberry/agc_mpc/FCTV_METHOD_SECTION.zh-CN.md)
+- [FCTV_STAGE_REPORT.md](c:/repositories/strawberry/agc_mpc/FCTV_STAGE_REPORT.md) and [FCTV_STAGE_REPORT.zh-CN.md](c:/repositories/strawberry/agc_mpc/FCTV_STAGE_REPORT.zh-CN.md)
+- [ECONOMIC_RESOURCE_MPC.md](c:/repositories/strawberry/agc_mpc/ECONOMIC_RESOURCE_MPC.md) and [ECONOMIC_RESOURCE_MPC.zh-CN.md](c:/repositories/strawberry/agc_mpc/ECONOMIC_RESOURCE_MPC.zh-CN.md)
 
 ## 1. Project Mainline
 
@@ -227,6 +231,10 @@ Reference documents:
 - [CO2_SPECIALIST_REPORT.md](c:/repositories/strawberry/agc_mpc/CO2_SPECIALIST_REPORT.md)
 - [PHF_MAINLINE.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.md)
 - [THESIS_LITERATURE_LIBRARY.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.md)
+- [FCTV_EXPERIMENT_DESIGN.md](c:/repositories/strawberry/agc_mpc/FCTV_EXPERIMENT_DESIGN.md)
+- [FCTV_METHOD_SECTION.md](c:/repositories/strawberry/agc_mpc/FCTV_METHOD_SECTION.md)
+- [FCTV_STAGE_REPORT.md](c:/repositories/strawberry/agc_mpc/FCTV_STAGE_REPORT.md)
+- [ECONOMIC_RESOURCE_MPC.md](c:/repositories/strawberry/agc_mpc/ECONOMIC_RESOURCE_MPC.md)
 
 ## 7. Weekly Task Board
 
@@ -268,47 +276,35 @@ Maintenance rules:
 - Implemented, benchmarked, and promoted `itransformer_co2_control_aware_fusion` as the current balanced report model.
 - Generated the triplet summary figure comparing `control-aware fusion`, `late_frozen_expert`, and `horizon_mixture`.
 
-### Last Week: 2026-04-20 ~ 2026-04-26
+#### 2026-04-27 ~ 2026-05-03
 
-- Established that ordinary offline forecasting metrics alone are not sufficient for MPC predictor selection.
-- Implemented `control-aware fusion` to combine the short-horizon controllability of `late_frozen_expert` with most of the terminal forecasting gain of `horizon_mixture`.
-- Confirmed `control-aware fusion` as the current best aggregate control-relevant validation model with mean rank `1.750`.
-- Confirmed `GradientMPC 96-step` transfer for the promoted revision: objective `0.1491`, `CO2air MAE=6.415`.
-- Updated PHF mainline docs, thesis literature library, PHF ablation outputs, and reporting figures.
+- Expanded FCTV from a CO2-only selector idea into a multi-target forecast-to-control validation protocol.
+- Built the expanded 24-model transfer analysis and generated the weekly degradation summary figure.
+- Ran the 16-model multi-start subset for starts `0`, `96`, and `192`.
+- Established the current conclusion that no tested forecast-side metric is a stable universal selector for closed-loop MPC benefit.
 
-### This Week: 2026-04-27 ~ 2026-05-03
+### Last Week: 2026-05-04 ~ 2026-05-10
 
-- Current-week focus is method validation, not declaring another final model.
-- The target method is now a multi-objective `Forecast-to-Control Transfer Validation` workflow rather than a CO2-only selector.
-- CO2 remains the current stress-test target because it is the hardest and most visibly non-transferable variable, but the method must also quantify `Tair` and `Rhair` forecast-to-control transfer.
-- `diffmpc_style_transformer` is excluded from the current strict pool because its 48-step history protocol is not aligned with the current 288-step AGC control-validation protocol.
-- Task A: expand the strict validation model pool beyond the local PHF/fusion family.
-- Task A target model groups:
-  - compatible standard baselines: `DLinear`, then retrained three-target `GRU`, `LSTM`, `SegRNN`, `NLinear`, and pure `Transformer`
-  - representative recent time-series baselines where practical: `PatchTST`, `iTransformer`, and at least one decomposition / frequency-style model such as `Autoformer`, `FEDformer`, or `TimesNet`
-  - existing residual, CO2-aware, PHF / expert / fusion variants
-- Task B: generalize the validation metrics from CO2-only to multi-target control-transfer metrics.
-- Task B metric groups:
-  - per-target first-step MAE for `Tair`, `Rhair`, and `CO2air`
-  - per-target first `control_horizon=6` MAE
-  - per-target short-horizon signed bias / absolute bias
-  - constraint-near or setpoint-near MAE when the state is close to an operational boundary or reference band
-  - control-sensitivity diagnostics: whether forecast outputs retain usable gradients with respect to relevant future control inputs
-  - normalized multi-objective composite scores that align with the closed-loop tracking objective
-- Task C: quantify whether these metrics predict actual closed-loop benefit.
-- Task C analyses:
-  - correlation between each forecast-side metric and closed-loop `Tair`, `Rhair`, and `CO2air` MAE
-  - correlation between each forecast-side metric and closed-loop objective
-  - rank correlation, top-k hit rate, and pairwise consistency
-  - leave-one-model and leave-one-family robustness
-  - separate per-target selection metrics from whole-objective selection metrics and diagnostic-only metrics
-- Expected output: a cross-model method report showing which metric groups can quantify forecast-to-control transfer, where they fail, and how they should be used for multi-objective greenhouse MPC.
+- Closed the exploratory FCTV stage and pushed the staged code/results in smaller commits.
+- Prepared the supervisor-facing interpretation that forecast-side metric explainability degraded as the model pool and starts expanded.
+- Agreed that the next phase should be paper-style research design rather than opportunistic model chasing.
+- Preserved the main limitation: FCTV is currently defensible as a diagnostic/validation framework, not as a deterministic closed-loop model selector.
 
-### Next Week: 2026-05-04 ~ 2026-05-10
+### This Week: 2026-05-11 ~ 2026-05-17
 
-- Convert the multi-objective transfer analysis into a paper-facing method section and figure set if the robustness checks hold.
-- If metric transfer is variable-specific or family-dependent, explicitly report that limitation and define variable-specific metric roles instead of forcing one universal score.
-- Only after the validation method is stable should model tuning continue; new architectures should be added only if they fill a missing baseline family in the method validation, not just to chase a leaderboard.
+- Task A: freeze the paper-style FCTV experiment design in `agc_mpc/FCTV_EXPERIMENT_DESIGN.md`.
+- Task B: prepare and run the final 16-model, 5-start closed-loop benchmark entry in `agc_mpc/run_fctv_final_closed_loop_benchmark.py`.
+- Task B execution rule: do not avoid model or closed-loop runs by default. If a benchmark is required for the research question and compute time is available, run it; if it is deferred, state the compute cost and the exact command to run.
+- Task C: write the paper-facing FCTV method section in `agc_mpc/FCTV_METHOD_SECTION.md`.
+- Current benchmark scope: 16 predictors, starts `0`, `96`, `192`, `288`, `384`, `96` rollout steps, `GradientMPC`, three targets `Tair`, `Rhair`, `CO2air`.
+- Expected output: fixed experiment design, executed final benchmark, analysis outputs, and method text that clearly separates screening claims from diagnostic claims.
+
+### Next Week: 2026-05-18 ~ 2026-05-24
+
+- Task F: prepare the supervisor-facing staged report from the final FCTV design and available closed-loop evidence.
+- Task F expected output: a concise report section with research question, experiment chain, negative/diagnostic finding, and why direct closed-loop validation remains necessary.
+- Task E: start economic/resource-aware MPC only after the tracking-control benchmark is stable.
+- Task E expected output: define greenhouse MPC objective extensions for energy, CO2 dosing, actuator movement, and tracking trade-offs before implementing another controller.
 
 ## 8. Current Priorities
 
@@ -1689,3 +1685,522 @@ Figure message:
 - After expanding to the `24`-model pool, the CO2 first-step and constraint-near metrics degraded to diagnostic-only roles.
 - After expanding to `16` models across starts `0`, `96`, and `192`, the main forecast-side metrics became model-pool and segment dependent.
 - The figure should be used to communicate the current report conclusion: offline forecast metrics cannot reliably screen closed-loop control benefit; FCTV is useful as a diagnostic framework, and closed-loop MPC validation remains necessary.
+
+## 32. 2026-05-12 Paper-Style FCTV Phase
+
+The exploratory FCTV phase is now closed. The next phase uses a paper-style fixed protocol rather than adding experiments opportunistically.
+
+New maintained documents:
+
+- `agc_mpc/FCTV_EXPERIMENT_DESIGN.md`
+- `agc_mpc/FCTV_EXPERIMENT_DESIGN.zh-CN.md`
+- `agc_mpc/FCTV_METHOD_SECTION.md`
+- `agc_mpc/FCTV_METHOD_SECTION.zh-CN.md`
+
+New executable benchmark entry:
+
+- `agc_mpc/run_fctv_final_closed_loop_benchmark.py`
+
+Current-week decisions:
+
+- A is complete in document form: the FCTV paper question, model pool, benchmark protocol, metric families, and experiment matrix are fixed.
+- B is executed: the final benchmark produced `80` closed-loop records for `16` predictors across starts `0`, `96`, `192`, `288`, and `384`.
+- C is complete in draft form: the FCTV method section defines forecast-side metrics, closed-loop metrics, Spearman correlation, pairwise ordering consistency, top-k overlap, and robustness checks.
+- Model and closed-loop runs should not be avoided by default. If a run is required and compute time is available, run it; if a run is deferred, record the cost and exact command.
+
+Generated final benchmark outputs:
+
+- `results/control/summaries/fctv_multistart_gradient_mpc_reference_96steps_16predictors_25890932c3_starts_0_96_192_288_384.json`
+- `results/forecasting/analysis/forecast_to_control_transfer_final_reference.{json,csv,md}`
+- `results/forecasting/figures/comparisons/forecast_to_control_transfer_final_reference.png`
+- `results/forecasting/analysis/fctv_final_multistart_model_rankings_reference.{csv,md}`
+- `results/forecasting/figures/comparisons/fctv_final_multistart_model_rankings_reference.png`
+
+Final 5-start result:
+
+- Forecast-side transfer metrics remain start dependent and are not stable universal selectors.
+- `current_hybrid_transformer` has the best mean objective across starts: `0.0662 +/- 0.0269`.
+- `itransformer_co2_residual` has the best mean CO2 closed-loop tracking: `CO2air MAE = 10.215 +/- 2.043`, and the second-best mean objective: `0.0701 +/- 0.0234`.
+
+Next-phase queue:
+
+- F: prepare the supervisor-facing staged report from the final FCTV design and available closed-loop evidence.
+- E: after the tracking-control benchmark is stable, start economic/resource-aware MPC formulation.
+
+## 33. 2026-05-12 F And E Stage Execution
+
+Completed Task F:
+
+- Added `agc_mpc/FCTV_STAGE_REPORT.md`.
+- Added `agc_mpc/FCTV_STAGE_REPORT.zh-CN.md`.
+- The report frames the FCTV result as a controlled negative/diagnostic result rather than a failed project.
+- The report gives the supervisor-facing chain: CO2-focused metric discovery, expanded model-pool validation, multi-target validation, and multi-start closed-loop validation.
+
+Completed the first executable Task E step:
+
+- Added the economic/resource-aware MPC formulation in `agc_mpc/ECONOMIC_RESOURCE_MPC.md`.
+- Added the Chinese mirror `agc_mpc/ECONOMIC_RESOURCE_MPC.zh-CN.md`.
+- Added default-off economic/resource objective terms in `AGCConfig` and `PredictiveControlAdapter.control_cost()`.
+- Added `resource_proxy_mean` to closed-loop summaries.
+- Added `agc_mpc/run_economic_resource_mpc_probe.py`.
+- Added `agc_mpc/analyze_economic_resource_probe.py`.
+
+Important compatibility rule:
+
+- `economic_resource_weight = 0.0` by default, so previous FCTV and tracking-only MPC benchmarks remain comparable.
+
+Executed E-stage smoke/probe runs:
+
+- Tracking-only probe: `fctv_multistart_gradient_mpc_reference_24steps_2predictors_c5d60ca7a5_tracking_probe_w000_starts_0.json`.
+- Economic/resource probe: `fctv_multistart_gradient_mpc_reference_24steps_2predictors_c5d60ca7a5_economic_probe_w015_starts_0.json`.
+- Comparison outputs: `results/control/summaries/economic_resource_probe_comparison.{csv,md}` and `results/control/figures/economic_resource_probe_comparison.png`.
+
+Probe result:
+
+- `current_hybrid_transformer`: resource proxy `0.354 -> 0.332` (`-6.0%`), CO2 MAE `10.964 -> 12.380`.
+- `itransformer_co2_residual`: resource proxy `0.377 -> 0.357` (`-5.3%`), CO2 MAE `2.938 -> 4.899`.
+
+Interpretation:
+
+- The resource-aware MPC code path works and changes the optimized actions.
+- The first resource weight creates a measurable resource-tracking trade-off, but it is only a 24-step, single-start probe.
+- The next rigorous E-stage experiment should sweep resource weights with 96-step, multi-start rollouts.
+
+Additional top-5 E-stage probe:
+
+- Predictors: `current_hybrid_transformer`, `itransformer_co2_residual`, `segrnn_forecaster`, `transformer_forecaster`, `transformer_hybrid_residual`.
+- Profiles: `tracking_top5_w000` vs `economic_top5_w015`.
+- Output: `results/control/summaries/economic_resource_top5_start0_24steps_comparison.{csv,md}` and `results/control/figures/economic_resource_top5_start0_24steps_comparison.png`.
+
+Top-5 probe interpretation:
+
+- `transformer_forecaster` reduced the resource proxy most strongly (`-8.6%`) with relatively small CO2 degradation (`8.051 -> 8.486`).
+- `itransformer_co2_residual` retained the best absolute CO2 tracking after adding the economic term (`4.899`) but degraded more from its tracking-only CO2 MAE (`2.938`).
+- `transformer_hybrid_residual` increased the resource proxy (`+2.3%`), so the current economic weight does not produce uniform resource reduction across predictors.
+
+96-step top-3 resource-weight sweep:
+
+- Predictors: `current_hybrid_transformer`, `itransformer_co2_residual`, `transformer_forecaster`.
+- Starts: `0`, `96`, `192`.
+- Weights: `0.00`, `0.05`, `0.15`, `0.30`.
+- Output: `results/control/summaries/economic_resource_sweep_top3_reference.{csv,md}` and `results/control/figures/economic_resource_sweep_top3_reference.png`.
+
+Sweep conclusion:
+
+- `w=0.05` is the useful region: resource proxy reduction about `6%` to `10%`, mean CO2 degradation about `2%` to `4%`.
+- `current_hybrid_transformer` has the best low-weight trade-off: resource proxy `-9.8%`, CO2 MAE `+2.1%`.
+- `itransformer_co2_residual` remains the best absolute CO2 tracker but becomes fragile under high resource weights.
+- `w=0.15` and `w=0.30` produce stronger resource reduction but cause much larger CO2 degradation.
+
+## 34. Planned Mainline Real AGC Resource/Economic Validation
+
+Status: executed on `2026-05-12`; see Section 35 for the completed outputs and conclusions.
+
+The plan-mode task should not continue FCTV as a research direction. FCTV is closed as a diagnostic/negative-result branch.
+
+Mainline reminder:
+
+- The thesis mainline remains `control-oriented greenhouse multi-step forecasting + closed-loop MPC`.
+- The next step is to push one or a few selected forecasting models to a mainline final validation using real AGC resource/economic fields.
+- Do not run all models by default. The goal is a framework-level final validation, not another broad leaderboard.
+
+Core idea:
+
+- Replace the current action-level `resource_proxy` story with a validation that uses real AGC dataset resources and economics:
+  - `Resources.csv`: `Heat_cons`, `ElecHigh`, `ElecLow`, `CO2_cons`, `Irr`, `Drain`
+  - `Production.csv`: `ProdA`, `ProdB`, harvested truss/fruit counts and weights
+  - `TomQuality.csv`: `TSS/Brix`, flavour, acid, juice, bite, fruit weight
+  - `Economics.pdf`: heat/electricity/CO2 prices, crop maintenance cost, tomato price by Brix and date
+
+Recommended model set:
+
+- Required:
+  - `current_hybrid_transformer`: strongest overall closed-loop objective baseline
+  - `itransformer_co2_residual`: proposed / main CO2-aware model and strongest closed-loop CO2 tracker
+- Optional if time allows:
+  - `transformer_forecaster`: useful resource-trade-off candidate from the economic probe
+
+Plan-mode Task 1: inspect and codify AGC economics.
+
+- Read `AutonomousGreenhouseChallenge_edition2/Economics.pdf`.
+- Extract the net profit formula:
+  - `Net Profit = Income - Fixed costs - Variable costs`
+- Encode variable cost rules:
+  - electricity peak: `0.08 EUR/kWh`
+  - electricity off-peak: `0.04 EUR/kWh`
+  - heat: `0.0083 EUR/MJ`
+  - CO2: `0.08 EUR/kg` for the first `12 kg/m2`, then `0.2 EUR/kg`
+  - crop maintenance: `0.0085 EUR per stem/m2 per day`
+- Encode tomato income rules:
+  - Class A: full price
+  - Class B: half price
+  - tomato price depends on date and Brix, using the price table in `Economics.pdf`
+- Clearly state any approximation if exact Brix interpolation or crop maintenance cannot be fully reproduced.
+
+Plan-mode Task 2: implement real AGC economics analyzer.
+
+- Add script: `agc_mpc/analyze_agc_real_economics.py`.
+- Inputs:
+  - AGC dataset root
+  - compartment list, default all six AGC compartments
+- Outputs:
+  - `results/control/summaries/agc_real_economics_by_compartment.csv`
+  - `results/control/summaries/agc_real_economics_by_compartment.md`
+  - `results/control/figures/agc_real_economics_by_compartment.png`
+- Metrics:
+  - total heat consumption and heat cost
+  - total peak/off-peak electricity and electricity cost
+  - total CO2 consumption and CO2 cost
+  - irrigation and drain totals
+  - tomato Class A/B production
+  - estimated income
+  - estimated variable cost
+  - approximate net profit
+  - resource use per kg tomato where possible
+- Purpose:
+  - establish the real AGC resource/economic baseline before evaluating our MPC rollouts.
+
+Plan-mode Task 3: calibrate a real-resource cost estimator from AGC data.
+
+- Add script: `agc_mpc/calibrate_agc_resource_cost_model.py`.
+- Use `GreenhouseClimate.csv`, `Weather/Weather.csv`, and `Resources.csv`.
+- Target variables:
+  - daily or aligned `Heat_cons`
+  - `ElecHigh + ElecLow`
+  - `CO2_cons`
+  - `Irr`
+- Candidate explanatory variables:
+  - `t_heat_sp`, `t_vent_sp`, `co2_sp`, `assim_sp`, `window_pos_lee_sp`, `water_sup_intervals_sp_min`
+  - `Tout`, `Iglob`, `PARout`, time features if available
+- Prefer a simple interpretable model first:
+  - linear regression / ridge regression
+  - non-negative coefficients where practical
+- Outputs:
+  - `results/control/summaries/agc_resource_cost_model_coefficients.csv`
+  - `results/control/summaries/agc_resource_cost_model_validation.md`
+  - `results/control/figures/agc_resource_cost_model_validation.png`
+- Purpose:
+  - convert MPC-generated action trajectories into estimated real AGC resource costs, not just normalized action proxies.
+
+Plan-mode Task 4: evaluate selected mainline models with real-resource estimated cost.
+
+- Add script: `agc_mpc/evaluate_mainline_real_resource_control.py`.
+- Use selected model rollout summaries/traces if available, or rerun short closed-loop rollouts if traces do not contain enough action data.
+- Required models:
+  - `current_hybrid_transformer`
+  - `itransformer_co2_residual`
+- Optional model:
+  - `transformer_forecaster`
+- Protocol:
+  - `GradientMPC`
+  - `Reference`
+  - `96` steps
+  - starts `0`, `96`, `192`, `288`, `384` if feasible
+  - compare tracking-only and one low resource-aware setting if needed
+- Outputs:
+  - `results/control/summaries/mainline_real_resource_model_comparison.csv`
+  - `results/control/summaries/mainline_real_resource_model_comparison.md`
+  - `results/control/figures/mainline_real_resource_model_comparison.png`
+- Metrics:
+  - closed-loop objective
+  - `Tair`, `Rhair`, `CO2air` MAE
+  - estimated heat cost
+  - estimated electricity cost
+  - estimated CO2 cost
+  - estimated irrigation
+  - estimated total variable resource cost
+  - cost/tracking trade-off relative to `current_hybrid_transformer`
+
+Plan-mode Task 5: produce thesis-facing final validation statement.
+
+- Add result note:
+  - `results/control/summaries/mainline_real_resource_validation_conclusion.md`
+- Required conclusion boundary:
+  - Allowed: the selected forecasting models can be evaluated in closed-loop MPC under a real-AGC-resource-calibrated cost framework.
+  - Allowed: compare estimated resource cost and tracking trade-offs for selected models.
+  - Not allowed: claim real season-long net profit improvement, because no crop/yield dynamic model is included in the MPC rollout.
+- Thesis-facing phrasing should be:
+  - `current_hybrid_transformer` is the strongest overall tracking baseline.
+  - `itransformer_co2_residual` is the strongest CO2-aware closed-loop tracker.
+  - Real AGC resource/economic data can be used to estimate resource implications of the selected MPC rollouts.
+  - The final validation links the forecasting model mainline to resource-aware greenhouse control without overclaiming true commercial profit.
+
+Recommended execution order for the next Plan-mode conversation:
+
+1. Inspect all AGC resource/production/quality columns and the economics PDF.
+2. Implement `analyze_agc_real_economics.py` and reproduce compartment-level economics/resource summaries.
+3. Implement a first resource-cost estimator and validate it against recorded AGC resource consumption.
+4. Evaluate `current_hybrid_transformer` and `itransformer_co2_residual` using the estimator.
+5. Generate the mainline final comparison table, figure, and conclusion note.
+6. Update `CONTEXT.md` and `CONTEXT.zh-CN.md`.
+7. Commit/push in small segments if requested.
+
+## 35. 2026-05-12 Mainline Real AGC Resource/Economic Validation
+
+Completed the planned real AGC resource/economic validation stage.
+
+New scripts:
+
+- `agc_mpc/analyze_agc_real_economics.py`
+- `agc_mpc/calibrate_agc_resource_cost_model.py`
+- `agc_mpc/evaluate_mainline_real_resource_control.py`
+
+Simulator update:
+
+- `AGCClosedLoopSimulator` now writes per-rollout trace JSON files containing timestamps, predicted/reference targets, executed actions, baseline actions, objectives, action variation, and resource proxy values.
+- The trace output is required for real-resource estimation because earlier summary-only rollouts did not contain enough action information.
+
+Real AGC economics baseline:
+
+- Encoded `Economics.pdf` rules:
+  - `Net Profit = Income - Fixed costs - Variable costs`
+  - peak electricity `0.08 EUR/kWh`
+  - off-peak electricity `0.04 EUR/kWh`
+  - heat `0.0083 EUR/MJ`
+  - CO2 `0.08 EUR/kg` for the first `12 kg/m2`, then `0.20 EUR/kg`
+  - crop maintenance `0.0085 EUR per stem/m2 per day`
+  - Class A tomato full price and Class B tomato half price
+  - date-dependent and Brix-dependent tomato prices from the PDF table
+- Output:
+  - `results/control/summaries/agc_real_economics_by_compartment.csv`
+  - `results/control/summaries/agc_real_economics_by_compartment.md`
+  - `results/control/figures/agc_real_economics_by_compartment.png`
+- Baseline approximate net-profit ranking:
+  - `Automatoes`: `6.05 EUR/m2`
+  - `AICU`: `5.85 EUR/m2`
+  - `Reference`: `3.60 EUR/m2`
+  - `IUACAAS`: `3.29 EUR/m2`
+  - `Digilog`: `3.12 EUR/m2`
+  - `TheAutomators`: `2.60 EUR/m2`
+
+Resource estimator:
+
+- Fitted a simple positive-coefficient ridge model on daily AGC records.
+- Inputs include daily summaries of logged setpoints, weather, and derived drive terms.
+- Targets:
+  - `Heat_cons`
+  - `ElecHigh + ElecLow`
+  - `CO2_cons`
+  - `Irr`
+- Outputs:
+  - `results/control/summaries/agc_resource_cost_model_coefficients.csv`
+  - `results/control/summaries/agc_resource_cost_model_validation.md`
+  - `results/control/summaries/agc_resource_cost_model.json`
+  - `results/control/figures/agc_resource_cost_model_validation.png`
+- Validation:
+  - heat MAE `0.5657`, R2 `0.620`
+  - electricity MAE `0.2816`, R2 `0.835`
+  - CO2 MAE `0.0102`, R2 `0.731`
+  - irrigation MAE `1.0140`, R2 `0.448`
+
+Closed-loop runs executed:
+
+- Required models:
+  - `current_hybrid_transformer`
+  - `itransformer_co2_residual`
+- Protocol:
+  - `GradientMPC`
+  - `Reference`
+  - `96` steps
+  - starts `0`, `96`, `192`, `288`, `384`
+  - tracking-only profile `real_resource_w000`
+  - low resource-aware profile `real_resource_w005`
+- These were actual MPC rollouts using existing checkpoints, not documentation-only work.
+- Generated suites:
+  - `results/control/summaries/fctv_multistart_gradient_mpc_reference_96steps_2predictors_c5d60ca7a5_real_resource_w000_starts_0_96_192_288_384.json`
+  - `results/control/summaries/fctv_multistart_gradient_mpc_reference_96steps_2predictors_c5d60ca7a5_real_resource_w005_starts_0_96_192_288_384.json`
+
+Main comparison outputs:
+
+- `results/control/summaries/mainline_real_resource_model_comparison.csv`
+- `results/control/summaries/mainline_real_resource_model_comparison_details.csv`
+- `results/control/summaries/mainline_real_resource_model_comparison.md`
+- `results/control/figures/mainline_real_resource_model_comparison.png`
+- `results/control/summaries/mainline_real_resource_validation_conclusion.md`
+
+Main result:
+
+- `real_resource_w000 + current_hybrid_transformer`:
+  - objective `0.0660`
+  - `CO2air MAE = 29.472`
+  - estimated resource cost `0.0127 EUR/m2`
+- `real_resource_w000 + itransformer_co2_residual`:
+  - objective `0.0695`
+  - `CO2air MAE = 10.168`
+  - estimated resource cost `0.0094 EUR/m2`
+- `real_resource_w005 + current_hybrid_transformer`:
+  - objective `0.0841`
+  - `CO2air MAE = 29.929`
+  - estimated resource cost `0.0114 EUR/m2`
+- `real_resource_w005 + itransformer_co2_residual`:
+  - objective `0.0879`
+  - `CO2air MAE = 10.980`
+  - estimated resource cost `0.0085 EUR/m2`
+
+Interpretation:
+
+- `current_hybrid_transformer` remains the strongest overall tracking baseline by mean tracking-only objective.
+- `itransformer_co2_residual` remains the strongest CO2-aware closed-loop tracker and has lower estimated resource cost in the selected-model real-resource comparison.
+- The low resource-aware setting `w=0.05` reduces estimated resource cost for both selected models, but increases objective and slightly worsens CO2 tracking.
+- This supports the thesis-facing claim that selected forecasting models can be evaluated in closed-loop MPC under a real-AGC-resource-calibrated cost framework.
+
+Boundary:
+
+- Do not claim true season-long net-profit improvement.
+- The current MPC rollout has no crop/yield/quality dynamic model.
+- The valid claim is estimated resource-cost and tracking trade-off comparison for selected closed-loop MPC rollouts.
+
+Next practical step:
+
+- Write the thesis result subsection around this final validation.
+- If another experiment is needed, keep it narrow: one sensitivity check around `w=0.02`, `w=0.05`, and `w=0.08` for the two selected models only.
+
+## 36. 2026-05-12 Mainline Real-Resource Follow-Up Completion
+
+Completed the remaining follow-up tasks from the real-resource validation stage.
+
+Additional closed-loop runs executed:
+
+- Models:
+  - `current_hybrid_transformer`
+  - `itransformer_co2_residual`
+- Protocol:
+  - `GradientMPC`
+  - `Reference`
+  - `96` steps
+  - starts `0`, `96`, `192`, `288`, `384`
+- Added resource weights:
+  - `real_resource_w002` = `w=0.02`
+  - `real_resource_w008` = `w=0.08`
+- These were actual MPC rollouts using existing checkpoints.
+
+Generated sensitivity suites:
+
+- `results/control/summaries/fctv_multistart_gradient_mpc_reference_96steps_2predictors_c5d60ca7a5_real_resource_w002_starts_0_96_192_288_384.json`
+- `results/control/summaries/fctv_multistart_gradient_mpc_reference_96steps_2predictors_c5d60ca7a5_real_resource_w008_starts_0_96_192_288_384.json`
+
+Generated sensitivity analysis:
+
+- `results/control/summaries/mainline_real_resource_sensitivity.csv`
+- `results/control/summaries/mainline_real_resource_sensitivity_details.csv`
+- `results/control/summaries/mainline_real_resource_sensitivity.md`
+- `results/control/figures/mainline_real_resource_sensitivity.png`
+
+Generated final presentation and writing artifacts:
+
+- `agc_mpc/plot_mainline_real_resource_final_summary.py`
+- `results/control/figures/mainline_real_resource_final_summary.png`
+- `results/control/summaries/agc_resource_cost_model_coefficient_diagnosis.md`
+- `results/control/summaries/mainline_real_resource_thesis_result_section.md`
+- Updated `results/control/summaries/mainline_real_resource_validation_conclusion.md`
+
+Full sensitivity result:
+
+- `w=0.00 + current_hybrid_transformer`:
+  - objective `0.0660`
+  - `CO2air MAE = 29.472`
+  - estimated resource cost `0.0127 EUR/m2`
+- `w=0.00 + itransformer_co2_residual`:
+  - objective `0.0695`
+  - `CO2air MAE = 10.168`
+  - estimated resource cost `0.0094 EUR/m2`
+- `w=0.02 + current_hybrid_transformer`:
+  - objective `0.0743`
+  - `CO2air MAE = 29.808`
+  - estimated resource cost `0.0123 EUR/m2`
+- `w=0.02 + itransformer_co2_residual`:
+  - objective `0.0778`
+  - `CO2air MAE = 10.297`
+  - estimated resource cost `0.0096 EUR/m2`
+- `w=0.05 + current_hybrid_transformer`:
+  - objective `0.0841`
+  - `CO2air MAE = 29.929`
+  - estimated resource cost `0.0114 EUR/m2`
+- `w=0.05 + itransformer_co2_residual`:
+  - objective `0.0879`
+  - `CO2air MAE = 10.980`
+  - estimated resource cost `0.0085 EUR/m2`
+- `w=0.08 + current_hybrid_transformer`:
+  - objective `0.0941`
+  - `CO2air MAE = 30.180`
+  - estimated resource cost `0.0111 EUR/m2`
+- `w=0.08 + itransformer_co2_residual`:
+  - objective `0.0931`
+  - `CO2air MAE = 11.660`
+  - estimated resource cost `0.0076 EUR/m2`
+
+Sensitivity interpretation:
+
+- `current_hybrid_transformer` remains the strongest tracking-only objective baseline at `w=0.00`.
+- `itransformer_co2_residual` remains the strongest CO2-aware closed-loop tracker across all tested resource weights.
+- `itransformer_co2_residual` also has lower estimated resource cost than `current_hybrid_transformer` in this selected-model comparison.
+- Increasing the resource weight reduces estimated resource cost but increases the optimized objective and gradually worsens `CO2air` tracking.
+- `w=0.05` is the most defensible balanced setting:
+  - it gives clearer cost reduction than `w=0.02`
+  - it avoids the larger CO2 degradation seen at `w=0.08`
+- `w=0.08` is useful as a stronger resource-saving point, but it should be described as a higher-trade-off setting rather than the default recommendation.
+
+Resource estimator coefficient diagnosis:
+
+- Heat and electricity estimates are usable for coarse resource-cost comparison.
+- CO2 estimates are usable for selected-rollout comparison, but not as a mechanistic carbon-balance model.
+- Irrigation has weaker validation quality and should be treated as auxiliary context only.
+
+Final thesis-facing claim:
+
+- Allowed:
+  - selected forecasting models can be evaluated under a closed-loop MPC framework with real-AGC-resource-calibrated cost estimates
+  - `current_hybrid_transformer` is the strongest overall tracking baseline
+  - `itransformer_co2_residual` is the strongest CO2-aware closed-loop tracker and has favorable estimated resource cost in the selected comparison
+  - low resource-aware MPC weights expose a measurable tracking-resource trade-off
+- Not allowed:
+  - claiming true season-long commercial net-profit improvement
+  - claiming yield or quality improvement, because the rollout has no crop/yield/quality dynamic model
+
+Next task:
+
+- Move from experimentation to thesis writing and final presentation assembly.
+- Do not expand to another broad model leaderboard unless the thesis argument explicitly requires it.
+
+## 37. 2026-05-13 Supervisor Report Figures
+
+Generated two Chinese supervisor-facing report figures from real experiment outputs.
+
+New script:
+
+- `agc_mpc/plot_supervisor_report_figures_cn.py`
+
+Generated figures:
+
+- `results/control/figures/supervisor_fig1_model_selection_cn.png`
+  - Uses the final 16-model, 5-start closed-loop validation table.
+  - Shows representative model positions by mean closed-loop objective and mean `CO2air` MAE.
+  - Highlights the two retained main models:
+    - `current_hybrid_transformer` as the balanced model / strongest overall tracking baseline.
+    - `itransformer_co2_residual` as the CO2-specialist model / strongest CO2 closed-loop tracker.
+  - The upper-left corner explicitly lists the original model identifiers:
+    - balanced model: `current_hybrid_transformer`
+    - CO2-specialist model: `itransformer_co2_residual`
+- `results/control/figures/supervisor_fig2_resource_economic_cn.png`
+  - Uses `mainline_real_resource_sensitivity.csv`.
+  - Shows the estimated resource-cost response to resource penalty weights.
+  - Shows the CO2-tracking cost of stronger resource penalties.
+  - Compares estimated heat, electricity, CO2, and irrigation consumption at `w=0.05`.
+  - Shows the CO2 tracking versus estimated resource-cost trade-off.
+- `results/control/figures/supervisor_fig2_w005_tradeoff_cn.png`
+  - A simplified one-panel figure for explaining why `w=0.05` is the recommended balanced setting.
+  - Solid lines show estimated resource cost; dashed lines show `CO2air` tracking error.
+  - The plot highlights that larger resource penalties reduce estimated cost but increase CO2 tracking error.
+  - It explicitly annotates `w=0.05` as the balanced point and `w=0.08` as the stronger-saving but higher-control-cost point.
+- `results/control/figures/supervisor_fig2_combined_tradeoff_resource_cn.png`
+  - The final supervisor-facing Figure 2 requested on 2026-05-13.
+  - Contains two subplots in one figure:
+    - Left: the `w=0.05` resource-cost versus CO2-tracking trade-off explanation.
+    - Right: the `w=0.05` two-model estimated resource-consumption comparison.
+  - The right subplot uses relative consumption with `current_hybrid_transformer` as `1.00`, making the heat/electricity/CO2/irrigation comparison easier to explain.
+  - The upper-left corner also lists the original retained model identifiers.
+
+Interpretation reminder:
+
+- These figures compare closed-loop tracking and estimated resource cost.
+- They do not claim true season-long net-profit improvement because crop/yield/quality dynamics are not modeled.

@@ -2,7 +2,7 @@
 
 中文对齐翻译版本。
 英文主版本： [CONTEXT.md](c:/repositories/strawberry/CONTEXT.md)
-最近同步时间：`2026-04-28`
+最近同步时间：`2026-05-12`
 
 ## 0. 目的与维护规则
 
@@ -24,6 +24,10 @@
 - [CO2_SPECIALIST_REPORT.md](c:/repositories/strawberry/agc_mpc/CO2_SPECIALIST_REPORT.md) 与 [CO2_SPECIALIST_REPORT.zh-CN.md](c:/repositories/strawberry/agc_mpc/CO2_SPECIALIST_REPORT.zh-CN.md)
 - [PHF_MAINLINE.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.md) 与 [PHF_MAINLINE.zh-CN.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.zh-CN.md)
 - [THESIS_LITERATURE_LIBRARY.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.md) 与 [THESIS_LITERATURE_LIBRARY.zh-CN.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.zh-CN.md)
+- [FCTV_EXPERIMENT_DESIGN.md](c:/repositories/strawberry/agc_mpc/FCTV_EXPERIMENT_DESIGN.md) 与 [FCTV_EXPERIMENT_DESIGN.zh-CN.md](c:/repositories/strawberry/agc_mpc/FCTV_EXPERIMENT_DESIGN.zh-CN.md)
+- [FCTV_METHOD_SECTION.md](c:/repositories/strawberry/agc_mpc/FCTV_METHOD_SECTION.md) 与 [FCTV_METHOD_SECTION.zh-CN.md](c:/repositories/strawberry/agc_mpc/FCTV_METHOD_SECTION.zh-CN.md)
+- [FCTV_STAGE_REPORT.md](c:/repositories/strawberry/agc_mpc/FCTV_STAGE_REPORT.md) 与 [FCTV_STAGE_REPORT.zh-CN.md](c:/repositories/strawberry/agc_mpc/FCTV_STAGE_REPORT.zh-CN.md)
+- [ECONOMIC_RESOURCE_MPC.md](c:/repositories/strawberry/agc_mpc/ECONOMIC_RESOURCE_MPC.md) 与 [ECONOMIC_RESOURCE_MPC.zh-CN.md](c:/repositories/strawberry/agc_mpc/ECONOMIC_RESOURCE_MPC.zh-CN.md)
 
 ## 1. 项目主线
 
@@ -227,6 +231,10 @@ latest predictor suite 中已知的汇总结论：
 - [CO2_SPECIALIST_REPORT.md](c:/repositories/strawberry/agc_mpc/CO2_SPECIALIST_REPORT.md)
 - [PHF_MAINLINE.md](c:/repositories/strawberry/agc_mpc/PHF_MAINLINE.md)
 - [THESIS_LITERATURE_LIBRARY.md](c:/repositories/strawberry/agc_mpc/THESIS_LITERATURE_LIBRARY.md)
+- [FCTV_EXPERIMENT_DESIGN.md](c:/repositories/strawberry/agc_mpc/FCTV_EXPERIMENT_DESIGN.md)
+- [FCTV_METHOD_SECTION.md](c:/repositories/strawberry/agc_mpc/FCTV_METHOD_SECTION.md)
+- [FCTV_STAGE_REPORT.md](c:/repositories/strawberry/agc_mpc/FCTV_STAGE_REPORT.md)
+- [ECONOMIC_RESOURCE_MPC.md](c:/repositories/strawberry/agc_mpc/ECONOMIC_RESOURCE_MPC.md)
 
 ## 7. 周任务看板
 
@@ -268,47 +276,35 @@ latest predictor suite 中已知的汇总结论：
 - 实现、benchmark 并晋升 `itransformer_co2_control_aware_fusion` 为当前均衡型汇报模型。
 - 生成 `control-aware fusion`、`late_frozen_expert` 和 `horizon_mixture` 的三模型汇报对比图。
 
-### 上周：2026-04-20 ~ 2026-04-26
+#### 2026-04-27 ~ 2026-05-03
 
-- 确认普通离线 forecasting 指标不足以单独用于 MPC predictor selection。
-- 实现 `control-aware fusion`，结合 `late_frozen_expert` 的短时域可控性和 `horizon_mixture` 的大部分末端预测收益。
-- 确认 `control-aware fusion` 是当前 control-relevant validation 综合排名最好的模型，mean rank 为 `1.750`。
-- 确认晋升版本的 `GradientMPC 96-step` 转化结果：objective `0.1491`，`CO2air MAE=6.415`。
-- 更新 PHF 主线文档、论文文献库、PHF 消融输出和汇报图。
+- 将 FCTV 从 CO2-only selector 思路扩展为多目标 forecast-to-control validation 协议。
+- 建立扩展后的 24 模型 transfer analysis，并生成周报指标退化汇总图。
+- 跑完 16 模型 multi-start 子集，start 为 `0`、`96`、`192`。
+- 确认当前结论：已测试的预测侧指标都不能稳定作为闭环 MPC 收益的 universal selector。
 
-### 本周：2026-04-27 ~ 2026-05-03
+### 上周：2026-05-04 ~ 2026-05-10
 
-- 本周重点是方法验证，而不是宣布另一个最终模型。
-- 当前目标方法是多目标 `Forecast-to-Control Transfer Validation`，而不是只服务于 CO2 的模型选择器。
-- CO2 仍然是当前重点压力变量，因为它最清楚地暴露了预测收益无法直接转化为控制收益的问题；但方法必须同时量化 `Tair` 和 `Rhair` 的预测到控制转化。
-- `diffmpc_style_transformer` 暂时排除在严格模型池之外，因为它的 48 步历史窗口协议与当前 288 步 AGC 控制验证协议不一致。
-- 任务 A：把严格 validation 模型池扩展到本地 PHF / fusion 家族之外。
-- 任务 A 目标模型组：
-  - 兼容的标准 baseline：`DLinear`，然后补训三目标 `GRU`、`LSTM`、`SegRNN`、`NLinear` 和纯 `Transformer`
-  - 可行时纳入代表性的近年时序 baseline：`PatchTST`、`iTransformer`，以及至少一个分解 / 频域风格模型，例如 `Autoformer`、`FEDformer` 或 `TimesNet`
-  - 已有 residual、CO2-aware、PHF / expert / fusion 变体
-- 任务 B：把 validation 指标从 CO2-only 推广为多目标 control-transfer 指标。
-- 任务 B 指标组：
-  - `Tair`、`Rhair`、`CO2air` 的逐目标 first-step MAE
-  - 逐目标前 `control_horizon=6` 步 MAE
-  - 逐目标短时域 signed bias / absolute bias
-  - 状态接近运行边界或参考带时的 constraint-near / setpoint-near MAE
-  - 控制敏感性诊断：预测输出相对相关未来控制输入是否保留可用梯度
-  - 与闭环 tracking objective 对齐的归一化多目标 composite score
-- 任务 C：量化这些指标是否真的预测闭环收益。
-- 任务 C 分析：
-  - 每个预测侧指标与闭环 `Tair`、`Rhair`、`CO2air` MAE 的相关性
-  - 每个预测侧指标与闭环 objective 的相关性
-  - rank correlation、top-k hit rate 和 pairwise consistency
-  - leave-one-model 与 leave-one-family 稳健性
-  - 区分逐目标 selection metrics、整体 objective selection metrics 和 diagnostic-only metrics
-- 预期输出：一份跨模型方法报告，说明哪些指标组能够量化预测到控制转化、哪些地方会失败，以及它们应如何用于多目标温室 MPC。
+- 收束探索性 FCTV 阶段，并用更小粒度 commit 推送阶段性代码和结果。
+- 准备面向导师汇报的解释：随着模型池和 start 扩大，预测侧指标解释性明显退化。
+- 确认下一阶段应转向论文式研究设计，而不是机会式追模型。
+- 保留核心限制：FCTV 目前更适合作为诊断 / 验证框架，而不是确定性的闭环模型 selector。
 
-### 下周：2026-05-04 ~ 2026-05-10
+### 本周：2026-05-11 ~ 2026-05-17
 
-- 如果稳健性检查成立，下周将多目标 transfer 分析整理成论文方法章节和图表。
-- 如果指标转化能力表现出变量依赖或模型族依赖，要明确报告这个限制，并定义变量特定的指标角色，而不是强行给出一个万能分数。
-- 只有在 validation 方法稳定后，才继续模型调参；新增架构只能用于补齐缺失 baseline 家族，而不是为了追 leaderboard。
+- 任务 A：在 `agc_mpc/FCTV_EXPERIMENT_DESIGN.md` 中固定论文式 FCTV 实验设计。
+- 任务 B：在 `agc_mpc/run_fctv_final_closed_loop_benchmark.py` 中准备并运行最终 16 模型、5 起点闭环 benchmark 入口。
+- 任务 B 执行规则：以后不能默认回避跑模型或闭环实验。只要研究问题需要、且计算窗口允许，就应该运行；如果暂缓，必须说明计算成本和准确运行命令。
+- 任务 C：在 `agc_mpc/FCTV_METHOD_SECTION.md` 中写面向论文的方法章节。
+- 当前 benchmark 范围：16 个 predictor，starts `0`、`96`、`192`、`288`、`384`，`96` rollout steps，`GradientMPC`，三个目标变量 `Tair`、`Rhair`、`CO2air`。
+- 预期输出：固定实验设计、已执行最终 benchmark、分析输出，以及清楚区分筛选声明和诊断声明的方法文字。
+
+### 下周：2026-05-18 ~ 2026-05-24
+
+- 任务 F：基于最终 FCTV 设计和已有闭环证据，准备面向导师的阶段汇报。
+- 任务 F 预期输出：简洁报告段落，说明研究问题、实验链条、负结果 / 诊断结果，以及为什么直接闭环验证仍然必要。
+- 任务 E：等 tracking-control benchmark 稳定后，再启动 economic/resource-aware MPC。
+- 任务 E 预期输出：先定义温室 MPC 的能耗、CO2 施肥、执行器动作和 tracking trade-off 目标扩展，再实现新控制器。
 
 ## 8. 当前优先级
 
@@ -1635,3 +1631,522 @@ Multi-start 模型侧发现：
 - 扩展到 `24` 模型池后，CO2 first-step 和 constraint-near 指标退化为 diagnostic-only 角色。
 - 进一步扩展到 `16` 模型、starts `0`、`96`、`192` 后，主要 forecast-side metrics 表现出明显的模型池依赖和片段依赖。
 - 这张图应用于汇报当前结论：离线预测指标不能可靠筛选闭环控制收益；FCTV 更适合作为诊断框架，闭环 MPC 验证仍然必要。
+
+## 32. 2026-05-12 论文式 FCTV 阶段
+
+探索性 FCTV 阶段已经收束。下一阶段使用论文式固定协议，而不是机会式追加实验。
+
+新增长期维护文档：
+
+- `agc_mpc/FCTV_EXPERIMENT_DESIGN.md`
+- `agc_mpc/FCTV_EXPERIMENT_DESIGN.zh-CN.md`
+- `agc_mpc/FCTV_METHOD_SECTION.md`
+- `agc_mpc/FCTV_METHOD_SECTION.zh-CN.md`
+
+新增可执行 benchmark 入口：
+
+- `agc_mpc/run_fctv_final_closed_loop_benchmark.py`
+
+本周决策：
+
+- A 已在文档层面完成：固定 FCTV 论文问题、模型池、benchmark 协议、指标族和实验矩阵。
+- B 已执行：最终 benchmark 为 `16` 个 predictor、starts `0`、`96`、`192`、`288`、`384` 生成了 `80` 条闭环记录。
+- C 已完成草稿：FCTV 方法章节定义预测侧指标、闭环指标、Spearman 相关、两两模型排序一致率、top-k overlap 和稳健性检查。
+- 以后不能默认回避模型和闭环实验。只要研究问题需要且计算时间允许，就应该运行；如果暂缓，必须记录计算成本和准确命令。
+
+生成的最终 benchmark 输出：
+
+- `results/control/summaries/fctv_multistart_gradient_mpc_reference_96steps_16predictors_25890932c3_starts_0_96_192_288_384.json`
+- `results/forecasting/analysis/forecast_to_control_transfer_final_reference.{json,csv,md}`
+- `results/forecasting/figures/comparisons/forecast_to_control_transfer_final_reference.png`
+- `results/forecasting/analysis/fctv_final_multistart_model_rankings_reference.{csv,md}`
+- `results/forecasting/figures/comparisons/fctv_final_multistart_model_rankings_reference.png`
+
+最终 5 起点结果：
+
+- 预测侧 transfer 指标仍然具有 start dependence，不能作为稳定 universal selector。
+- `current_hybrid_transformer` 跨 start 平均 objective 最好：`0.0662 +/- 0.0269`。
+- `itransformer_co2_residual` 跨 start 平均 CO2 闭环 tracking 最好：`CO2air MAE = 10.215 +/- 2.043`，同时平均 objective 第二：`0.0701 +/- 0.0234`。
+
+下一阶段队列：
+
+- F：基于最终 FCTV 设计和已有闭环证据，准备面向导师的阶段汇报。
+- E：等 tracking-control benchmark 稳定后，启动 economic/resource-aware MPC formulation。
+
+## 33. 2026-05-12 F 和 E 阶段执行
+
+已完成任务 F：
+
+- 新增 `agc_mpc/FCTV_STAGE_REPORT.md`。
+- 新增 `agc_mpc/FCTV_STAGE_REPORT.zh-CN.md`。
+- 该报告把 FCTV 结果表述为受控负结果 / 诊断结果，而不是项目失败。
+- 报告给出面向导师的实验链条：CO2-focused 指标归纳、扩大模型池验证、多目标验证、多起点闭环验证。
+
+已完成任务 E 的第一步可执行实现：
+
+- 在 `agc_mpc/ECONOMIC_RESOURCE_MPC.md` 中新增 economic/resource-aware MPC formulation。
+- 新增中文镜像 `agc_mpc/ECONOMIC_RESOURCE_MPC.zh-CN.md`。
+- 在 `AGCConfig` 和 `PredictiveControlAdapter.control_cost()` 中新增默认关闭的 economic/resource objective 项。
+- 在闭环 summary 中新增 `resource_proxy_mean`。
+- 新增 `agc_mpc/run_economic_resource_mpc_probe.py`。
+- 新增 `agc_mpc/analyze_economic_resource_probe.py`。
+
+重要兼容规则：
+
+- `economic_resource_weight = 0.0` 是默认值，因此之前的 FCTV 和 tracking-only MPC benchmark 仍保持可比。
+
+已执行 E 阶段 smoke/probe：
+
+- Tracking-only probe：`fctv_multistart_gradient_mpc_reference_24steps_2predictors_c5d60ca7a5_tracking_probe_w000_starts_0.json`。
+- Economic/resource probe：`fctv_multistart_gradient_mpc_reference_24steps_2predictors_c5d60ca7a5_economic_probe_w015_starts_0.json`。
+- 对比输出：`results/control/summaries/economic_resource_probe_comparison.{csv,md}` 和 `results/control/figures/economic_resource_probe_comparison.png`。
+
+Probe 结果：
+
+- `current_hybrid_transformer`：resource proxy `0.354 -> 0.332`（`-6.0%`），CO2 MAE `10.964 -> 12.380`。
+- `itransformer_co2_residual`：resource proxy `0.377 -> 0.357`（`-5.3%`），CO2 MAE `2.938 -> 4.899`。
+
+解释：
+
+- Resource-aware MPC 代码路径已经跑通，并且会改变优化动作。
+- 第一版 resource weight 已产生可量化的 resource-tracking trade-off，但这只是 24-step、single-start probe。
+- 下一轮严谨 E 阶段实验应扫描 resource weights，并使用 96-step、multi-start rollouts。
+
+补充 top-5 E 阶段 probe：
+
+- Predictors：`current_hybrid_transformer`、`itransformer_co2_residual`、`segrnn_forecaster`、`transformer_forecaster`、`transformer_hybrid_residual`。
+- Profiles：`tracking_top5_w000` vs `economic_top5_w015`。
+- 输出：`results/control/summaries/economic_resource_top5_start0_24steps_comparison.{csv,md}` 和 `results/control/figures/economic_resource_top5_start0_24steps_comparison.png`。
+
+Top-5 probe 解释：
+
+- `transformer_forecaster` 的 resource proxy 降幅最大（`-8.6%`），同时 CO2 退化相对较小（`8.051 -> 8.486`）。
+- `itransformer_co2_residual` 加入 economic term 后仍保留最好的绝对 CO2 tracking（`4.899`），但相比 tracking-only CO2 MAE（`2.938`）退化更明显。
+- `transformer_hybrid_residual` 的 resource proxy 反而上升（`+2.3%`），说明当前 economic weight 不会让所有 predictor 都同向降低资源代理。
+
+96-step top-3 resource-weight sweep：
+
+- Predictors：`current_hybrid_transformer`、`itransformer_co2_residual`、`transformer_forecaster`。
+- Starts：`0`、`96`、`192`。
+- Weights：`0.00`、`0.05`、`0.15`、`0.30`。
+- 输出：`results/control/summaries/economic_resource_sweep_top3_reference.{csv,md}` 和 `results/control/figures/economic_resource_sweep_top3_reference.png`。
+
+Sweep 结论：
+
+- `w=0.05` 是当前有价值区间：resource proxy 下降约 `6%` 到 `10%`，平均 CO2 退化约 `2%` 到 `4%`。
+- `current_hybrid_transformer` 有最好的低权重 trade-off：resource proxy `-9.8%`，CO2 MAE `+2.1%`。
+- `itransformer_co2_residual` 仍是绝对 CO2 tracking 最好的模型，但在高 resource weight 下更脆弱。
+- `w=0.15` 和 `w=0.30` 虽然有更强 resource reduction，但会导致明显更大的 CO2 退化。
+
+## 34. 已计划的主线真实 AGC 资源 / 经济验证
+
+状态：已在 `2026-05-12` 执行完成；完成产物和结论见第 35 节。
+
+该 Plan 模式任务不应继续把 FCTV 当作研究方向推进。FCTV 已经作为诊断 / 负结果分支收束。
+
+主线提醒：
+
+- 毕业设计主线仍然是 `面向控制的温室多步预测 + 闭环 MPC`。
+- 下一步是把一个或少数几个已选预测模型推进到主线最终验证：使用 AGC 数据集里的真实资源 / 经济字段做验证。
+- 不要默认跑所有模型。目标是框架级最终验证，不是再做大模型池 leaderboard。
+
+核心思想：
+
+- 用真实 AGC 资源和经济数据替代当前 action-level `resource_proxy` 叙事：
+  - `Resources.csv`：`Heat_cons`、`ElecHigh`、`ElecLow`、`CO2_cons`、`Irr`、`Drain`
+  - `Production.csv`：`ProdA`、`ProdB`、采收穗 / 果数量和重量
+  - `TomQuality.csv`：`TSS/Brix`、flavour、acid、juice、bite、fruit weight
+  - `Economics.pdf`：heat/electricity/CO2 价格、作物维护成本、按 Brix 和日期变化的番茄价格
+
+推荐模型集：
+
+- 必选：
+  - `current_hybrid_transformer`：整体闭环 objective 最强 baseline
+  - `itransformer_co2_residual`：proposed / 主线 CO2-aware 模型，也是最强闭环 CO2 tracker
+- 如果时间允许，可选：
+  - `transformer_forecaster`：economic probe 中表现出 resource-trade-off 潜力的候选
+
+Plan 模式任务 1：检查并编码 AGC economics。
+
+- 读取 `AutonomousGreenhouseChallenge_edition2/Economics.pdf`。
+- 提取 net profit 公式：
+  - `Net Profit = Income - Fixed costs - Variable costs`
+- 编码 variable cost 规则：
+  - peak electricity：`0.08 EUR/kWh`
+  - off-peak electricity：`0.04 EUR/kWh`
+  - heat：`0.0083 EUR/MJ`
+  - CO2：前 `12 kg/m2` 为 `0.08 EUR/kg`，之后为 `0.2 EUR/kg`
+  - crop maintenance：`0.0085 EUR per stem/m2 per day`
+- 编码 tomato income 规则：
+  - Class A：全价
+  - Class B：半价
+  - 番茄价格由日期和 Brix 决定，使用 `Economics.pdf` 中的价格表
+- 如果 Brix 插值或作物维护成本无法完全复现，必须明确写出近似假设。
+
+Plan 模式任务 2：实现真实 AGC economics analyzer。
+
+- 新增脚本：`agc_mpc/analyze_agc_real_economics.py`。
+- 输入：
+  - AGC dataset root
+  - compartment list，默认六个 AGC compartment 全部纳入
+- 输出：
+  - `results/control/summaries/agc_real_economics_by_compartment.csv`
+  - `results/control/summaries/agc_real_economics_by_compartment.md`
+  - `results/control/figures/agc_real_economics_by_compartment.png`
+- 指标：
+  - total heat consumption 和 heat cost
+  - total peak/off-peak electricity 和 electricity cost
+  - total CO2 consumption 和 CO2 cost
+  - irrigation 和 drain totals
+  - tomato Class A/B production
+  - estimated income
+  - estimated variable cost
+  - approximate net profit
+  - 如果可行，计算每 kg tomato resource use
+- 目的：
+  - 在评估我们 MPC rollout 之前，先建立真实 AGC resource/economic baseline。
+
+Plan 模式任务 3：从 AGC 数据校准真实资源成本估计器。
+
+- 新增脚本：`agc_mpc/calibrate_agc_resource_cost_model.py`。
+- 使用 `GreenhouseClimate.csv`、`Weather/Weather.csv` 和 `Resources.csv`。
+- 目标变量：
+  - daily 或对齐后的 `Heat_cons`
+  - `ElecHigh + ElecLow`
+  - `CO2_cons`
+  - `Irr`
+- 候选解释变量：
+  - `t_heat_sp`、`t_vent_sp`、`co2_sp`、`assim_sp`、`window_pos_lee_sp`、`water_sup_intervals_sp_min`
+  - `Tout`、`Iglob`、`PARout`，以及可用 time features
+- 优先使用简单可解释模型：
+  - linear regression / ridge regression
+  - 可行时使用非负系数
+- 输出：
+  - `results/control/summaries/agc_resource_cost_model_coefficients.csv`
+  - `results/control/summaries/agc_resource_cost_model_validation.md`
+  - `results/control/figures/agc_resource_cost_model_validation.png`
+- 目的：
+  - 把 MPC 生成的 action trajectories 转换为估计的真实 AGC resource cost，而不再只是 normalized action proxy。
+
+Plan 模式任务 4：用真实资源估计成本评估主线模型。
+
+- 新增脚本：`agc_mpc/evaluate_mainline_real_resource_control.py`。
+- 如果已有 rollout summaries/traces 足够，直接复用；如果缺少 action 轨迹，则重新跑短闭环 rollout。
+- 必选模型：
+  - `current_hybrid_transformer`
+  - `itransformer_co2_residual`
+- 可选模型：
+  - `transformer_forecaster`
+- 协议：
+  - `GradientMPC`
+  - `Reference`
+  - `96` steps
+  - 如果可行，starts `0`、`96`、`192`、`288`、`384`
+  - 必要时比较 tracking-only 和一个低 resource-aware setting
+- 输出：
+  - `results/control/summaries/mainline_real_resource_model_comparison.csv`
+  - `results/control/summaries/mainline_real_resource_model_comparison.md`
+  - `results/control/figures/mainline_real_resource_model_comparison.png`
+- 指标：
+  - closed-loop objective
+  - `Tair`、`Rhair`、`CO2air` MAE
+  - estimated heat cost
+  - estimated electricity cost
+  - estimated CO2 cost
+  - estimated irrigation
+  - estimated total variable resource cost
+  - 相对 `current_hybrid_transformer` 的 cost/tracking trade-off
+
+Plan 模式任务 5：生成面向论文的最终验证表述。
+
+- 新增结果说明：
+  - `results/control/summaries/mainline_real_resource_validation_conclusion.md`
+- 结论边界：
+  - 可以声明：已选预测模型可以在闭环 MPC 中用 real-AGC-resource-calibrated cost framework 进行评估。
+  - 可以声明：可以比较少数模型的 estimated resource cost 和 tracking trade-off。
+  - 不可以声明：真实整季 net profit 得到提升，因为当前 MPC rollout 不包含作物 / 产量动态模型。
+- 面向论文的表述应为：
+  - `current_hybrid_transformer` 是最强整体 tracking baseline。
+  - `itransformer_co2_residual` 是最强 CO2-aware closed-loop tracker。
+  - 真实 AGC resource/economic 数据可用于估计已选 MPC rollout 的资源影响。
+  - 最终验证把 forecasting model 主线连接到 resource-aware greenhouse control，但不夸大为真实商业利润提升。
+
+下一轮 Plan 模式推荐执行顺序：
+
+1. 检查所有 AGC resource/production/quality 字段和 economics PDF。
+2. 实现 `analyze_agc_real_economics.py`，复现各 compartment 的 resource/economic summary。
+3. 实现第一版 resource-cost estimator，并用记录式 AGC resource consumption 验证。
+4. 用该 estimator 评估 `current_hybrid_transformer` 和 `itransformer_co2_residual`。
+5. 生成主线最终 comparison table、figure 和 conclusion note。
+6. 更新 `CONTEXT.md` 和 `CONTEXT.zh-CN.md`。
+7. 如果用户要求，按小段 commit/push。
+
+## 35. 2026-05-12 主线真实 AGC 资源 / 经济验证
+
+已完成计划中的真实 AGC 资源 / 经济验证阶段。
+
+新增脚本：
+
+- `agc_mpc/analyze_agc_real_economics.py`
+- `agc_mpc/calibrate_agc_resource_cost_model.py`
+- `agc_mpc/evaluate_mainline_real_resource_control.py`
+
+Simulator 更新：
+
+- `AGCClosedLoopSimulator` 现在会为每条 rollout 保存 trace JSON，包含时间戳、预测 / 参考目标、执行动作、记录动作、objective、动作变化和 resource proxy。
+- 真实资源估计需要这些 trace，因为旧的 summary-only rollout 没有足够的动作序列信息。
+
+真实 AGC economics baseline：
+
+- 已编码 `Economics.pdf` 规则：
+  - `Net Profit = Income - Fixed costs - Variable costs`
+  - peak electricity `0.08 EUR/kWh`
+  - off-peak electricity `0.04 EUR/kWh`
+  - heat `0.0083 EUR/MJ`
+  - CO2 前 `12 kg/m2` 为 `0.08 EUR/kg`，之后为 `0.20 EUR/kg`
+  - crop maintenance `0.0085 EUR per stem/m2 per day`
+  - Class A 番茄全价，Class B 番茄半价
+  - 使用 PDF 表格中的日期和 Brix 相关番茄价格
+- 输出：
+  - `results/control/summaries/agc_real_economics_by_compartment.csv`
+  - `results/control/summaries/agc_real_economics_by_compartment.md`
+  - `results/control/figures/agc_real_economics_by_compartment.png`
+- 近似 net-profit 排名：
+  - `Automatoes`: `6.05 EUR/m2`
+  - `AICU`: `5.85 EUR/m2`
+  - `Reference`: `3.60 EUR/m2`
+  - `IUACAAS`: `3.29 EUR/m2`
+  - `Digilog`: `3.12 EUR/m2`
+  - `TheAutomators`: `2.60 EUR/m2`
+
+资源估计器：
+
+- 在 AGC 日尺度记录上拟合了简单的非负系数 ridge 模型。
+- 输入包括记录 setpoints、weather 和 derived drive terms 的日尺度汇总。
+- 目标：
+  - `Heat_cons`
+  - `ElecHigh + ElecLow`
+  - `CO2_cons`
+  - `Irr`
+- 输出：
+  - `results/control/summaries/agc_resource_cost_model_coefficients.csv`
+  - `results/control/summaries/agc_resource_cost_model_validation.md`
+  - `results/control/summaries/agc_resource_cost_model.json`
+  - `results/control/figures/agc_resource_cost_model_validation.png`
+- 验证结果：
+  - heat MAE `0.5657`，R2 `0.620`
+  - electricity MAE `0.2816`，R2 `0.835`
+  - CO2 MAE `0.0102`，R2 `0.731`
+  - irrigation MAE `1.0140`，R2 `0.448`
+
+已执行闭环 runs：
+
+- 必选模型：
+  - `current_hybrid_transformer`
+  - `itransformer_co2_residual`
+- 协议：
+  - `GradientMPC`
+  - `Reference`
+  - `96` steps
+  - starts `0`、`96`、`192`、`288`、`384`
+  - tracking-only profile `real_resource_w000`
+  - low resource-aware profile `real_resource_w005`
+- 这些是使用已有 checkpoint 的真实 MPC rollout，不是只补文档。
+- 生成 suites：
+  - `results/control/summaries/fctv_multistart_gradient_mpc_reference_96steps_2predictors_c5d60ca7a5_real_resource_w000_starts_0_96_192_288_384.json`
+  - `results/control/summaries/fctv_multistart_gradient_mpc_reference_96steps_2predictors_c5d60ca7a5_real_resource_w005_starts_0_96_192_288_384.json`
+
+主对比输出：
+
+- `results/control/summaries/mainline_real_resource_model_comparison.csv`
+- `results/control/summaries/mainline_real_resource_model_comparison_details.csv`
+- `results/control/summaries/mainline_real_resource_model_comparison.md`
+- `results/control/figures/mainline_real_resource_model_comparison.png`
+- `results/control/summaries/mainline_real_resource_validation_conclusion.md`
+
+主要结果：
+
+- `real_resource_w000 + current_hybrid_transformer`：
+  - objective `0.0660`
+  - `CO2air MAE = 29.472`
+  - estimated resource cost `0.0127 EUR/m2`
+- `real_resource_w000 + itransformer_co2_residual`：
+  - objective `0.0695`
+  - `CO2air MAE = 10.168`
+  - estimated resource cost `0.0094 EUR/m2`
+- `real_resource_w005 + current_hybrid_transformer`：
+  - objective `0.0841`
+  - `CO2air MAE = 29.929`
+  - estimated resource cost `0.0114 EUR/m2`
+- `real_resource_w005 + itransformer_co2_residual`：
+  - objective `0.0879`
+  - `CO2air MAE = 10.980`
+  - estimated resource cost `0.0085 EUR/m2`
+
+解释：
+
+- `current_hybrid_transformer` 仍是 tracking-only mean objective 最强的整体 tracking baseline。
+- `itransformer_co2_residual` 仍是最强 CO2-aware closed-loop tracker，并且在 selected-model real-resource 对比中有更低的估计资源成本。
+- 低 resource-aware 设置 `w=0.05` 会降低两个已选模型的估计资源成本，但会提高 objective，并轻微恶化 CO2 tracking。
+- 这支持面向论文的表述：已选 forecasting 模型可以在 real-AGC-resource-calibrated cost framework 下做闭环 MPC 评估。
+
+边界：
+
+- 不能声称真实整季 net profit 提升。
+- 当前 MPC rollout 没有作物 / 产量 / 品质动态模型。
+- 合法结论是：对已选闭环 MPC rollout 做 estimated resource-cost 和 tracking trade-off 对比。
+
+下一步实际工作：
+
+- 围绕这次最终验证写论文结果小节。
+- 如果还需要补实验，应保持很窄：只围绕两个已选模型做 `w=0.02`、`w=0.05`、`w=0.08` 的敏感性检查。
+
+## 36. 2026-05-12 主线真实资源后续任务完成
+
+已完成真实资源验证阶段的剩余后续任务。
+
+新增闭环 runs：
+
+- 模型：
+  - `current_hybrid_transformer`
+  - `itransformer_co2_residual`
+- 协议：
+  - `GradientMPC`
+  - `Reference`
+  - `96` steps
+  - starts `0`、`96`、`192`、`288`、`384`
+- 新增 resource weights：
+  - `real_resource_w002` = `w=0.02`
+  - `real_resource_w008` = `w=0.08`
+- 这些是使用已有 checkpoint 的真实 MPC rollout。
+
+生成的 sensitivity suites：
+
+- `results/control/summaries/fctv_multistart_gradient_mpc_reference_96steps_2predictors_c5d60ca7a5_real_resource_w002_starts_0_96_192_288_384.json`
+- `results/control/summaries/fctv_multistart_gradient_mpc_reference_96steps_2predictors_c5d60ca7a5_real_resource_w008_starts_0_96_192_288_384.json`
+
+生成的 sensitivity 分析：
+
+- `results/control/summaries/mainline_real_resource_sensitivity.csv`
+- `results/control/summaries/mainline_real_resource_sensitivity_details.csv`
+- `results/control/summaries/mainline_real_resource_sensitivity.md`
+- `results/control/figures/mainline_real_resource_sensitivity.png`
+
+生成的最终汇报和写作材料：
+
+- `agc_mpc/plot_mainline_real_resource_final_summary.py`
+- `results/control/figures/mainline_real_resource_final_summary.png`
+- `results/control/summaries/agc_resource_cost_model_coefficient_diagnosis.md`
+- `results/control/summaries/mainline_real_resource_thesis_result_section.md`
+- 已更新 `results/control/summaries/mainline_real_resource_validation_conclusion.md`
+
+完整 sensitivity 结果：
+
+- `w=0.00 + current_hybrid_transformer`：
+  - objective `0.0660`
+  - `CO2air MAE = 29.472`
+  - estimated resource cost `0.0127 EUR/m2`
+- `w=0.00 + itransformer_co2_residual`：
+  - objective `0.0695`
+  - `CO2air MAE = 10.168`
+  - estimated resource cost `0.0094 EUR/m2`
+- `w=0.02 + current_hybrid_transformer`：
+  - objective `0.0743`
+  - `CO2air MAE = 29.808`
+  - estimated resource cost `0.0123 EUR/m2`
+- `w=0.02 + itransformer_co2_residual`：
+  - objective `0.0778`
+  - `CO2air MAE = 10.297`
+  - estimated resource cost `0.0096 EUR/m2`
+- `w=0.05 + current_hybrid_transformer`：
+  - objective `0.0841`
+  - `CO2air MAE = 29.929`
+  - estimated resource cost `0.0114 EUR/m2`
+- `w=0.05 + itransformer_co2_residual`：
+  - objective `0.0879`
+  - `CO2air MAE = 10.980`
+  - estimated resource cost `0.0085 EUR/m2`
+- `w=0.08 + current_hybrid_transformer`：
+  - objective `0.0941`
+  - `CO2air MAE = 30.180`
+  - estimated resource cost `0.0111 EUR/m2`
+- `w=0.08 + itransformer_co2_residual`：
+  - objective `0.0931`
+  - `CO2air MAE = 11.660`
+  - estimated resource cost `0.0076 EUR/m2`
+
+Sensitivity 解读：
+
+- `current_hybrid_transformer` 在 `w=0.00` 下仍是 tracking-only objective 最强 baseline。
+- `itransformer_co2_residual` 在所有已测试 resource weights 下仍是最强 CO2-aware closed-loop tracker。
+- 在这个 selected-model 对比中，`itransformer_co2_residual` 的估计资源成本也低于 `current_hybrid_transformer`。
+- 提高 resource weight 会降低估计资源成本，但会提高优化 objective，并逐步恶化 `CO2air` tracking。
+- `w=0.05` 是最有说服力的折中设置：
+  - 它比 `w=0.02` 有更清楚的成本降低
+  - 又避免了 `w=0.08` 中更大的 CO2 退化
+- `w=0.08` 可作为更强 resource-saving 点，但应写成高 trade-off 设置，而不是默认推荐。
+
+资源估计器系数诊断：
+
+- heat 和 electricity 估计可用于粗粒度 resource-cost 对比。
+- CO2 估计可用于已选 rollout 对比，但不能写成 mechanistic carbon-balance model。
+- irrigation 验证质量较弱，只应作为辅助背景指标。
+
+最终论文表述边界：
+
+- 可以声明：
+  - 已选 forecasting 模型可以在 closed-loop MPC 中用 real-AGC-resource-calibrated cost estimates 评估
+  - `current_hybrid_transformer` 是最强整体 tracking baseline
+  - `itransformer_co2_residual` 是最强 CO2-aware closed-loop tracker，并且在 selected comparison 中有较好的估计资源成本
+  - 低 resource-aware MPC 权重揭示了可量化的 tracking-resource trade-off
+- 不可以声明：
+  - 真实整季商业 net-profit 提升
+  - yield 或 quality 提升，因为当前 rollout 没有 crop/yield/quality 动态模型
+
+下一步任务：
+
+- 从实验推进转为论文写作和最终汇报材料组装。
+- 除非论文论证明确需要，否则不要再扩成新的大模型 leaderboard。
+
+## 37. 2026-05-13 导师汇报图
+
+已用真实实验输出生成两张中文导师汇报图。
+
+新增脚本：
+
+- `agc_mpc/plot_supervisor_report_figures_cn.py`
+
+生成图：
+
+- `results/control/figures/supervisor_fig1_model_selection_cn.png`
+  - 使用最终 16 模型、5 起点闭环验证表。
+  - 展示代表模型在平均闭环 objective 和平均 `CO2air` MAE 上的位置。
+  - 突出最终保留的两个主模型：
+    - `current_hybrid_transformer`：均衡模型 / 整体 tracking baseline 最强。
+    - `itransformer_co2_residual`：CO2 专项模型 / CO2 闭环 tracker 最强。
+  - 左上角已经明确写出两个模型的原始名字：
+    - 均衡模型：`current_hybrid_transformer`
+    - CO2 专项模型：`itransformer_co2_residual`
+- `results/control/figures/supervisor_fig2_resource_economic_cn.png`
+  - 使用 `mainline_real_resource_sensitivity.csv`。
+  - 展示估计资源成本随资源惩罚权重变化的趋势。
+  - 展示更强资源惩罚带来的 CO2 tracking 代价。
+  - 对比 `w=0.05` 下估计 heat、electricity、CO2 和 irrigation 消耗。
+  - 展示 CO2 tracking 与估计资源成本的权衡。
+- `results/control/figures/supervisor_fig2_w005_tradeoff_cn.png`
+  - 用于解释为什么 `w=0.05` 是推荐折中设置的一张简化单图。
+  - 实线表示估计资源成本，虚线表示 `CO2air` tracking 误差。
+  - 图中突出说明资源惩罚越大，估计成本越低，但 CO2 tracking 误差越高。
+  - 明确标注 `w=0.05` 为折中点，`w=0.08` 为更省资源但控制代价更大的点。
+- `results/control/figures/supervisor_fig2_combined_tradeoff_resource_cn.png`
+  - 这是 2026-05-13 按导师汇报需求整理后的最终图二。
+  - 一张图里包含两个子图：
+    - 左图：解释为什么选择 `w=0.05`，也就是资源成本和 CO2 控制误差之间的折中。
+    - 右图：只展示 `w=0.05` 时两个模型的估计资源消耗对比。
+  - 右图使用相对消耗，令 `current_hybrid_transformer` 等于 `1.00`，更方便直接说明 heat、electricity、CO2、irrigation 的差别。
+  - 左上角也已经写出两个保留模型的原始名字。
+
+解释提醒：
+
+- 这两张图比较的是闭环 tracking 和估计资源成本。
+- 不能用来声称真实整季 net-profit 提升，因为当前没有 crop/yield/quality 动态模型。
