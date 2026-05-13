@@ -1,0 +1,19 @@
+{
+  "predictor": "current_hybrid_transformer",
+  "controller": "gradient_mpc",
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "start_idx": 288,
+  "steps": 96,
+  "objective_mean": 0.12265526212286204,
+  "control_delta_mae": 20.25465202331543,
+  "action_tv": 3.1397618904399374,
+  "resource_proxy_mean": 0.3671144914502899,
+  "target_mae": {
+    "Tair": 0.878075897693634,
+    "Rhair": 3.407816171646118,
+    "CO2air": 24.253934860229492
+  },
+  "figure_path": "results\\control\\figures\\current_hybrid_transformer_gradient_mpc_real_resource_w002_start00288_96steps_closed_loop.png",
+  "trace_path": "results\\control\\summaries\\current_hybrid_transformer_gradient_mpc_real_resource_w002_start00288_96steps_trace.json"
+}
