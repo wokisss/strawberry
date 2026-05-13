@@ -1,0 +1,239 @@
+{
+  "predictors": [
+    "current_hybrid_transformer",
+    "itransformer_co2_residual"
+  ],
+  "controllers": [
+    "gradient_mpc"
+  ],
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "rollout_mode": "surrogate",
+  "start_indices": [
+    0,
+    96,
+    192,
+    288,
+    384
+  ],
+  "steps": 96,
+  "target_cols": [
+    "Tair",
+    "Rhair",
+    "CO2air"
+  ],
+  "economic_profile_name": "real_resource_w008",
+  "economic_resource_weight": 0.08,
+  "economic_action_weights": {
+    "t_heat_sp": 1.0,
+    "co2_sp": 1.0,
+    "assim_sp": 1.0,
+    "window_pos_lee_sp": 0.35,
+    "t_vent_sp": 0.25,
+    "water_sup_intervals_sp_min": 0.2,
+    "scr_enrg_sp": 0.15,
+    "scr_blck_sp": 0.1
+  },
+  "records": [
+    {
+      "predictor": "current_hybrid_transformer",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.07358370837755501,
+      "control_delta_mae": 15.2325439453125,
+      "action_tv": 3.8480019426594176,
+      "resource_proxy_mean": 0.32058270477379364,
+      "target_mae": {
+        "Tair": 0.3666994869709015,
+        "Rhair": 1.1390788555145264,
+        "CO2air": 19.81684684753418
+      },
+      "figure_path": "results\\control\\figures\\current_hybrid_transformer_gradient_mpc_real_resource_w008_start00000_96steps_closed_loop.png",
+      "trace_path": "results\\control\\summaries\\current_hybrid_transformer_gradient_mpc_real_resource_w008_start00000_96steps_trace.json",
+      "output_tag": "real_resource_w008_start00000_96steps"
+    },
+    {
+      "predictor": "itransformer_co2_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.07674716385857512,
+      "control_delta_mae": 10.854668617248535,
+      "action_tv": 4.592995773302391,
+      "resource_proxy_mean": 0.26644263695925474,
+      "target_mae": {
+        "Tair": 0.8769292831420898,
+        "Rhair": 1.369122862815857,
+        "CO2air": 8.480072021484375
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_residual_gradient_mpc_real_resource_w008_start00000_96steps_closed_loop.png",
+      "trace_path": "results\\control\\summaries\\itransformer_co2_residual_gradient_mpc_real_resource_w008_start00000_96steps_trace.json",
+      "output_tag": "real_resource_w008_start00000_96steps"
+    },
+    {
+      "predictor": "current_hybrid_transformer",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 96,
+      "steps": 96,
+      "objective_mean": 0.08437750317777197,
+      "control_delta_mae": 73.58197784423828,
+      "action_tv": 8.170611750644943,
+      "resource_proxy_mean": 0.4102850486524403,
+      "target_mae": {
+        "Tair": 0.537061870098114,
+        "Rhair": 1.4658645391464233,
+        "CO2air": 26.623558044433594
+      },
+      "figure_path": "results\\control\\figures\\current_hybrid_transformer_gradient_mpc_real_resource_w008_start00096_96steps_closed_loop.png",
+      "trace_path": "results\\control\\summaries\\current_hybrid_transformer_gradient_mpc_real_resource_w008_start00096_96steps_trace.json",
+      "output_tag": "real_resource_w008_start00096_96steps"
+    },
+    {
+      "predictor": "itransformer_co2_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 96,
+      "steps": 96,
+      "objective_mean": 0.09348197234794497,
+      "control_delta_mae": 15.356348991394043,
+      "action_tv": 3.7211113730445504,
+      "resource_proxy_mean": 0.37905481240401667,
+      "target_mae": {
+        "Tair": 0.5599814057350159,
+        "Rhair": 0.6338528990745544,
+        "CO2air": 11.522526741027832
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_residual_gradient_mpc_real_resource_w008_start00096_96steps_closed_loop.png",
+      "trace_path": "results\\control\\summaries\\itransformer_co2_residual_gradient_mpc_real_resource_w008_start00096_96steps_trace.json",
+      "output_tag": "real_resource_w008_start00096_96steps"
+    },
+    {
+      "predictor": "current_hybrid_transformer",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 192,
+      "steps": 96,
+      "objective_mean": 0.06546699841662,
+      "control_delta_mae": 11.681686401367188,
+      "action_tv": 0.910018514841795,
+      "resource_proxy_mean": 0.21123426710255444,
+      "target_mae": {
+        "Tair": 0.6042554974555969,
+        "Rhair": 0.9402033686637878,
+        "CO2air": 49.00667190551758
+      },
+      "figure_path": "results\\control\\figures\\current_hybrid_transformer_gradient_mpc_real_resource_w008_start00192_96steps_closed_loop.png",
+      "trace_path": "results\\control\\summaries\\current_hybrid_transformer_gradient_mpc_real_resource_w008_start00192_96steps_trace.json",
+      "output_tag": "real_resource_w008_start00192_96steps"
+    },
+    {
+      "predictor": "itransformer_co2_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 192,
+      "steps": 96,
+      "objective_mean": 0.048467671556863934,
+      "control_delta_mae": 15.855216979980469,
+      "action_tv": 2.2541287788189948,
+      "resource_proxy_mean": 0.22989658118846515,
+      "target_mae": {
+        "Tair": 0.1654965728521347,
+        "Rhair": 0.9504225254058838,
+        "CO2air": 12.587018013000488
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_residual_gradient_mpc_real_resource_w008_start00192_96steps_closed_loop.png",
+      "trace_path": "results\\control\\summaries\\itransformer_co2_residual_gradient_mpc_real_resource_w008_start00192_96steps_trace.json",
+      "output_tag": "real_resource_w008_start00192_96steps"
+    },
+    {
+      "predictor": "current_hybrid_transformer",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 288,
+      "steps": 96,
+      "objective_mean": 0.14361747455162308,
+      "control_delta_mae": 19.39433479309082,
+      "action_tv": 2.7970191658629724,
+      "resource_proxy_mean": 0.35637638221184414,
+      "target_mae": {
+        "Tair": 0.8815247416496277,
+        "Rhair": 3.3334217071533203,
+        "CO2air": 24.188920974731445
+      },
+      "figure_path": "results\\control\\figures\\current_hybrid_transformer_gradient_mpc_real_resource_w008_start00288_96steps_closed_loop.png",
+      "trace_path": "results\\control\\summaries\\current_hybrid_transformer_gradient_mpc_real_resource_w008_start00288_96steps_trace.json",
+      "output_tag": "real_resource_w008_start00288_96steps"
+    },
+    {
+      "predictor": "itransformer_co2_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 288,
+      "steps": 96,
+      "objective_mean": 0.08841813786420971,
+      "control_delta_mae": 12.404693603515625,
+      "action_tv": 4.8204578990116715,
+      "resource_proxy_mean": 0.25565496397515136,
+      "target_mae": {
+        "Tair": 0.8298759460449219,
+        "Rhair": 1.1245942115783691,
+        "CO2air": 13.34292984008789
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_residual_gradient_mpc_real_resource_w008_start00288_96steps_closed_loop.png",
+      "trace_path": "results\\control\\summaries\\itransformer_co2_residual_gradient_mpc_real_resource_w008_start00288_96steps_trace.json",
+      "output_tag": "real_resource_w008_start00288_96steps"
+    },
+    {
+      "predictor": "current_hybrid_transformer",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 384,
+      "steps": 96,
+      "objective_mean": 0.10342486354056746,
+      "control_delta_mae": 72.4953384399414,
+      "action_tv": 9.540542400131622,
+      "resource_proxy_mean": 0.3628227901645005,
+      "target_mae": {
+        "Tair": 0.5218327045440674,
+        "Rhair": 1.4526902437210083,
+        "CO2air": 31.265701293945312
+      },
+      "figure_path": "results\\control\\figures\\current_hybrid_transformer_gradient_mpc_real_resource_w008_start00384_96steps_closed_loop.png",
+      "trace_path": "results\\control\\summaries\\current_hybrid_transformer_gradient_mpc_real_resource_w008_start00384_96steps_trace.json",
+      "output_tag": "real_resource_w008_start00384_96steps"
+    },
+    {
+      "predictor": "itransformer_co2_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 384,
+      "steps": 96,
+      "objective_mean": 0.1581353668201094,
+      "control_delta_mae": 43.873722076416016,
+      "action_tv": 9.231377350787321,
+      "resource_proxy_mean": 0.3909392772863309,
+      "target_mae": {
+        "Tair": 0.7178073525428772,
+        "Rhair": 2.431044816970825,
+        "CO2air": 12.369219779968262
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_residual_gradient_mpc_real_resource_w008_start00384_96steps_closed_loop.png",
+      "trace_path": "results\\control\\summaries\\itransformer_co2_residual_gradient_mpc_real_resource_w008_start00384_96steps_trace.json",
+      "output_tag": "real_resource_w008_start00384_96steps"
+    }
+  ]
+}
