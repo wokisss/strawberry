@@ -1,0 +1,209 @@
+{
+  "predictors": [
+    "current_hybrid_transformer",
+    "itransformer_co2_residual",
+    "transformer_forecaster"
+  ],
+  "controllers": [
+    "gradient_mpc"
+  ],
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "rollout_mode": "surrogate",
+  "start_indices": [
+    0,
+    96,
+    192
+  ],
+  "steps": 96,
+  "target_cols": [
+    "Tair",
+    "Rhair",
+    "CO2air"
+  ],
+  "economic_profile_name": "economic_sweep_top3_w015",
+  "economic_resource_weight": 0.15,
+  "economic_action_weights": {
+    "t_heat_sp": 1.0,
+    "co2_sp": 1.0,
+    "assim_sp": 1.0,
+    "window_pos_lee_sp": 0.35,
+    "t_vent_sp": 0.25,
+    "water_sup_intervals_sp_min": 0.2,
+    "scr_enrg_sp": 0.15,
+    "scr_blck_sp": 0.1
+  },
+  "records": [
+    {
+      "predictor": "current_hybrid_transformer",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.09630442480556667,
+      "control_delta_mae": 17.392065048217773,
+      "action_tv": 4.63783817148457,
+      "resource_proxy_mean": 0.3040660551438729,
+      "target_mae": {
+        "Tair": 0.37361451983451843,
+        "Rhair": 1.2275766134262085,
+        "CO2air": 20.604530334472656
+      },
+      "figure_path": "results\\control\\figures\\current_hybrid_transformer_gradient_mpc_economic_sweep_top3_w015_start00000_96steps_closed_loop.png",
+      "output_tag": "economic_sweep_top3_w015_start00000_96steps"
+    },
+    {
+      "predictor": "itransformer_co2_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.09341298827591042,
+      "control_delta_mae": 12.462608337402344,
+      "action_tv": 4.3781378779870765,
+      "resource_proxy_mean": 0.25489130166048807,
+      "target_mae": {
+        "Tair": 0.7843422889709473,
+        "Rhair": 1.2020856142044067,
+        "CO2air": 10.482648849487305
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_residual_gradient_mpc_economic_sweep_top3_w015_start00000_96steps_closed_loop.png",
+      "output_tag": "economic_sweep_top3_w015_start00000_96steps"
+    },
+    {
+      "predictor": "transformer_forecaster",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 96,
+      "objective_mean": 0.11144139252913494,
+      "control_delta_mae": 21.52582359313965,
+      "action_tv": 6.923638271167874,
+      "resource_proxy_mean": 0.3119020090283205,
+      "target_mae": {
+        "Tair": 0.8491125106811523,
+        "Rhair": 3.166402578353882,
+        "CO2air": 19.64316749572754
+      },
+      "figure_path": "results\\control\\figures\\transformer_forecaster_gradient_mpc_economic_sweep_top3_w015_start00000_96steps_closed_loop.png",
+      "output_tag": "economic_sweep_top3_w015_start00000_96steps"
+    },
+    {
+      "predictor": "current_hybrid_transformer",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 96,
+      "steps": 96,
+      "objective_mean": 0.10943117225542665,
+      "control_delta_mae": 71.72933197021484,
+      "action_tv": 10.914710749561587,
+      "resource_proxy_mean": 0.39320453551287454,
+      "target_mae": {
+        "Tair": 0.5459737777709961,
+        "Rhair": 1.5223990678787231,
+        "CO2air": 28.420969009399414
+      },
+      "figure_path": "results\\control\\figures\\current_hybrid_transformer_gradient_mpc_economic_sweep_top3_w015_start00096_96steps_closed_loop.png",
+      "output_tag": "economic_sweep_top3_w015_start00096_96steps"
+    },
+    {
+      "predictor": "itransformer_co2_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 96,
+      "steps": 96,
+      "objective_mean": 0.1220989595943441,
+      "control_delta_mae": 16.526464462280273,
+      "action_tv": 3.752473552711308,
+      "resource_proxy_mean": 0.3586145274651547,
+      "target_mae": {
+        "Tair": 0.7642255425453186,
+        "Rhair": 0.791264533996582,
+        "CO2air": 10.538707733154297
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_residual_gradient_mpc_economic_sweep_top3_w015_start00096_96steps_closed_loop.png",
+      "output_tag": "economic_sweep_top3_w015_start00096_96steps"
+    },
+    {
+      "predictor": "transformer_forecaster",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 96,
+      "steps": 96,
+      "objective_mean": 0.10880561650265008,
+      "control_delta_mae": 65.86920928955078,
+      "action_tv": 7.714728367514908,
+      "resource_proxy_mean": 0.362932235468179,
+      "target_mae": {
+        "Tair": 0.3888935148715973,
+        "Rhair": 2.3060481548309326,
+        "CO2air": 28.519620895385742
+      },
+      "figure_path": "results\\control\\figures\\transformer_forecaster_gradient_mpc_economic_sweep_top3_w015_start00096_96steps_closed_loop.png",
+      "output_tag": "economic_sweep_top3_w015_start00096_96steps"
+    },
+    {
+      "predictor": "current_hybrid_transformer",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 192,
+      "steps": 96,
+      "objective_mean": 0.08754600243022044,
+      "control_delta_mae": 20.175920486450195,
+      "action_tv": 0.8658230433550974,
+      "resource_proxy_mean": 0.2316546217383196,
+      "target_mae": {
+        "Tair": 0.5368396639823914,
+        "Rhair": 1.0147289037704468,
+        "CO2air": 60.822444915771484
+      },
+      "figure_path": "results\\control\\figures\\current_hybrid_transformer_gradient_mpc_economic_sweep_top3_w015_start00192_96steps_closed_loop.png",
+      "output_tag": "economic_sweep_top3_w015_start00192_96steps"
+    },
+    {
+      "predictor": "itransformer_co2_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 192,
+      "steps": 96,
+      "objective_mean": 0.06622380825380485,
+      "control_delta_mae": 14.895628929138184,
+      "action_tv": 2.311125749256462,
+      "resource_proxy_mean": 0.20398363277005652,
+      "target_mae": {
+        "Tair": 0.20561425387859344,
+        "Rhair": 0.9854834079742432,
+        "CO2air": 14.10858154296875
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_residual_gradient_mpc_economic_sweep_top3_w015_start00192_96steps_closed_loop.png",
+      "output_tag": "economic_sweep_top3_w015_start00192_96steps"
+    },
+    {
+      "predictor": "transformer_forecaster",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 192,
+      "steps": 96,
+      "objective_mean": 0.07325703705040117,
+      "control_delta_mae": 7.524751663208008,
+      "action_tv": 0.5074641522757398,
+      "resource_proxy_mean": 0.21243114241709313,
+      "target_mae": {
+        "Tair": 0.11629226058721542,
+        "Rhair": 1.51801335811615,
+        "CO2air": 37.71310806274414
+      },
+      "figure_path": "results\\control\\figures\\transformer_forecaster_gradient_mpc_economic_sweep_top3_w015_start00192_96steps_closed_loop.png",
+      "output_tag": "economic_sweep_top3_w015_start00192_96steps"
+    }
+  ]
+}

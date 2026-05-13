@@ -1,0 +1,73 @@
+{
+  "predictors": [
+    "current_hybrid_transformer",
+    "itransformer_co2_residual"
+  ],
+  "controllers": [
+    "gradient_mpc"
+  ],
+  "compartment": "Reference",
+  "reference_mode": "trajectory",
+  "rollout_mode": "surrogate",
+  "start_indices": [
+    0
+  ],
+  "steps": 24,
+  "target_cols": [
+    "Tair",
+    "Rhair",
+    "CO2air"
+  ],
+  "economic_profile_name": "economic_probe_w015",
+  "economic_resource_weight": 0.15,
+  "economic_action_weights": {
+    "t_heat_sp": 1.0,
+    "co2_sp": 1.0,
+    "assim_sp": 1.0,
+    "window_pos_lee_sp": 0.35,
+    "t_vent_sp": 0.25,
+    "water_sup_intervals_sp_min": 0.2,
+    "scr_enrg_sp": 0.15,
+    "scr_blck_sp": 0.1
+  },
+  "records": [
+    {
+      "predictor": "current_hybrid_transformer",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 24,
+      "objective_mean": 0.0957483636836211,
+      "control_delta_mae": 8.003037452697754,
+      "action_tv": 3.7701903469860554,
+      "resource_proxy_mean": 0.3323723574479421,
+      "target_mae": {
+        "Tair": 0.3104090690612793,
+        "Rhair": 1.3083308935165405,
+        "CO2air": 12.379745483398438
+      },
+      "figure_path": "results\\control\\figures\\current_hybrid_transformer_gradient_mpc_economic_probe_w015_start00000_24steps_closed_loop.png",
+      "output_tag": "economic_probe_w015_start00000_24steps"
+    },
+    {
+      "predictor": "itransformer_co2_residual",
+      "controller": "gradient_mpc",
+      "compartment": "Reference",
+      "reference_mode": "trajectory",
+      "start_idx": 0,
+      "steps": 24,
+      "objective_mean": 0.07631079542140166,
+      "control_delta_mae": 9.72301197052002,
+      "action_tv": 3.3085109579066434,
+      "resource_proxy_mean": 0.356663982073466,
+      "target_mae": {
+        "Tair": 0.21344511210918427,
+        "Rhair": 0.902012825012207,
+        "CO2air": 4.89873743057251
+      },
+      "figure_path": "results\\control\\figures\\itransformer_co2_residual_gradient_mpc_economic_probe_w015_start00000_24steps_closed_loop.png",
+      "output_tag": "economic_probe_w015_start00000_24steps"
+    }
+  ]
+}
