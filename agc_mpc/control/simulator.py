@@ -32,6 +32,7 @@ class RolloutSummary:
     target_mae: Dict[str, float]
     figure_path: str
     trace_path: str = ""
+    summary_path: str = ""
 
 
 @dataclass
@@ -302,10 +303,13 @@ class AGCClosedLoopSimulator:
 
         target_mae = np.mean(np.asarray(stage_errors, dtype=np.float32), axis=0)
         suffix = self._output_suffix()
-        figure_path = self._save_figure(
-            trace,
-            Path(self.cfg.control_figures_dir) / f"{predictor_name}_{controller.name}{suffix}_closed_loop.png",
-        )
+        if getattr(self.cfg, "control_save_rollout_figures", True):
+            figure_path = self._save_figure(
+                trace,
+                Path(self.cfg.control_figures_dir) / f"{predictor_name}_{controller.name}{suffix}_closed_loop.png",
+            )
+        else:
+            figure_path = Path("")
         trace_path = Path(self.cfg.control_summaries_dir) / f"{predictor_name}_{controller.name}{suffix}_trace.json"
         trace_payload = asdict(trace)
         trace_payload["predictor"] = predictor_name
@@ -318,6 +322,8 @@ class AGCClosedLoopSimulator:
         trace_payload["control_cols"] = list(self.u_cols)
         trace_path.parent.mkdir(parents=True, exist_ok=True)
         trace_path.write_text(json.dumps(trace_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+        summary_path = Path(self.cfg.control_summaries_dir) / f"{predictor_name}_{controller.name}{suffix}_summary.json"
 
         summary = RolloutSummary(
             predictor=predictor_name,
@@ -333,9 +339,9 @@ class AGCClosedLoopSimulator:
             target_mae={name: float(target_mae[idx]) for idx, name in enumerate(self.y_cols)},
             figure_path=str(figure_path),
             trace_path=str(trace_path),
+            summary_path=str(summary_path),
         )
 
-        summary_path = Path(self.cfg.control_summaries_dir) / f"{predictor_name}_{controller.name}{suffix}_summary.json"
         summary_path.parent.mkdir(parents=True, exist_ok=True)
         summary_path.write_text(json.dumps(asdict(summary), indent=2, ensure_ascii=False), encoding="utf-8")
         return summary
