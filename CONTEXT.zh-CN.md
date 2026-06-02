@@ -2150,3 +2150,494 @@ Sensitivity 解读：
 
 - 这两张图比较的是闭环 tracking 和估计资源成本。
 - 不能用来声称真实整季 net-profit 提升，因为当前没有 crop/yield/quality 动态模型。
+
+## 38. 已计划的经济 baseline 扩展：全时段锚定 MPC 与 AGC 资源基线
+
+状态：已在 `2026-05-13` 计划。建议作为新对话中的下一轮 Plan 模式任务执行。
+
+不要重新开启大模型搜索。下一步应该把已经选定的经济 / 资源 MPC 验证，扩展成更有说服力的 baseline 对比。
+
+核心论文问题：
+
+- 加入经济 / 资源项之后，已选控制器能不能在更长时间范围内降低估计资源成本，同时把温室气候控制退化控制在可接受范围？
+- 我们的反事实 MPC 资源消耗估计，和真实 AGC `Reference` / AI 队伍在同一时间段内的真实资源消耗相比，处在什么水平？
+- 只要还没有作物 / 产量 / 品质动态模型，就仍然不能声称真实整季商业净收益提升。
+
+推荐三阶段计划：
+
+### 阶段 1：全时段锚定闭环 MPC + 资源成本对比
+
+目的：
+
+- 不再只依赖少数几个 `96` 步片段。
+- 用反复滚动优化覆盖测试期。
+- 让资源成本结论不那么依赖手动挑选的起点。
+
+实验协议：
+
+- 每个决策点都用真实观测到的 AGC 状态 / 历史作为锚点。
+- 每个锚点执行：
+  - 从真实数据构造 `x_past`
+  - MPC 优化未来 `96` 步
+  - 只执行前 `1` 步或前 `24` 步
+  - 锚点向前移动对应执行长度
+  - 用下一段真实状态 / 历史重新锚定
+- 一直重复，直到覆盖选定测试时间段。
+- 推荐初始执行长度：
+  - 主实验：`24` 步，因为计算量可控，并且和当前 `96` 步验证尺度一致
+  - 可选严格检查：在较短片段上执行 `1` 步滚动，如果算力允许再做
+
+必做控制器组合：
+
+- `current_hybrid_transformer`，`w=0.00`
+- `current_hybrid_transformer`，`w=0.05`
+- `itransformer_co2_residual`，`w=0.00`
+- `itransformer_co2_residual`，`w=0.05`
+
+时间允许时的可选敏感性组合：
+
+- `current_hybrid_transformer`，`w=0.02` 和 `w=0.08`
+- `itransformer_co2_residual`，`w=0.02` 和 `w=0.08`
+
+不要再加入新预测模型，除非论文论证明确需要。当前已选模型故事已经足够：
+
+- `current_hybrid_transformer`：均衡模型，整体 tracking baseline 最强
+- `itransformer_co2_residual`：CO2 专项模型，CO2-aware tracker 最强
+
+建议实现：
+
+- 新增 `agc_mpc/run_full_period_anchored_resource_mpc.py`。
+- 复用 `AGCClosedLoopSimulator`、`PredictiveControlAdapter`、已选 checkpoint 和当前资源成本估计器。
+- 如果现有 simulator 更适合固定 starts，就只加一个薄的调度器生成锚点和执行窗口，不要重写控制器内部。
+- 保存两类结果：
+  - 每个执行片段一行
+  - 每个控制器组合一个聚合结果
+
+建议输出：
+
+- `results/control/summaries/full_period_anchored_resource_mpc_segments.csv`
+- `results/control/summaries/full_period_anchored_resource_mpc_summary.csv`
+- `results/control/summaries/full_period_anchored_resource_mpc_summary.md`
+- `results/control/figures/full_period_anchored_resource_mpc_tradeoff.png`
+- `results/control/figures/full_period_anchored_resource_mpc_cumulative_cost.png`
+
+必须报告的控制指标：
+
+- objective
+- `Tair` MAE
+- `Rhair` MAE
+- `CO2air` MAE
+- 如果已有边界信息，可选报告违反边界比例
+
+必须报告的估计资源指标：
+
+- 估计加热用量 / 加热成本
+- 估计电力用量 / 电力成本
+- 估计 CO2 用量 / CO2 成本
+- 估计灌溉量
+- 估计总资源成本
+
+必须报告的权衡指标：
+
+- 相对 `w=0.00` 的资源成本变化
+- 相对 `w=0.00` 的 CO2 误差变化
+- 相对 `w=0.00` 的 objective 变化
+- 覆盖测试期内的累计估计资源成本
+
+如果结果一致，可以声明：
+
+- 经济 / 资源感知 MPC 在更长的锚定测试期仿真中带来了可测量的估计资源成本下降。
+- 这种下降伴随明确的气候控制代价。
+- 如果 `w=0.05` 能降低估计成本，同时避免 `w=0.08` 的更强 CO2 退化，那么 `w=0.05` 可以作为主要折中设置。
+
+禁止声明：
+
+- 仅凭阶段 1，不能声明真实净收益提升。
+- 仅凭阶段 1，不能声明产量或品质提升。
+
+### 阶段 2：AGC Reference / Automatoes / AICU 同时间段资源 baseline 对比
+
+目的：
+
+- 让最终 baseline 对比更接近温室控制论文和 AGC 比赛实践。
+- 在同一时间窗口内，把我们的反事实 MPC 资源估计，和真实 AGC 资源记录进行对比。
+
+baseline 集合：
+
+- 必做：
+  - AGC `Reference`
+  - AGC `Automatoes`
+  - AGC `AICU`
+- 可选：
+  - `Digilog`
+  - `IUACAAS`
+  - `TheAutomators`
+
+对比规则：
+
+- 使用和阶段 1 全时段锚定 MPC 相同的日期 / 时间索引。
+- 除非建立了作物 / 产量 / 品质动态模型，否则只比较资源维度。
+- 必须清楚标注：
+  - AGC baselines：真实执行后的真实资源消耗和真实产量结果
+  - 我们的 MPC：反事实锚定闭环仿真，资源消耗来自估计器
+
+建议实现：
+
+- 新增或扩展 `agc_mpc/analyze_agc_same_period_resource_baselines.py`。
+- 输入：
+  - AGC 数据集根目录
+  - 阶段 1 选定的时间窗口
+  - compartment / team 列表
+  - 阶段 1 的 MPC summary 文件
+- 输出：
+  - AGC 同期真实资源总量
+  - MPC 同期估计资源总量
+  - 归一化相对对比表
+
+建议输出：
+
+- `results/control/summaries/agc_same_period_resource_baselines.csv`
+- `results/control/summaries/agc_same_period_resource_baselines.md`
+- `results/control/figures/agc_same_period_resource_baselines.png`
+- `results/control/figures/agc_same_period_resource_cost_vs_control.png`
+
+AGC 真实 baseline 必须报告：
+
+- 加热消耗
+- 高价 / 低价电力消耗
+- CO2 消耗
+- 灌溉量
+- 按 AGC 官方规则估计的资源成本
+- 真实产量和净收益可以作为背景信息展示，但不能和我们的估计结果直接混排成同一排名
+
+我们的 MPC 必须报告：
+
+- 估计 heat / electricity / CO2 / irrigation
+- 估计资源成本
+- 阶段 1 的 tracking 指标
+
+推荐表格措辞：
+
+- `Reference`：真实人工专家温室执行
+- `Automatoes` / `AICU`：真实 AGC AI 队伍温室执行
+- `Our MPC`：反事实锚定闭环仿真，资源消耗为估计值
+
+如果结果合理，可以声明：
+
+- 本文框架可以在匹配时间窗口内，把已选 MPC 控制器与真实 AGC baseline 做资源成本维度的对比。
+- 这提供了一个不夸大产量 / 品质影响的 baseline 对比方式。
+
+禁止声明：
+
+- 不能按真实 net profit 声称我们的 MPC 超过 AGC 队伍。
+- 不能把 AGC 的真实利润和我们的“资源成本估计”混成同一种经济排名。
+
+### 阶段 3：完整净收益模型只作为未来工作
+
+目的：
+
+- 给出通向完整经济控制论文的路线，但不把当前毕业论文范围撑得过大。
+
+为什么只能作为未来工作：
+
+- 真实净收益不只需要资源成本，还需要产量、品质、采收时间和价格响应。
+- 当前 MPC rollout 没有模拟作物生长、番茄产量、糖度 / 品质，也没有模拟不同控制动作对售价和产量的反事实影响。
+
+未来需要的模型组件：
+
+- 作物生长 / 生物量 / 产量动态模型
+- 采收时间和 Class A / Class B 产量模型
+- 品质或 Brix 预测模型
+- 对 heat、electricity、CO2、irrigation 更强验证的资源模型
+- 使用 AGC 官方收入和成本规则的经济计算器
+- 对估计产量和品质的不确定性分析
+
+未来完整对比对象：
+
+- 真实 AGC `Reference` 和 AI 队伍
+- tracking-only MPC
+- resource-aware MPC
+- 带作物 / 产量模型的 economic MPC
+- 可选简单规则控制器
+
+当前论文允许写：
+
+- “本文在 AGC 校准的经济规则下评估资源成本与气候控制之间的权衡。”
+- “完整净收益对比需要经过验证的作物 / 产量 / 品质响应模型，因此作为未来工作。”
+
+当前论文禁止写：
+
+- “本文控制器提高了真实净收益。”
+- “本文控制器提高了产量或番茄品质。”
+- “本文控制器在经济上超过 AGC 队伍。”
+
+下一轮 Plan 模式推荐执行顺序：
+
+1. 阅读 `CONTEXT.md`、`CONTEXT.zh-CN.md`、`ECONOMIC_RESOURCE_MPC.md`、`ECONOMIC_RESOURCE_MPC.zh-CN.md`。
+2. 检查已有资源估计器输出和当前真实资源敏感性结果。
+3. 先实现阶段 1 的全时段锚定 runner，执行长度先用 `24`。
+4. 跑四个必做控制器组合。
+5. 分析并画出阶段 1 结果。
+6. 实现阶段 2 的 AGC 同期 baseline 分析器。
+7. 生成 AGC-vs-MPC 匹配时间窗口资源对比表和图。
+8. 写一段面向论文的结论说明，明确区分资源成本对比和真实净收益声明。
+9. 更新 `CONTEXT.md` 和 `CONTEXT.zh-CN.md`。
+10. 如果用户要求，按小批量 commit / push。
+
+## 39. 2026-05-13 全时段锚定资源 MPC 实现与 smoke check
+
+已经实现第 38 节所需工具，并完成两段 smoke 验证。
+
+新增脚本：
+
+- `agc_mpc/run_full_period_anchored_resource_mpc.py`
+  - 生成非重叠锚点 `0, 24, 48, ...`。
+  - 复用已选 checkpoint、`AGCClosedLoopSimulator`、`GradientMPCController`、`PredictiveControlAdapter` 和已经校准的 `agc_resource_cost_model.json`。
+  - 输出每个执行片段一行，以及每个 `(predictor, resource_weight)` 一行聚合结果。
+  - 保留片段 trace / summary；长时运行默认不生成每个片段的单独图，避免产生成千上百张图。
+- `agc_mpc/analyze_agc_same_period_resource_baselines.py`
+  - 读取阶段 1 的 segment rows。
+  - 用阶段 1 的时间窗口汇总 `Reference`、`Automatoes`、`AICU` 的真实 AGC `Resources.csv` 记录。
+  - 对比 AGC 真实执行资源消耗和 MPC 反事实估计资源消耗。
+
+Simulator / config 更新：
+
+- 新增 `AGCConfig.control_save_rollout_figures`，默认值为 `True`。
+- `AGCClosedLoopSimulator` 会遵守该开关，因此长时间锚定运行可以跳过单个 rollout 图。
+
+已执行 smoke 命令：
+
+```powershell
+C:\Users\wokis\.conda\envs\strawberry_env\python.exe agc_mpc\run_full_period_anchored_resource_mpc.py --max-segments 2
+C:\Users\wokis\.conda\envs\strawberry_env\python.exe agc_mpc\analyze_agc_same_period_resource_baselines.py --segments-csv agc_mpc\results\control\summaries\full_period_anchored_resource_mpc_segments_smoke_2segments_3eb7671f.csv --prefix agc_same_period_resource_baselines_smoke_2segments_3eb7671f
+```
+
+Smoke 输出：
+
+- `results/control/summaries/full_period_anchored_resource_mpc_segments_smoke_2segments_3eb7671f.csv`
+- `results/control/summaries/full_period_anchored_resource_mpc_summary_smoke_2segments_3eb7671f.csv`
+- `results/control/summaries/full_period_anchored_resource_mpc_summary_smoke_2segments_3eb7671f.md`
+- `results/control/figures/full_period_anchored_resource_mpc_tradeoff_smoke_2segments_3eb7671f.png`
+- `results/control/figures/full_period_anchored_resource_mpc_cumulative_cost_smoke_2segments_3eb7671f.png`
+- `results/control/summaries/agc_same_period_resource_baselines_smoke_2segments_3eb7671f.csv`
+- `results/control/summaries/agc_same_period_resource_baselines_smoke_2segments_3eb7671f.md`
+- `results/control/figures/agc_same_period_resource_baselines_smoke_2segments_3eb7671f.png`
+- `results/control/figures/agc_same_period_resource_baselines_smoke_2segments_3eb7671f_cost_vs_control.png`
+
+Smoke 验证：
+
+- 阶段 1 segment rows：`8`。
+- 阶段 1 summary rows：`4`。
+- 阶段 2 baseline rows：`7`。
+- 必要的 segment 和 baseline 列都存在。
+- 聚合资源成本与 segment 行求和一致，最大绝对误差约 `1e-16`。
+- Smoke 时间窗口：`2020-05-06 06:25` 到 `2020-05-06 10:20`。
+
+Smoke 结果摘要：
+
+- `current_hybrid_transformer`，`w=0.05`：估计资源成本相对同模型 `w=0.00` smoke baseline 下降 `15.8%`。
+- `itransformer_co2_residual`，`w=0.05`：估计资源成本相对同模型 `w=0.00` smoke baseline 下降 `10.4%`。
+- 这些只是 smoke 结果，不能作为最终论文结论。
+
+计算量备注：
+
+- 两段 smoke 共执行 `8` 个锚定 24-step rollout，耗时约 `6 min 52 s`。
+- 完整计划是 `283` 个 segment、`4` 个控制器组合，也就是 `1132` 个锚定 24-step rollout。
+- 按 smoke 吞吐估计，完整前台运行很可能是多小时 / 过夜任务。
+
+有计算窗口时的正式完整运行命令：
+
+```powershell
+C:\Users\wokis\.conda\envs\strawberry_env\python.exe agc_mpc\run_full_period_anchored_resource_mpc.py
+C:\Users\wokis\.conda\envs\strawberry_env\python.exe agc_mpc\analyze_agc_same_period_resource_baselines.py
+```
+
+声明边界不变：
+
+- 可以声明：匹配时间窗口下的资源成本与气候控制权衡对比。
+- 不能声明：真实净收益提升、产量提升、品质提升，或经济上超过 AGC 队伍。
+
+## 40. 2026-05-14 全时段锚定资源 MPC 全量实验完成
+
+已经完成第 38 节的过夜全量锚定实验。
+
+运行日志：
+
+- 通过 PowerShell 后台启动器在 `2026-05-13 22:40` 启动。
+- 输出大约在 `2026-05-14 14:07` 完成。
+- 近似 wall time：`15 h 27 min`。
+- 日志文件：
+  - `results/control/summaries/full_period_anchored_resource_mpc_fullrun_20260513_224001.out.log`
+  - `results/control/summaries/full_period_anchored_resource_mpc_fullrun_20260513_224001.err.log`
+- stderr 只有 PyTorch warnings，没有观察到致命错误。
+
+全量实验协议：
+
+- 隔间：`Reference`
+- 锚定方式：每个片段都用真实 AGC test history 重新锚定
+- 执行长度：`24` steps
+- 片段起点：`0, 24, 48, ...`
+- 每个控制器组合的片段数：`283`
+- 总 segment rows：`1132`
+- 覆盖时间窗口：`2020-05-06 06:25` 到 `2020-05-29 20:20`
+- 控制器组合：
+  - `current_hybrid_transformer`，`w=0.00`
+  - `current_hybrid_transformer`，`w=0.05`
+  - `itransformer_co2_residual`，`w=0.00`
+  - `itransformer_co2_residual`，`w=0.05`
+
+生成的正式输出：
+
+- `results/control/summaries/full_period_anchored_resource_mpc_segments.csv`
+- `results/control/summaries/full_period_anchored_resource_mpc_summary.csv`
+- `results/control/summaries/full_period_anchored_resource_mpc_summary.md`
+- `results/control/summaries/full_period_anchored_resource_mpc_suite.json`
+- `results/control/figures/full_period_anchored_resource_mpc_tradeoff.png`
+- `results/control/figures/full_period_anchored_resource_mpc_cumulative_cost.png`
+- `results/control/summaries/agc_same_period_resource_baselines.csv`
+- `results/control/summaries/agc_same_period_resource_baselines.md`
+- `results/control/figures/agc_same_period_resource_baselines.png`
+- `results/control/figures/agc_same_period_resource_cost_vs_control.png`
+
+验证检查：
+
+- `full_period_anchored_resource_mpc_segments.csv`：`1132` 行。
+- `full_period_anchored_resource_mpc_summary.csv`：`4` 行。
+- `agc_same_period_resource_baselines.csv`：`7` 行。
+- 每个控制器组合正好有 `283` 个片段。
+- segment 求和与 summary 聚合的最大绝对误差约 `1.26e-14`。
+
+全时段锚定 MPC 结果：
+
+| predictor | w | objective | CO2 MAE | estimated resource cost | cost vs w=0 | CO2 vs w=0 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `current_hybrid_transformer` | `0.00` | `0.0632` | `27.659` | `0.3455 EUR/m2` | `0.0%` | `0.0%` |
+| `current_hybrid_transformer` | `0.05` | `0.0794` | `27.811` | `0.3215 EUR/m2` | `-6.9%` | `+0.6%` |
+| `itransformer_co2_residual` | `0.00` | `0.0710` | `15.112` | `0.3423 EUR/m2` | `0.0%` | `0.0%` |
+| `itransformer_co2_residual` | `0.05` | `0.0897` | `15.706` | `0.3133 EUR/m2` | `-8.5%` | `+3.9%` |
+
+同时间段 AGC 资源 baseline 对比：
+
+| case | source | estimated / real resource cost | vs real Reference | CO2 MAE |
+| --- | --- | ---: | ---: | ---: |
+| `Reference` | 真实 AGC 执行资源 | `0.3425 EUR/m2` | `0.0%` | n/a |
+| `Automatoes` | 真实 AGC 执行资源 | `0.3674 EUR/m2` | `+7.3%` | n/a |
+| `AICU` | 真实 AGC 执行资源 | `0.2579 EUR/m2` | `-24.7%` | n/a |
+| `current_hybrid_transformer`, `w=0.00` | MPC 反事实估计资源 | `0.3455 EUR/m2` | `+0.9%` | `27.659` |
+| `current_hybrid_transformer`, `w=0.05` | MPC 反事实估计资源 | `0.3215 EUR/m2` | `-6.1%` | `27.811` |
+| `itransformer_co2_residual`, `w=0.00` | MPC 反事实估计资源 | `0.3423 EUR/m2` | `-0.1%` | `15.112` |
+| `itransformer_co2_residual`, `w=0.05` | MPC 反事实估计资源 | `0.3133 EUR/m2` | `-8.5%` | `15.706` |
+
+解读：
+
+- 全时段锚定结果与此前短 probe 和 multi-start 资源检查一致：`w=0.05` 会降低两个已选 MPC 控制器的估计资源成本。
+- `current_hybrid_transformer` 获得 `6.9%` 的估计成本下降，同时相对自身 `w=0.00` 锚定 baseline 只有 `0.6%` 的 CO2 MAE 增加。
+- `itransformer_co2_residual` 获得 `8.5%` 的估计成本下降，但 CO2 MAE 增加更明显，为 `3.9%`。
+- `itransformer_co2_residual` 在这次全时段锚定对比中仍然是更好的 CO2 tracking 控制器。
+- 同期 AGC 表应该写作资源成本参照，而不是真实经济排名，因为 AGC 行是真实执行资源，MPC 行是没有 crop/yield/quality 动态的反事实估计。
+
+当前允许的论文声明：
+
+- 已选 MPC 控制器可以在匹配时间窗口下与真实 AGC baseline 做资源成本维度对比。
+- 低资源权重 `w=0.05` 在长时间锚定测试窗口中带来了可测量的估计资源成本下降，同时伴随明确的 CO2 tracking 权衡。
+
+当前禁止的论文声明：
+
+- 不能声明真实商业净收益提升。
+- 不能声明产量或品质提升。
+- 不能声明 MPC 控制器在经济上超过 AGC 队伍。
+
+## 41. 2026-05-19 AGC 全队伍同期资源 baseline 完成
+
+已经完成“方法一”：不再运行新的 MPC 模型，直接计算 AGC 全部队伍在同一时间窗口内的真实资源 baseline。
+
+新增脚本：
+
+- `agc_mpc/analyze_agc_same_period_all_teams_resource_baselines.py`
+
+目的：
+
+- 直接计算 6 个 AGC 队伍在 full-period anchored MPC 同一时间窗口内的真实资源消耗。
+- 增加真实队伍单位产量资源强度。
+- 增加真实队伍同窗口产量和近似 variable-cost 经济背景。
+- MPC 行只作为反事实估计资源参照，不进入真实经济排名。
+
+生成输出：
+
+- `results/control/summaries/agc_same_period_all_teams_resource_baselines.csv`
+- `results/control/summaries/agc_same_period_all_teams_resource_baselines.md`
+- `results/control/summaries/agc_same_period_all_teams_resource_intensity.csv`
+- `results/control/summaries/agc_same_period_all_teams_economic_context.csv`
+- `results/control/summaries/agc_same_period_all_teams_economic_context.md`
+- `results/control/figures/agc_same_period_all_teams_resource_baselines.png`
+- `results/control/figures/agc_same_period_all_teams_resource_intensity.png`
+- `results/control/figures/agc_same_period_all_teams_economic_context.png`
+
+同期资源成本排序：
+
+| case | source | resource cost | vs Reference | vs AICU |
+| --- | --- | ---: | ---: | ---: |
+| `IUACAAS` | real AGC | `0.1991 EUR/m2` | `-41.9%` | `-22.8%` |
+| `AICU` | real AGC | `0.2579 EUR/m2` | `-24.7%` | `0.0%` |
+| `itransformer_co2_residual`, `w=0.05` | MPC estimated | `0.3133 EUR/m2` | `-8.5%` | `+21.5%` |
+| `current_hybrid_transformer`, `w=0.05` | MPC estimated | `0.3215 EUR/m2` | `-6.1%` | `+24.7%` |
+| `Reference` | real AGC | `0.3425 EUR/m2` | `0.0%` | `+32.8%` |
+| `Automatoes` | real AGC | `0.3674 EUR/m2` | `+7.3%` | `+42.5%` |
+| `TheAutomators` | real AGC | `0.3654 EUR/m2` | `+6.7%` | `+41.7%` |
+| `Digilog` | real AGC | `0.4335 EUR/m2` | `+26.6%` | `+68.1%` |
+
+真实队伍同期经济背景：
+
+| compartment | income | variable cost excl fixed | margin excl fixed | tomato kg/m2 |
+| --- | ---: | ---: | ---: | ---: |
+| `TheAutomators` | `10.946` | `1.467` | `9.479` | `5.086` |
+| `AICU` | `10.337` | `1.176` | `9.161` | `5.010` |
+| `Reference` | `10.224` | `1.975` | `8.249` | `4.960` |
+| `Digilog` | `9.728` | `1.494` | `8.234` | `5.073` |
+| `Automatoes` | `9.392` | `1.561` | `7.831` | `5.107` |
+| `IUACAAS` | `7.931` | `1.178` | `6.753` | `4.067` |
+
+解读：
+
+- 全队伍表修正了此前简化表述：在原本挑选的三个 baseline 队伍中，`AICU` 的同期资源成本最低；但扩展到 6 个队伍后，`IUACAAS` 的记录资源成本更低。
+- 不能因为 `IUACAAS` 资源成本最低就把它写成最优经济 baseline，因为它同窗口产量和收入明显更低。
+- 如果同时考虑资源和产量背景，`AICU` 仍然是更强的低资源真实队伍参照。
+- 我们最好的 MPC 估计资源结果低于真实 `Reference`，但仍高于真实 `AICU` 和 `IUACAAS`。
+- 这支持更稳妥的论文表述：本文 MPC 相比人工专家 `Reference` 降低了估计资源成本，但没有达到最省资源 AGC 队伍水平；没有作物 / 产量 / 品质动态模型时不能做真实经济排名。
+
+边界：
+
+- 真实 AGC 队伍经济背景只适用于真实记录队伍。
+- MPC 行仍然只是反事实资源估计。
+- 不要把 MPC 放入真实队伍的 production / margin 排名。
+
+## 42. 2026-05-19 资源 baseline 汇报图
+
+已经为全时段锚定 MPC 和 AGC 全队伍同期资源 baseline 结果生成汇报图。
+
+新增脚本：
+
+- `agc_mpc/plot_resource_baseline_report_figures.py`
+
+生成图：
+
+- `results/control/figures/resource_report_fig1_mpc_tradeoff.png`
+  - 展示 full-period anchored MPC 在 `w=0.05` 下的估计资源成本下降。
+  - 同时展示对应的 CO2 tracking 代价。
+- `results/control/figures/resource_report_fig2_all_team_resource_baseline.png`
+  - 按同期资源成本排序展示所有真实 AGC 队伍，以及两个 `w=0.05` MPC 估计资源结果。
+  - 图中加入真实 `Reference` 和 `AICU` 参考线。
+- `results/control/figures/resource_report_fig3_real_team_resource_intensity.png`
+  - 展示真实 AGC 队伍单位 kg 番茄资源成本。
+  - 同时展示 heat、CO2、irrigation 的单位 kg 番茄物理资源强度。
+- `results/control/figures/resource_report_fig4_real_team_economic_context.png`
+  - 展示真实 AGC 同窗口 income、剔除 fixed plant cost 的 variable cost、以及剔除 fixed plant cost 的 margin。
+  - 因为当前没有 crop/yield/quality 动态模型，MPC 不进入这张真实经济背景图。
+- `results/control/figures/resource_report_fig5_summary_dashboard.png`
+  - 单页 dashboard，同时展示 MPC 成本下降、AGC 资源 baseline、CO2 权衡和真实队伍经济背景。
+
+汇报提醒：
+
+- 先用 Figure 5 作为总览页。
+- 再用 Figures 1-4 分层解释各部分结果。
+- 必须保留边界：资源成本对比成立；MPC 不能进入真实 net-profit 排名。

@@ -2204,3 +2204,487 @@ Interpretation reminder:
 
 - These figures compare closed-loop tracking and estimated resource cost.
 - They do not claim true season-long net-profit improvement because crop/yield/quality dynamics are not modeled.
+
+## 38. Planned Economic Baseline Extension: Full-Period Anchored MPC And AGC Resource Baselines
+
+Status: planned on `2026-05-13`. This is the recommended next Plan-mode task for a new conversation.
+
+Do not restart broad model discovery. The next work should extend the already selected economic/resource MPC validation into a stronger baseline-comparison story.
+
+Core thesis question:
+
+- After adding the economic/resource term to MPC, can the selected controllers reduce estimated resource cost over a longer period while keeping climate-control degradation acceptable?
+- How does this estimated counterfactual resource use compare with real AGC Reference / AI-team resource consumption over the same time window?
+- The project still must not claim true season-long commercial net-profit improvement unless a crop/yield/quality dynamic model is added and validated.
+
+Recommended three-stage plan:
+
+### Stage 1: Full-Period Anchored Closed-Loop MPC With Resource-Cost Comparison
+
+Purpose:
+
+- Move beyond isolated 96-step rollouts.
+- Cover the test period with repeated receding-horizon decisions.
+- Make the resource-cost result less dependent on a few manually selected starts.
+
+Protocol:
+
+- Use true observed AGC state/history as the anchor at each decision point.
+- At each anchor:
+  - build `x_past` from real data
+  - optimize future `96` steps with MPC
+  - execute only the first `1` step or the first `24` steps
+  - move the anchor forward by the execution length
+  - re-anchor with the real next state/history
+- Continue until the selected test period is covered.
+- Recommended initial execution length:
+  - primary: `24` steps, because it is computationally feasible and matches the current 96-step validation scale
+  - optional strict check: `1` step on a shorter subset, if compute time permits
+
+Required controller cases:
+
+- `current_hybrid_transformer`, `w=0.00`
+- `current_hybrid_transformer`, `w=0.05`
+- `itransformer_co2_residual`, `w=0.00`
+- `itransformer_co2_residual`, `w=0.05`
+
+Optional sensitivity cases only if time allows:
+
+- `current_hybrid_transformer`, `w=0.02` and `w=0.08`
+- `itransformer_co2_residual`, `w=0.02` and `w=0.08`
+
+Do not add new forecasting models unless there is a clear thesis reason. The selected-model story is already:
+
+- `current_hybrid_transformer`: balanced model and strongest overall tracking baseline
+- `itransformer_co2_residual`: CO2-specialist model and strongest CO2-aware tracker
+
+Proposed implementation:
+
+- Add `agc_mpc/run_full_period_anchored_resource_mpc.py`.
+- Reuse `AGCClosedLoopSimulator`, `PredictiveControlAdapter`, selected checkpoints, and current resource-cost estimator.
+- If the existing simulator assumes independent fixed starts, add a thin scheduler that generates anchor starts and execution windows rather than rewriting controller internals.
+- Save one row per executed segment and one aggregate row per controller case.
+
+Proposed outputs:
+
+- `results/control/summaries/full_period_anchored_resource_mpc_segments.csv`
+- `results/control/summaries/full_period_anchored_resource_mpc_summary.csv`
+- `results/control/summaries/full_period_anchored_resource_mpc_summary.md`
+- `results/control/figures/full_period_anchored_resource_mpc_tradeoff.png`
+- `results/control/figures/full_period_anchored_resource_mpc_cumulative_cost.png`
+
+Required metrics:
+
+- climate-control metrics:
+  - objective
+  - `Tair` MAE
+  - `Rhair` MAE
+  - `CO2air` MAE
+  - optional violation rates if bounds are available
+- estimated resource metrics:
+  - estimated heat use / heat cost
+  - estimated electricity use / electricity cost
+  - estimated CO2 use / CO2 cost
+  - estimated irrigation
+  - estimated total resource cost
+- trade-off metrics:
+  - resource-cost change versus `w=0.00`
+  - CO2 MAE change versus `w=0.00`
+  - objective change versus `w=0.00`
+  - cumulative estimated resource cost across the covered test period
+
+Expected claim if results are consistent:
+
+- The economic/resource-aware MPC setting produces a measurable resource-cost reduction over a longer anchored test-period simulation.
+- The reduction comes with an explicit climate-control trade-off.
+- `w=0.05` can be defended as the main balanced setting if it reduces estimated cost while avoiding the stronger CO2 degradation seen at larger weights.
+
+Forbidden claim:
+
+- Do not claim true net-profit improvement or yield improvement from Stage 1 alone.
+
+### Stage 2: Same-Period AGC Reference / Automatoes / AICU Resource Baseline Comparison
+
+Purpose:
+
+- Make the final baseline comparison look closer to greenhouse-control literature and AGC practice.
+- Compare our counterfactual MPC resource estimates against real AGC resource records over the same time window.
+
+Baseline set:
+
+- Required:
+  - AGC `Reference`
+  - AGC `Automatoes`
+  - AGC `AICU`
+- Optional:
+  - `Digilog`
+  - `IUACAAS`
+  - `TheAutomators`
+
+Comparison rule:
+
+- Use the same dates/time indices as the full-period anchored MPC experiment.
+- Compare resource dimensions only unless crop/yield/quality dynamics are modeled.
+- Clearly label:
+  - AGC baselines: real executed resource consumption and real production outcomes
+  - our MPC: counterfactual estimated resource consumption from the resource-cost estimator
+
+Proposed implementation:
+
+- Add or extend `agc_mpc/analyze_agc_same_period_resource_baselines.py`.
+- Inputs:
+  - AGC dataset root
+  - selected time window from Stage 1
+  - list of compartments / teams
+  - Stage 1 MPC summary file
+- Outputs:
+  - real AGC same-period resource totals
+  - estimated MPC same-period resource totals
+  - normalized relative comparison table
+
+Proposed outputs:
+
+- `results/control/summaries/agc_same_period_resource_baselines.csv`
+- `results/control/summaries/agc_same_period_resource_baselines.md`
+- `results/control/figures/agc_same_period_resource_baselines.png`
+- `results/control/figures/agc_same_period_resource_cost_vs_control.png`
+
+Required metrics:
+
+- for AGC real baselines:
+  - heat consumption
+  - peak/off-peak electricity consumption
+  - CO2 consumption
+  - irrigation
+  - estimated resource cost under AGC official rules
+  - optional real production/yield and net profit shown only as context
+- for our MPC:
+  - estimated heat/electricity/CO2/irrigation
+  - estimated resource cost
+  - tracking metrics from Stage 1
+
+Recommended table wording:
+
+- `Reference`: real human-expert greenhouse execution
+- `Automatoes` / `AICU`: real AGC AI-team greenhouse execution
+- `Our MPC`: counterfactual anchored closed-loop simulation with estimated resource consumption
+
+Expected claim:
+
+- The proposed framework can compare selected MPC controllers with real AGC baselines on resource-cost dimensions over matched time windows.
+- This provides a defensible baseline-comparison story without overstating unobserved yield or quality effects.
+
+Forbidden claim:
+
+- Do not rank our MPC above AGC teams by true net profit.
+- Do not mix real AGC profit with our estimated resource-only profit as if they are directly equivalent.
+
+### Stage 3: Full Net-Profit Model As Future Work Only
+
+Purpose:
+
+- Define the route to a complete economic-control paper while keeping the current thesis scope defensible.
+
+Why it is future work:
+
+- True net profit requires not only resource cost but also yield, quality, harvest timing, and price response.
+- The current MPC rollout does not simulate crop growth, tomato production, Brix/quality, or market-price effects under counterfactual controls.
+
+Future model components:
+
+- crop growth / biomass / yield dynamics
+- harvest timing and Class A / Class B production model
+- quality or Brix prediction model
+- resource model with stronger validation for heat, electricity, CO2, and irrigation
+- economic calculator using AGC official income and cost rules
+- uncertainty analysis for estimated yield and quality
+
+Future comparison:
+
+- real AGC `Reference` and AI teams
+- tracking-only MPC
+- resource-aware MPC
+- economic MPC with crop/yield model
+- possibly simple rule-based greenhouse controller
+
+Allowed thesis wording now:
+
+- "This thesis evaluates resource-cost and climate-control trade-offs under AGC-calibrated economic rules."
+- "A full net-profit comparison is left as future work because it requires a validated crop/yield/quality response model."
+
+Forbidden thesis wording now:
+
+- "The proposed controller increases true net profit."
+- "The proposed controller improves yield or tomato quality."
+- "The proposed controller outperforms AGC teams economically."
+
+Recommended next Plan-mode execution order:
+
+1. Read `CONTEXT.md`, `CONTEXT.zh-CN.md`, `ECONOMIC_RESOURCE_MPC.md`, and `ECONOMIC_RESOURCE_MPC.zh-CN.md`.
+2. Inspect the existing resource estimator outputs and current real-resource sensitivity files.
+3. Implement Stage 1 full-period anchored runner with execution length `24` first.
+4. Run the four required controller cases.
+5. Analyze and plot Stage 1 results.
+6. Implement Stage 2 same-period AGC baseline analyzer.
+7. Generate matched-window AGC-vs-MPC resource comparison tables and figures.
+8. Write a short thesis-facing conclusion note that clearly separates resource-cost comparison from true net-profit claims.
+9. Update `CONTEXT.md` and `CONTEXT.zh-CN.md`.
+10. Commit/push in small segments if requested.
+
+## 39. 2026-05-13 Full-Period Anchored Resource MPC Implementation Smoke Check
+
+Implemented the Section 38 tooling and completed a two-segment smoke validation.
+
+New scripts:
+
+- `agc_mpc/run_full_period_anchored_resource_mpc.py`
+  - Generates non-overlapping anchored starts at `0, 24, 48, ...`.
+  - Reuses selected checkpoints, `AGCClosedLoopSimulator`, `GradientMPCController`, `PredictiveControlAdapter`, and the calibrated `agc_resource_cost_model.json`.
+  - Writes one row per executed segment and one aggregate row per `(predictor, resource_weight)`.
+  - Keeps segment trace/summary files, while disabling per-segment figures by default for long runs.
+- `agc_mpc/analyze_agc_same_period_resource_baselines.py`
+  - Reads Stage 1 segment rows.
+  - Uses the Stage 1 time window to summarize real AGC `Resources.csv` records for `Reference`, `Automatoes`, and `AICU`.
+  - Compares AGC real executed resources with MPC counterfactual estimated resources.
+
+Simulator/config update:
+
+- `AGCConfig.control_save_rollout_figures` was added, defaulting to `True`.
+- `AGCClosedLoopSimulator` respects this flag so long anchored runs can avoid generating thousands of single-rollout figures.
+
+Smoke command executed:
+
+```powershell
+C:\Users\wokis\.conda\envs\strawberry_env\python.exe agc_mpc\run_full_period_anchored_resource_mpc.py --max-segments 2
+C:\Users\wokis\.conda\envs\strawberry_env\python.exe agc_mpc\analyze_agc_same_period_resource_baselines.py --segments-csv agc_mpc\results\control\summaries\full_period_anchored_resource_mpc_segments_smoke_2segments_3eb7671f.csv --prefix agc_same_period_resource_baselines_smoke_2segments_3eb7671f
+```
+
+Smoke outputs:
+
+- `results/control/summaries/full_period_anchored_resource_mpc_segments_smoke_2segments_3eb7671f.csv`
+- `results/control/summaries/full_period_anchored_resource_mpc_summary_smoke_2segments_3eb7671f.csv`
+- `results/control/summaries/full_period_anchored_resource_mpc_summary_smoke_2segments_3eb7671f.md`
+- `results/control/figures/full_period_anchored_resource_mpc_tradeoff_smoke_2segments_3eb7671f.png`
+- `results/control/figures/full_period_anchored_resource_mpc_cumulative_cost_smoke_2segments_3eb7671f.png`
+- `results/control/summaries/agc_same_period_resource_baselines_smoke_2segments_3eb7671f.csv`
+- `results/control/summaries/agc_same_period_resource_baselines_smoke_2segments_3eb7671f.md`
+- `results/control/figures/agc_same_period_resource_baselines_smoke_2segments_3eb7671f.png`
+- `results/control/figures/agc_same_period_resource_baselines_smoke_2segments_3eb7671f_cost_vs_control.png`
+
+Smoke validation:
+
+- Stage 1 segment rows: `8`.
+- Stage 1 summary rows: `4`.
+- Stage 2 baseline rows: `7`.
+- Required segment and baseline columns were present.
+- Aggregated resource cost matched the segment-row sum with maximum absolute difference about `1e-16`.
+- Smoke window: `2020-05-06 06:25` to `2020-05-06 10:20`.
+
+Smoke result summary:
+
+- `current_hybrid_transformer`, `w=0.05`: estimated resource cost `-15.8%` versus its `w=0.00` smoke baseline.
+- `itransformer_co2_residual`, `w=0.05`: estimated resource cost `-10.4%` versus its `w=0.00` smoke baseline.
+- These are smoke results only and must not be used as final thesis conclusions.
+
+Compute note:
+
+- The two-segment smoke run executed `8` anchored 24-step rollouts and took about `6 min 52 s`.
+- The full planned run is `283` segments across `4` controller cases, or `1132` anchored 24-step rollouts.
+- At the smoke throughput, the full foreground run is likely a many-hour / overnight job.
+
+Formal full-run command when compute time is available:
+
+```powershell
+C:\Users\wokis\.conda\envs\strawberry_env\python.exe agc_mpc\run_full_period_anchored_resource_mpc.py
+C:\Users\wokis\.conda\envs\strawberry_env\python.exe agc_mpc\analyze_agc_same_period_resource_baselines.py
+```
+
+Claim boundary remains unchanged:
+
+- Valid: matched-window resource-cost and climate-control trade-off comparison.
+- Invalid: true net-profit improvement, yield improvement, quality improvement, or economic superiority over AGC teams.
+
+## 40. 2026-05-14 Full-Period Anchored Resource MPC Full Run Completed
+
+Completed the full Section 38 anchored experiment overnight.
+
+Run log:
+
+- Started from PowerShell background launcher at `2026-05-13 22:40`.
+- Finished outputs around `2026-05-14 14:07`.
+- Approximate elapsed wall time: `15 h 27 min`.
+- Log files:
+  - `results/control/summaries/full_period_anchored_resource_mpc_fullrun_20260513_224001.out.log`
+  - `results/control/summaries/full_period_anchored_resource_mpc_fullrun_20260513_224001.err.log`
+- stderr contained PyTorch warnings only; no fatal error was observed.
+
+Full-run protocol:
+
+- Compartment: `Reference`
+- Anchoring: true observed AGC test history at each segment
+- Execution length: `24` steps
+- Segment starts: `0, 24, 48, ...`
+- Segments per controller case: `283`
+- Total executed segment rows: `1132`
+- Covered window: `2020-05-06 06:25` to `2020-05-29 20:20`
+- Controller cases:
+  - `current_hybrid_transformer`, `w=0.00`
+  - `current_hybrid_transformer`, `w=0.05`
+  - `itransformer_co2_residual`, `w=0.00`
+  - `itransformer_co2_residual`, `w=0.05`
+
+Generated final outputs:
+
+- `results/control/summaries/full_period_anchored_resource_mpc_segments.csv`
+- `results/control/summaries/full_period_anchored_resource_mpc_summary.csv`
+- `results/control/summaries/full_period_anchored_resource_mpc_summary.md`
+- `results/control/summaries/full_period_anchored_resource_mpc_suite.json`
+- `results/control/figures/full_period_anchored_resource_mpc_tradeoff.png`
+- `results/control/figures/full_period_anchored_resource_mpc_cumulative_cost.png`
+- `results/control/summaries/agc_same_period_resource_baselines.csv`
+- `results/control/summaries/agc_same_period_resource_baselines.md`
+- `results/control/figures/agc_same_period_resource_baselines.png`
+- `results/control/figures/agc_same_period_resource_cost_vs_control.png`
+
+Validation checks:
+
+- `full_period_anchored_resource_mpc_segments.csv`: `1132` rows.
+- `full_period_anchored_resource_mpc_summary.csv`: `4` rows.
+- `agc_same_period_resource_baselines.csv`: `7` rows.
+- Each controller case has exactly `283` segments.
+- Segment-sum versus summary aggregate maximum absolute difference: about `1.26e-14`.
+
+Full-period anchored MPC results:
+
+| predictor | w | objective | CO2 MAE | estimated resource cost | cost vs w=0 | CO2 vs w=0 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `current_hybrid_transformer` | `0.00` | `0.0632` | `27.659` | `0.3455 EUR/m2` | `0.0%` | `0.0%` |
+| `current_hybrid_transformer` | `0.05` | `0.0794` | `27.811` | `0.3215 EUR/m2` | `-6.9%` | `+0.6%` |
+| `itransformer_co2_residual` | `0.00` | `0.0710` | `15.112` | `0.3423 EUR/m2` | `0.0%` | `0.0%` |
+| `itransformer_co2_residual` | `0.05` | `0.0897` | `15.706` | `0.3133 EUR/m2` | `-8.5%` | `+3.9%` |
+
+Same-period AGC resource baseline comparison:
+
+| case | source | estimated / real resource cost | vs real Reference | CO2 MAE |
+| --- | --- | ---: | ---: | ---: |
+| `Reference` | real AGC executed resource | `0.3425 EUR/m2` | `0.0%` | n/a |
+| `Automatoes` | real AGC executed resource | `0.3674 EUR/m2` | `+7.3%` | n/a |
+| `AICU` | real AGC executed resource | `0.2579 EUR/m2` | `-24.7%` | n/a |
+| `current_hybrid_transformer`, `w=0.00` | counterfactual estimated MPC resource | `0.3455 EUR/m2` | `+0.9%` | `27.659` |
+| `current_hybrid_transformer`, `w=0.05` | counterfactual estimated MPC resource | `0.3215 EUR/m2` | `-6.1%` | `27.811` |
+| `itransformer_co2_residual`, `w=0.00` | counterfactual estimated MPC resource | `0.3423 EUR/m2` | `-0.1%` | `15.112` |
+| `itransformer_co2_residual`, `w=0.05` | counterfactual estimated MPC resource | `0.3133 EUR/m2` | `-8.5%` | `15.706` |
+
+Interpretation:
+
+- The full-period anchored result is consistent with the earlier short and multi-start resource checks: `w=0.05` lowers estimated resource cost for both selected MPC controllers.
+- `current_hybrid_transformer` gets a `6.9%` estimated cost reduction with only `0.6%` CO2 MAE increase over its own `w=0.00` anchored baseline.
+- `itransformer_co2_residual` gets an `8.5%` estimated cost reduction with a larger but still explicit `3.9%` CO2 MAE increase.
+- `itransformer_co2_residual` remains the better CO2-tracking controller in this full-period anchored comparison.
+- The same-period AGC table should be described as a resource-cost reference, not a true economic ranking, because AGC rows are real executed resources and MPC rows are counterfactual estimates without crop/yield/quality dynamics.
+
+Allowed thesis claim:
+
+- The selected MPC controllers can be compared with real AGC baselines on matched-window resource-cost dimensions.
+- Low resource-aware MPC weight `w=0.05` provides measurable estimated resource-cost reductions over a long anchored test-window simulation, with explicit CO2 tracking trade-offs.
+
+Forbidden thesis claim:
+
+- Do not claim true commercial net-profit improvement.
+- Do not claim yield or quality improvement.
+- Do not claim the MPC controller economically outperforms AGC teams.
+
+## 41. 2026-05-19 Same-Period All-Team AGC Resource Baseline Completion
+
+Completed the direct same-period AGC baseline method without running additional MPC models.
+
+New script:
+
+- `agc_mpc/analyze_agc_same_period_all_teams_resource_baselines.py`
+
+Purpose:
+
+- Directly calculate recorded AGC resource consumption for all six teams over the same time window as the full-period anchored MPC experiment.
+- Add real-team resource intensity per kg tomato.
+- Add real-team same-window production and approximate variable-cost economic context.
+- Include MPC rows only as counterfactual estimated-resource references, not as real economic rows.
+
+Generated outputs:
+
+- `results/control/summaries/agc_same_period_all_teams_resource_baselines.csv`
+- `results/control/summaries/agc_same_period_all_teams_resource_baselines.md`
+- `results/control/summaries/agc_same_period_all_teams_resource_intensity.csv`
+- `results/control/summaries/agc_same_period_all_teams_economic_context.csv`
+- `results/control/summaries/agc_same_period_all_teams_economic_context.md`
+- `results/control/figures/agc_same_period_all_teams_resource_baselines.png`
+- `results/control/figures/agc_same_period_all_teams_resource_intensity.png`
+- `results/control/figures/agc_same_period_all_teams_economic_context.png`
+
+Same-period resource-cost ranking:
+
+| case | source | resource cost | vs Reference | vs AICU |
+| --- | --- | ---: | ---: | ---: |
+| `IUACAAS` | real AGC | `0.1991 EUR/m2` | `-41.9%` | `-22.8%` |
+| `AICU` | real AGC | `0.2579 EUR/m2` | `-24.7%` | `0.0%` |
+| `itransformer_co2_residual`, `w=0.05` | MPC estimated | `0.3133 EUR/m2` | `-8.5%` | `+21.5%` |
+| `current_hybrid_transformer`, `w=0.05` | MPC estimated | `0.3215 EUR/m2` | `-6.1%` | `+24.7%` |
+| `Reference` | real AGC | `0.3425 EUR/m2` | `0.0%` | `+32.8%` |
+| `Automatoes` | real AGC | `0.3674 EUR/m2` | `+7.3%` | `+42.5%` |
+| `TheAutomators` | real AGC | `0.3654 EUR/m2` | `+6.7%` | `+41.7%` |
+| `Digilog` | real AGC | `0.4335 EUR/m2` | `+26.6%` | `+68.1%` |
+
+Same-period real-team economic context:
+
+| compartment | income | variable cost excl fixed | margin excl fixed | tomato kg/m2 |
+| --- | ---: | ---: | ---: | ---: |
+| `TheAutomators` | `10.946` | `1.467` | `9.479` | `5.086` |
+| `AICU` | `10.337` | `1.176` | `9.161` | `5.010` |
+| `Reference` | `10.224` | `1.975` | `8.249` | `4.960` |
+| `Digilog` | `9.728` | `1.494` | `8.234` | `5.073` |
+| `Automatoes` | `9.392` | `1.561` | `7.831` | `5.107` |
+| `IUACAAS` | `7.931` | `1.178` | `6.753` | `4.067` |
+
+Interpretation:
+
+- The all-team table changes the earlier simplified statement: among the three originally selected baseline teams, `AICU` had the lowest same-period resource cost, but across all six teams `IUACAAS` had even lower recorded resource cost.
+- `IUACAAS` should not be treated as the best economic baseline from resource cost alone because its same-window production and income were much lower.
+- `AICU` remains the stronger low-resource real-team reference when resource use and production context are considered together.
+- Our best MPC estimated-resource case remains below real `Reference` but above real `AICU` and `IUACAAS` in resource cost.
+- This supports a nuanced thesis statement: the proposed MPC reduces estimated resource cost relative to human-expert `Reference`, but it does not match the most resource-frugal AGC teams and cannot be ranked economically without crop/yield/quality dynamics.
+
+Boundary:
+
+- Real AGC team economic context is valid only for recorded teams.
+- MPC rows remain counterfactual resource estimates.
+- Do not include MPC in the real-team production / margin ranking.
+
+## 42. 2026-05-19 Resource Baseline Report Figures
+
+Generated report-ready figures for the full-period anchored MPC and same-period all-team AGC resource baseline results.
+
+New script:
+
+- `agc_mpc/plot_resource_baseline_report_figures.py`
+
+Generated figures:
+
+- `results/control/figures/resource_report_fig1_mpc_tradeoff.png`
+  - Shows the full-period anchored MPC estimated resource-cost reduction at `w=0.05`.
+  - Shows the corresponding CO2 tracking trade-off.
+- `results/control/figures/resource_report_fig2_all_team_resource_baseline.png`
+  - Ranks all real AGC teams and the two `w=0.05` MPC estimated-resource cases by same-window resource cost.
+  - Includes real `Reference` and `AICU` guide lines.
+- `results/control/figures/resource_report_fig3_real_team_resource_intensity.png`
+  - Shows real AGC team resource cost per kg tomato.
+  - Shows heat, CO2, and irrigation physical intensities per kg tomato.
+- `results/control/figures/resource_report_fig4_real_team_economic_context.png`
+  - Shows real AGC same-window income, variable cost excluding fixed plant cost, and margin excluding fixed plant cost.
+  - MPC is intentionally excluded because no crop/yield/quality dynamic model is available.
+- `results/control/figures/resource_report_fig5_summary_dashboard.png`
+  - One-page dashboard combining MPC cost reduction, AGC resource baselines, CO2 trade-off, and real-team economic context.
+
+Presentation reminder:
+
+- Use Figure 5 as the first overview slide.
+- Use Figures 1-4 when explaining each result layer in detail.
+- Keep the claim boundary explicit: resource-cost comparison is valid; true net-profit ranking for MPC is not.
