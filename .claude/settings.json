@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch",
+      "Read",
+      "Glob",
+      "Grep",
+      "Bash(git status)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(ls *)",
+      "Bash(dir *)",
+      "Bash(cat *)",
+      "Bash(wc *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(du *)",
+      "Bash(df *)",
+      "Bash(which *)",
+      "Bash(type *)",
+      "Bash(echo *)",
+      "Bash(pwd *)",
+      "Bash(env *)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Get-Content *)",
+      "PowerShell(Get-Location *)",
+      "PowerShell(Get-Process *)",
+      "PowerShell(Select-String *)",
+      "PowerShell(Measure-Object *)",
+      "PowerShell(Test-Path *)",
+      "PowerShell(Resolve-Path *)",
+      "PowerShell(git status *)",
+      "PowerShell(git log *)",
+      "PowerShell(git diff *)"
+    ]
+  }
+}

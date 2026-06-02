@@ -12,3 +12,11 @@ __pycache__/
 *.db
 *.pth
 *.npz
+
+# IDE local settings (may contain tokens)
+.vscode/settings.json
+
+# Large local MPC artifacts
+agc_mpc/results/control/artifacts/*.zip
+agc_mpc/results/control/summaries/*full_period_anchored*_anchored_start*_24steps_summary.json
+agc_mpc/results/control/summaries/*full_period_anchored*_anchored_start*_24steps_trace.json
